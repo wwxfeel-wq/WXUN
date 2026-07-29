@@ -499,6 +499,14 @@
   background: var(--color-home-canvas);
 }
 
+.home-cockpit__nebula {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 .home-cockpit__tree {
   position: absolute;
   inset: -6% 4% -3%;
@@ -717,9 +725,51 @@
 }
 
 @media (min-width: 768px) and (max-width: 1100px) {
-  .home-cockpit__tree { inset: -4% 4% 4%; }
-  .home-cockpit__left, .home-cockpit__right { width: 14.5rem; }
+  /* 中屏：面板改上下堆叠，避免与生命树/底部输入重叠 */
+  .home-cockpit { min-height: 100dvh; overflow-y: auto; overflow-x: hidden; }
+  .home-cockpit__tree { position: fixed; inset: -4% -6% 42%; }
+  .home-cockpit__vignette {
+    position: fixed;
+    background: linear-gradient(
+      180deg,
+      var(--color-home-canvas),
+      transparent 12%,
+      transparent 40%,
+      var(--color-home-vignette) 62%,
+      var(--color-home-canvas) 80%
+    );
+  }
+  .home-cockpit__brand { position: fixed; }
+  .home-cockpit__status { position: fixed; }
+  .home-cockpit__left,
+  .home-cockpit__right {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    width: auto;
+    max-width: 42rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .home-cockpit__left { margin-top: 50dvh; padding: 0 var(--space-lg); }
+  .home-cockpit__right { margin-top: var(--space-lg); padding: 0 var(--space-lg) 8rem; }
   .home-cockpit__core { display: none; }
+  .home-cockpit__input {
+    position: fixed;
+    left: var(--space-lg);
+    right: var(--space-lg);
+    bottom: var(--home-dock-clearance);
+    width: auto;
+    max-width: 42rem;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1439px) {
+  /* 大中屏：左右面板收窄，避免遮挡生命树 */
+  .home-cockpit__left, .home-cockpit__right { width: 17rem; }
+  .home-cockpit__tree { inset: -6% 18rem -3%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

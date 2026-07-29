@@ -1,19 +1,21 @@
 'use client';
 
 /**
- * LifeTreePreview —— 数字生命中心小卡片里的有机家庭生命树预览
+ * LifeTreePreview —— 数字生命中心小卡片里的"生命成长仪表"
  *
- * 设计要点：
- * 1. 使用轻量 SVG 绘制有机树形：树干、主枝、树叶、花、果实。
- * 2. 成长阶段与进度由真实数据（memories / interviews / capsules）计算。
- * 3. 颜色全部引用 design tokens。
- * 4. 无神经网络、无 ECG、无突触闪光，仅保留柔和的呼吸与摇曳动画。
- * 5. 外层由父级 GlassLayer 统一处理液态玻璃高光。
+ * 设计变更（图四要求）：
+ * - 移除原本的 SVG 有机树可视化，改成清晰的"数据仪表"形态
+ * - 聚焦三个真实数据源：记忆 / 访谈 / 时间胶囊
+ * - 顶部：当前成长阶段徽章 + 阶段图标 + 阶段进度环
+ * - 中部：三条数据条（记忆·访谈·胶囊），每条显示数字 + 进度
+ * - 底部：距离下一阶段的差距 / 或已达永恒
+ * - 保留 getTreeStage 供其他页面复用，接口向后兼容
  */
 
 import { useId, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { JSX } from 'react';
+import { BookOpen, MessageCircle, Package, Sparkles, Sprout, Flower2, TreePine, Leaf, CircleDot, Infinity as InfinityIcon, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -23,13 +25,13 @@ const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
  * ========================================================================== */
 
 const STAGES = [
-  { id: 'seed', label: '种子期', min: 0, max: 1 },
-  { id: 'sprout', label: '萌芽期', min: 1, max: 5 },
-  { id: 'young', label: '成长期', min: 5, max: 15 },
-  { id: 'mature', label: '繁茂期', min: 15, max: 30 },
-  { id: 'bloom', label: '开花期', min: 30, max: 60 },
-  { id: 'fruit', label: '结果期', min: 60, max: 100 },
-  { id: 'eternal', label: '永恒期', min: 100, max: 100 },
+  { id: 'seed', label: '种子期', min: 0, max: 1, icon: CircleDot, color: 'var(--color-gray-400)' },
+  { id: 'sprout', label: '萌芽期', min: 1, max: 5, icon: Sprout, color: 'var(--color-success)' },
+  { id: 'young', label: '成长期', min: 5, max: 15, icon: Leaf, color: 'var(--color-family-child)' },
+  { id: 'mature', label: '繁茂期', min: 15, max: 30, icon: TreePine, color: 'var(--color-primary)' },
+  { id: 'bloom', label: '开花期', min: 30, max: 60, icon: Flower2, color: 'var(--color-rose)' },
+  { id: 'fruit', label: '结果期', min: 60, max: 100, icon: Sparkles, color: 'var(--color-highlight)' },
+  { id: 'eternal', label: '永恒期', min: 100, max: 100, icon: InfinityIcon, color: 'var(--color-purple)' },
 ] as const;
 
 export type TreeStageId = (typeof STAGES)[number]['id'];
@@ -90,169 +92,66 @@ export interface LifeTreePreviewProps {
 }
 
 /* ============================================================================
- * 有机预览树生成
+ * 内部：数据条
  * ========================================================================== */
 
-interface PreviewBranch {
-  id: number;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  cx: number;
-  cy: number;
-  level: number;
-  familyIndex: number | null;
-}
-
-interface PreviewLeaf {
-  x: number;
-  y: number;
-  r: number;
+interface DataRowProps {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  /** 用于条形填充比例的分母，超出按 100% 显示 */
+  target: number;
   color: string;
-  delay: number;
+  delay?: number;
+  reducedMotion: boolean;
 }
 
-interface PreviewFlower {
-  x: number;
-  y: number;
-  r: number;
-  delay: number;
-}
+function DataRow({ icon: Icon, label, value, target, color, delay = 0, reducedMotion }: DataRowProps) {
+  const percent = Math.min(100, target === 0 ? 0 : (value / target) * 100);
 
-interface PreviewFruit {
-  x: number;
-  y: number;
-  r: number;
-  delay: number;
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const FAMILY_COLORS = [
-  'var(--color-family-father)',
-  'var(--color-family-mother)',
-  'var(--color-family-child)',
-  'var(--color-family-elder)',
-  'var(--color-family-pet)',
-];
-
-function generatePreviewTree(stageIndex: number, memories: number, capsules: number, seed: number) {
-  const rng = mulberry32(seed);
-  const branches: PreviewBranch[] = [];
-  const leaves: PreviewLeaf[] = [];
-  const flowers: PreviewFlower[] = [];
-  const fruits: PreviewFruit[] = [];
-
-  const trunkX = 50;
-  const groundY = 88;
-  const trunkHeight = 34 + stageIndex * 5;
-  const trunkTopY = groundY - trunkHeight;
-
-  // 树干
-  branches.push({
-    id: 0,
-    x1: trunkX,
-    y1: groundY,
-    x2: trunkX + (rng() - 0.5) * 4,
-    y2: trunkTopY,
-    cx: trunkX + (rng() - 0.5) * 8,
-    cy: groundY - trunkHeight * 0.5,
-    level: 0,
-    familyIndex: null,
-  });
-
-  // 主枝：阶段越高主枝越多
-  const mainCount = Math.max(2, Math.min(6, stageIndex + 2));
-  for (let i = 0; i < mainCount; i++) {
-    const t = 0.35 + 0.45 * (i / Math.max(1, mainCount - 1));
-    const sx = trunkX;
-    const sy = groundY - trunkHeight * t;
-    const dir = (i / Math.max(1, mainCount - 1)) * Math.PI - Math.PI;
-    const len = 16 + rng() * 10 + stageIndex * 2;
-    const x2 = sx + Math.cos(dir) * len;
-    const y2 = sy + Math.sin(dir) * len * 0.65;
-    const cx = sx + Math.cos(dir) * len * 0.5 + (rng() - 0.5) * 6;
-    const cy = sy + Math.sin(dir) * len * 0.3;
-
-    branches.push({
-      id: branches.length,
-      x1: sx,
-      y1: sy,
-      x2,
-      y2,
-      cx,
-      cy,
-      level: 1,
-      familyIndex: i % FAMILY_COLORS.length,
-    });
-
-    // 子枝
-    const childCount = stageIndex >= 3 ? 2 : stageIndex >= 1 ? 1 : 0;
-    for (let c = 0; c < childCount; c++) {
-      const childDir = dir + (rng() - 0.5) * 0.8;
-      const childLen = len * (0.55 + rng() * 0.2);
-      const x1 = x2;
-      const y1 = y2;
-      const cx2 = x1 + Math.cos(childDir) * childLen * 0.5 + (rng() - 0.5) * 4;
-      const cy2 = y1 + Math.sin(childDir) * childLen * 0.3;
-      const x22 = x1 + Math.cos(childDir) * childLen;
-      const y22 = y1 + Math.sin(childDir) * childLen * 0.7;
-      branches.push({
-        id: branches.length,
-        x1,
-        y1,
-        x2: x22,
-        y2: y22,
-        cx: cx2,
-        cy: cy2,
-        level: 2,
-        familyIndex: i % FAMILY_COLORS.length,
-      });
-    }
-  }
-
-  // 叶子数量随记忆增加
-  const leafCount = Math.min(48, Math.max(4, Math.floor(memories * 0.15) + stageIndex * 6));
-  const leafBranches = branches.filter((b) => b.level >= 1);
-  for (let i = 0; i < leafCount && leafBranches.length > 0; i++) {
-    const b = leafBranches[Math.floor(rng() * leafBranches.length)];
-    const t = 0.5 + rng() * 0.5;
-    const x = (1 - t) * (1 - t) * b.x1 + 2 * (1 - t) * t * b.cx + t * t * b.x2;
-    const y = (1 - t) * (1 - t) * b.y1 + 2 * (1 - t) * t * b.cy + t * t * b.y2;
-    const color = b.familyIndex !== null ? FAMILY_COLORS[b.familyIndex % FAMILY_COLORS.length] : 'var(--color-tree-leaf)';
-    leaves.push({ x, y, r: 1.4 + rng() * 1.2, color, delay: rng() * 2 });
-  }
-
-  // 花朵数量随阶段
-  const flowerCount = stageIndex >= 3 ? Math.min(12, stageIndex * 2 + Math.floor(memories / 40)) : 0;
-  for (let i = 0; i < flowerCount && leafBranches.length > 0; i++) {
-    const b = leafBranches[Math.floor(rng() * leafBranches.length)];
-    const t = 0.4 + rng() * 0.4;
-    const x = (1 - t) * (1 - t) * b.x1 + 2 * (1 - t) * t * b.cx + t * t * b.x2;
-    const y = (1 - t) * (1 - t) * b.y1 + 2 * (1 - t) * t * b.cy + t * t * b.y2;
-    flowers.push({ x, y, r: 2 + rng(), delay: rng() * 2 });
-  }
-
-  // 果实数量随时间胶囊
-  const fruitCount = stageIndex >= 4 ? Math.min(14, capsules + Math.floor(stageIndex / 2)) : 0;
-  for (let i = 0; i < fruitCount && leafBranches.length > 0; i++) {
-    const b = leafBranches[Math.floor(rng() * leafBranches.length)];
-    const t = 0.55 + rng() * 0.35;
-    const x = (1 - t) * (1 - t) * b.x1 + 2 * (1 - t) * t * b.cx + t * t * b.x2;
-    const y = (1 - t) * (1 - t) * b.y1 + 2 * (1 - t) * t * b.cy + t * t * b.y2;
-    fruits.push({ x, y, r: 1.8 + rng() * 0.8, delay: rng() * 2 });
-  }
-
-  return { branches, leaves, flowers, fruits, trunkX, trunkTopY, groundY };
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+        style={{
+          color,
+          backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+          border: `1px solid color-mix(in srgb, ${color} 18%, transparent)`,
+        }}
+        aria-hidden
+      >
+        <Icon size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <span className="text-2xs text-text-subtle">{label}</span>
+          <span className="text-xs font-semibold tabular-nums text-text">
+            {value.toLocaleString()}
+          </span>
+        </div>
+        <div
+          className="relative h-1.5 w-full overflow-hidden rounded-full"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}
+          role="progressbar"
+          aria-valuenow={Math.round(percent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${label} 进度 ${Math.round(percent)}%`}
+        >
+          <motion.span
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              backgroundImage: `linear-gradient(90deg, ${color} 0%, color-mix(in srgb, ${color} 60%, transparent) 100%)`,
+              boxShadow: `0 0 8px color-mix(in srgb, ${color} 30%, transparent)`,
+            }}
+            initial={reducedMotion ? { width: `${percent}%` } : { width: '0%' }}
+            animate={{ width: `${percent}%` }}
+            transition={reducedMotion ? { duration: 0 } : { duration: 1.1, delay, ease: EASE }}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ============================================================================
@@ -265,148 +164,141 @@ export default function LifeTreePreview({
   capsules,
   className,
 }: LifeTreePreviewProps): JSX.Element {
-  const { stageIndex } = useMemo(
+  const stageInfo = useMemo(
     () => getTreeStage(memories, interviews, capsules),
     [memories, interviews, capsules],
   );
 
-  const seed = useMemo(() => 20240725 + memories + interviews + capsules, [memories, interviews, capsules]);
-  const tree = useMemo(
-    () => generatePreviewTree(stageIndex, memories, capsules, seed),
-    [stageIndex, memories, capsules, seed],
-  );
+  const stage = STAGES[stageInfo.stageIndex];
+  const StageIcon = stage.icon;
+  const stageColor = stage.color;
 
-  const gradientId = useId();
   const shouldReduceMotion = useReducedMotion();
-  const motionProps = shouldReduceMotion
-    ? { initial: false, animate: false }
-    : undefined;
+  const reducedMotion = Boolean(shouldReduceMotion);
+  const ringId = useId();
+
+  // 阶段进度环参数
+  const RING_SIZE = 68;
+  const RING_STROKE = 5;
+  const radius = (RING_SIZE - RING_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - stageInfo.progress / 100);
+
+  const nextStage = STAGES[Math.min(stageInfo.stageIndex + 1, STAGES.length - 1)];
 
   return (
-    <div className={cn(className, 'w-full h-full min-h-40')}>
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label="有机家庭生命树预览"
-        className="w-full h-full"
-        style={{ display: 'block', overflow: 'visible' }}
-      >
-        <defs>
-          <radialGradient id={gradientId} cx="50%" cy="88%" r="60%">
-            <stop offset="0%" stopColor="var(--color-tree-root-glow)" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="var(--color-bg)" stopOpacity="0" />
-          </radialGradient>
-        </defs>
+    <div
+      className={cn(
+        'relative flex h-full min-h-40 w-full flex-col justify-between overflow-hidden rounded-2xl p-4',
+        className,
+      )}
+      role="img"
+      aria-label={`生命成长仪表：当前 ${stage.label}，进度 ${Math.round(stageInfo.progress)}%`}
+    >
+      {/* 顶部：阶段徽章 + 阶段进度环 */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-3xs font-medium"
+            style={{
+              color: stageColor,
+              backgroundColor: `color-mix(in srgb, ${stageColor} 12%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${stageColor} 22%, transparent)`,
+            }}
+          >
+            <StageIcon size={11} />
+            <span>{stage.label}</span>
+          </div>
+          <div className="mt-2 text-2xl font-display font-semibold tabular-nums text-text leading-none">
+            {stageInfo.score}
+            <span className="ml-1 text-2xs font-normal text-text-subtle">成长点</span>
+          </div>
+          <div className="mt-1 text-3xs text-text-subtle">
+            {stageInfo.stageIndex === STAGES.length - 1
+              ? '已达永恒 · 生命循环'
+              : `距 ${nextStage.label} 还差 ${stageInfo.remaining}`}
+          </div>
+        </div>
 
-        {/* 根部柔光 */}
-        <ellipse cx={tree.trunkX} cy={tree.groundY} rx="28" ry="10" fill={`url(#${gradientId})`} />
-
-        {/* 树干生命节律微光 */}
-        <motion.path
-          d={`M ${tree.trunkX} ${tree.groundY} Q ${tree.trunkX + 2} ${(tree.groundY + tree.trunkTopY) / 2} ${tree.trunkX} ${tree.trunkTopY}`}
-          fill="none"
-          stroke="var(--color-tree-neural)"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          initial={{ opacity: 0.03 }}
-          animate={{ opacity: [0.03, 0.1, 0.03] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          {...motionProps}
-        />
-
-        {/* 树枝 */}
-        <g>
-          {tree.branches.map((b) => {
-            const color = b.familyIndex !== null
-              ? FAMILY_COLORS[b.familyIndex % FAMILY_COLORS.length]
-              : 'var(--color-tree-trunk)';
-            return (
-              <motion.path
-                key={b.id}
-                d={`M ${b.x1} ${b.y1} Q ${b.cx} ${b.cy} ${b.x2} ${b.y2}`}
-                fill="none"
-                stroke={color}
-                strokeWidth={b.level === 0 ? 3.2 : 1.6}
-                strokeLinecap="round"
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: b.level === 0 ? 0.9 : 0.75 }}
-                transition={{ duration: 1.2, ease: EASE, delay: b.level * 0.15 }}
-                {...motionProps}
-              />
-            );
-          })}
-        </g>
-
-        {/* 树叶 */}
-        <g>
-          {tree.leaves.map((leaf, i) => (
-            <motion.ellipse
-              key={`leaf-${i}`}
-              cx={leaf.x}
-              cy={leaf.y}
-              rx={leaf.r * 0.7}
-              ry={leaf.r}
-              fill={leaf.color}
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{
-                scale: [1, 1.08, 1],
-                opacity: [0.75, 0.9, 0.75],
-                rotate: [0, 4, -4, 0],
-              }}
-              transition={{
-                scale: { duration: 3 + leaf.delay, repeat: Infinity, ease: 'easeInOut' },
-                opacity: { duration: 3 + leaf.delay, repeat: Infinity, ease: 'easeInOut' },
-                rotate: { duration: 5 + leaf.delay, repeat: Infinity, ease: 'easeInOut' },
-              }}
-              {...motionProps}
+        {/* 阶段进度环 */}
+        <div className="relative shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>
+          <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90" aria-hidden>
+            <defs>
+              <linearGradient id={`ring-${ringId}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor={stageColor} stopOpacity="1" />
+                <stop offset="100%" stopColor={stageColor} stopOpacity="0.4" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={radius}
+              fill="none"
+              stroke="color-mix(in srgb, var(--color-text) 8%, transparent)"
+              strokeWidth={RING_STROKE}
             />
-          ))}
-        </g>
-
-        {/* 花朵 */}
-        <g>
-          {tree.flowers.map((flower, i) => (
-            <motion.g key={`flower-${i}`}>
-              {[0, 1, 2, 3, 4].map((petal) => {
-                const angle = (petal / 5) * Math.PI * 2;
-                const px = flower.x + Math.cos(angle) * flower.r;
-                const py = flower.y + Math.sin(angle) * flower.r;
-                return (
-                  <motion.circle
-                    key={petal}
-                    cx={px}
-                    cy={py}
-                    r={flower.r * 0.55}
-                    fill="var(--color-tree-flower)"
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [1, 1.15, 1], opacity: [0.8, 0.95, 0.8] }}
-                    transition={{ duration: 3 + flower.delay, repeat: Infinity, ease: 'easeInOut' }}
-                    {...motionProps}
-                  />
-                );
-              })}
-            </motion.g>
-          ))}
-        </g>
-
-        {/* 果实 */}
-        <g>
-          {tree.fruits.map((fruit, i) => (
             <motion.circle
-              key={`fruit-${i}`}
-              cx={fruit.x}
-              cy={fruit.y}
-              r={fruit.r}
-              fill="var(--color-tree-fruit)"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: [1, 1.08, 1], opacity: 0.9 }}
-              transition={{ duration: 3 + fruit.delay, repeat: Infinity, ease: 'easeInOut' }}
-              {...motionProps}
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={radius}
+              fill="none"
+              stroke={`url(#ring-${ringId})`}
+              strokeWidth={RING_STROKE}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              initial={reducedMotion ? { strokeDashoffset: dashOffset } : { strokeDashoffset: circumference }}
+              animate={{ strokeDashoffset: dashOffset }}
+              transition={reducedMotion ? { duration: 0 } : { duration: 1.2, ease: EASE }}
             />
-          ))}
-        </g>
-      </svg>
+          </svg>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="text-sm font-semibold tabular-nums text-text">
+              {Math.round(stageInfo.progress)}
+              <span className="text-3xs text-text-subtle">%</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 中部：三条数据 */}
+      <div className="mt-4 space-y-2.5">
+        <DataRow
+          icon={BookOpen}
+          label="记忆"
+          value={memories}
+          target={Math.max(40, memories)}
+          color="var(--color-family-child)"
+          delay={0}
+          reducedMotion={reducedMotion}
+        />
+        <DataRow
+          icon={MessageCircle}
+          label="访谈"
+          value={interviews}
+          target={Math.max(20, interviews)}
+          color="var(--color-family-mother)"
+          delay={0.1}
+          reducedMotion={reducedMotion}
+        />
+        <DataRow
+          icon={Package}
+          label="时间胶囊"
+          value={capsules}
+          target={Math.max(12, capsules)}
+          color="var(--color-highlight)"
+          delay={0.2}
+          reducedMotion={reducedMotion}
+        />
+      </div>
+
+      {/* 微光装饰：阶段色的模糊光斑 */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl"
+        style={{
+          background: `radial-gradient(circle, color-mix(in srgb, ${stageColor} 30%, transparent) 0%, transparent 70%)`,
+        }}
+      />
     </div>
   );
 }

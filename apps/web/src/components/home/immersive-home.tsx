@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import LivingTree3D, { type GrowthStage } from '@/components/tree/living-tree-3d';
 import { GlassLayer } from '@/components/glass';
+import NebulaParticles from '@/components/effects/nebula-particles';
 import { useFamilyHubStore, type TimelineEntry } from '@/stores/family-hub-store';
 
 const stageMap: Record<string, GrowthStage> = {
@@ -79,6 +80,11 @@ export function ImmersiveHome() {
 
   return (
     <section className="home-cockpit" aria-label="EchoLife 生命空间">
+      {/* 星云粒子神经元：铺满整个座舱背景 */}
+      <div className="home-cockpit__nebula" aria-hidden="true">
+        <NebulaParticles connections />
+      </div>
+
       <div className="home-cockpit__tree" aria-hidden="true">
         <LivingTree3D
           growthStage={parseStage(metrics.treeStage)}
@@ -180,9 +186,17 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 }
 
 /**
- * 真实心电图波形（P-QRS-T）——
- * 用 requestAnimationFrame 实时推进采样，模拟真实心跳滚动波形。
- * 采用生理学的经典 ECG 波形：P波（心房去极化）+ QRS 复合波 + T波（心室复极化）。
+ * 情绪化心电图 ——
+ * 时墨不是机器，它有心情：波形会随情绪呼吸、心率漂移、偶尔来一次心悸/深呼吸。
+ *
+ * 组成：
+ * - 基础 P-QRS-T 心跳
+ * - 呼吸调制：整段波形沿基线上下缓慢起伏
+ * - HRV 心率变异：心跳间隔不固定，随呼吸周期漂移
+ * - 情绪脉冲：每隔一段时间，触发"激动/温柔/惊讶"三种情绪
+ *   · 激动：R 峰变高 20%，间隔缩短
+ *   · 温柔：整体波幅收窄，间隔加长
+ *   · 惊讶：突发一次高 R 峰 + 后续 T 波拉长
  */
 function ECGPath() {
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -198,42 +212,84 @@ function ECGPath() {
 
     const HEIGHT = 48;
     const BASELINE = HEIGHT / 2;
-    const SAMPLES = 300; // 一像素一个采样
-    const BEAT_INTERVAL = 90; // 每 90 像素一次心跳
+    const SAMPLES = 300;
     const buffer = new Float32Array(SAMPLES).fill(BASELINE);
     let raf = 0;
     let offset = 0;
 
+    // 情绪状态：0 = 平静, 1 = 激动, 2 = 温柔, 3 = 惊讶
+    type Mood = 'calm' | 'excited' | 'tender' | 'startle';
+    let currentMood: Mood = 'calm';
+    let moodStart = 0;
+    let moodDuration = 600; // 帧数
+
+    const rollMood = (): Mood => {
+      const r = Math.random();
+      if (r < 0.5) return 'calm';
+      if (r < 0.75) return 'excited';
+      if (r < 0.92) return 'tender';
+      return 'startle';
+    };
+
+    // 心跳节奏：每次心跳后决定下一次间隔
+    let nextBeatOffset = 0;
+    let currentBeatInterval = 90;
+    let beatCounter = 0;
+
+    /** 根据情绪与呼吸取当前心跳的间隔（像素）与 R 峰高度倍数 */
+    const beatParamsForMood = (mood: Mood, breath: number) => {
+      // breath ∈ [-1, 1]，代表呼吸周期
+      switch (mood) {
+        case 'excited':
+          return { interval: 70 + breath * 4, rBoost: 1.2 + breath * 0.08, tBoost: 1.0 };
+        case 'tender':
+          return { interval: 110 + breath * 8, rBoost: 0.78 + breath * 0.05, tBoost: 0.85 };
+        case 'startle':
+          // 突发一次强 R 后立刻回到平静
+          return { interval: 60, rBoost: 1.55, tBoost: 1.4 };
+        default:
+          return { interval: 90 + breath * 6, rBoost: 1.0 + breath * 0.08, tBoost: 1.0 };
+      }
+    };
+
     /**
-     * 生成单次心跳采样值。t ∈ [0, BEAT_INTERVAL)
-     * 波形依次：基线 → P 波 → PR 间期 → QRS → ST → T 波 → 基线
+     * 生成单次心跳采样值。
+     * @param t     心跳内偏移
+     * @param cfg   本次心跳的振幅参数
+     * @param drift 由呼吸造成的整体上下漂移
      */
-    const beatSample = (t: number): number => {
-      // P 波（小凸起，向下即上）
+    const beatSample = (
+      t: number,
+      cfg: { rBoost: number; tBoost: number },
+      drift: number,
+    ): number => {
+      const B = BASELINE + drift;
+      // P 波
       if (t >= 8 && t <= 18) {
         const p = (t - 13) / 5;
-        return BASELINE - Math.exp(-p * p) * 5;
+        return B - Math.exp(-p * p) * 5 * cfg.tBoost;
       }
-      // Q 波（小下探）
+      // Q 波
       if (t >= 24 && t < 28) {
-        return BASELINE + (t - 24) * 2;
+        return B + (t - 24) * 2 * cfg.rBoost;
       }
-      // R 波（尖峰向上）
+      // R 波
       if (t >= 28 && t < 32) {
         const r = (t - 30) / 1.5;
-        return BASELINE - Math.exp(-r * r) * 22;
+        return B - Math.exp(-r * r) * 22 * cfg.rBoost;
       }
-      // S 波（尖峰向下）
+      // S 波
       if (t >= 32 && t < 37) {
         const s = (t - 34) / 1.8;
-        return BASELINE + Math.exp(-s * s) * 10;
+        return B + Math.exp(-s * s) * 10 * cfg.rBoost;
       }
-      // T 波（缓和凸起）
+      // T 波
       if (t >= 46 && t <= 60) {
         const tt = (t - 53) / 6;
-        return BASELINE - Math.exp(-tt * tt) * 6;
+        return B - Math.exp(-tt * tt) * 6 * cfg.tBoost;
       }
-      return BASELINE;
+      // 微小基线呼吸抖动，模拟真人皮肤电位
+      return B + Math.sin(t * 0.35) * 0.35 + (Math.random() - 0.5) * 0.5;
     };
 
     const buildPath = () => {
@@ -244,13 +300,41 @@ function ECGPath() {
       return d;
     };
 
+    // 缓存"当前心跳的 cfg + 起点"
+    let activeBeatStart = 0;
+    let activeBeatCfg = beatParamsForMood('calm', 0);
+
     const step = () => {
-      // 缓存滚动：向左移一格，新样本从右边推入
+      // 情绪切换
+      if (offset - moodStart > moodDuration) {
+        currentMood = rollMood();
+        moodStart = offset;
+        // 激动/温柔持续 6-10 秒，惊讶只 1 秒
+        moodDuration =
+          currentMood === 'startle'
+            ? 60
+            : 360 + Math.floor(Math.random() * 240);
+      }
+
+      // 呼吸周期：约 4 秒（240 帧）
+      const breath = Math.sin((offset / 240) * Math.PI * 2);
+      const drift = breath * 1.6;
+
+      // 触发下一次心跳
+      if (offset >= nextBeatOffset) {
+        activeBeatCfg = beatParamsForMood(currentMood, breath);
+        currentBeatInterval = activeBeatCfg.interval;
+        activeBeatStart = offset;
+        nextBeatOffset = offset + Math.round(currentBeatInterval);
+        beatCounter++;
+      }
+
+      // 缓冲区左移
       for (let i = 0; i < SAMPLES - 1; i++) {
         buffer[i] = buffer[i + 1];
       }
-      const beatT = offset % BEAT_INTERVAL;
-      buffer[SAMPLES - 1] = beatSample(beatT);
+      const beatT = offset - activeBeatStart;
+      buffer[SAMPLES - 1] = beatSample(beatT, activeBeatCfg, drift);
       offset++;
 
       if (pathRef.current) {
@@ -259,12 +343,31 @@ function ECGPath() {
       raf = requestAnimationFrame(step);
     };
 
-    // 预填充历史
+    // 预填充历史：用平静心跳预热
+    let prefillOffset = 0;
+    let prefillBeatStart = 0;
+    let prefillCfg = beatParamsForMood('calm', 0);
     for (let i = 0; i < SAMPLES; i++) {
-      buffer[i] = beatSample(i % BEAT_INTERVAL);
+      if (prefillOffset - prefillBeatStart >= currentBeatInterval) {
+        const breath = Math.sin((prefillOffset / 240) * Math.PI * 2);
+        prefillCfg = beatParamsForMood('calm', breath);
+        currentBeatInterval = prefillCfg.interval;
+        prefillBeatStart = prefillOffset;
+      }
+      const breath = Math.sin((prefillOffset / 240) * Math.PI * 2);
+      buffer[i] = beatSample(prefillOffset - prefillBeatStart, prefillCfg, breath * 1.6);
+      prefillOffset++;
     }
-    offset = SAMPLES;
+    offset = prefillOffset;
+    activeBeatStart = prefillBeatStart;
+    activeBeatCfg = prefillCfg;
+    nextBeatOffset = prefillBeatStart + Math.round(currentBeatInterval);
     raf = requestAnimationFrame(step);
+
+    // 避免未使用变量告警
+    void HEIGHT;
+    void beatCounter;
+
     return () => cancelAnimationFrame(raf);
   }, [reduceMotion]);
 
