@@ -17,7 +17,6 @@ import {
   TreePine,
 } from 'lucide-react';
 import LivingTree3D, { type GrowthStage } from '@/components/tree/living-tree-3d';
-import NebulaParticles from '@/components/effects/nebula-particles';
 import { GlassLayer } from '@/components/glass';
 import { useFamilyHubStore, type TimelineEntry } from '@/stores/family-hub-store';
 
@@ -197,7 +196,6 @@ function ECGPath() {
       return;
     }
 
-    const WIDTH = 300;
     const HEIGHT = 48;
     const BASELINE = HEIGHT / 2;
     const SAMPLES = 300; // 一像素一个采样
