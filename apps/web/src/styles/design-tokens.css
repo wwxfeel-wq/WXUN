@@ -1,0 +1,534 @@
+/* ============================================================================
+ * 岁言（SuiYan）V3 Design Tokens — Apple Liquid Glass Dark for Family AI OS
+ * ============================================================================
+ * 单一真相来源。所有颜色、间距、字体、圆角、阴影、动效、玻璃效果、
+ * 生命树色彩都必须引用此文件中的 token。
+ *
+ * 品牌关键词：Minimal / Premium / Soft / Organic / AI Native / Calm /
+ *            Elegant / Modern / Future / Living / Warm / Family
+ *
+ * 设计方向：
+ * - 背景：近黑暖调，避免冷蓝科技风
+ * - Glass：真实厚度、动态高光、Fresnel 边缘、微弱色散、环境反射
+ * - 动效：Spring Motion、自然减速、Opacity/Scale/Blur
+ * - 字体：SF Pro / Inter / HarmonyOS Sans / 黑体
+ * ============================================================================ */
+
+:root {
+  /* === Brand Direction === */
+  --brand-name: '岁言';
+  --brand-alias: 'SuiYan';
+  --brand-mascot: '时墨';
+  --brand-aesthetic: 'Minimal, Premium, Soft, Organic, AI Native, Calm, Elegant, Modern, Future, Living';
+  --brand-color-philosophy: 'Warm obsidian canvas with soft liquid-glass refraction and warm organic life accents';
+  --brand-motion-philosophy: 'Springy, calm, liquid-like transitions with subtle hover feedback';
+
+  /* === Primary Brand — Life Green ===
+   * 生命、成长、陪伴的主色。温暖而不过于冷艳。
+   */
+  --color-primary: #00d4aa;
+  --color-primary-hover: #00f0c0;
+  --color-primary-active: #00b898;
+  --color-primary-disabled: rgba(0, 212, 170, 0.35);
+  --color-primary-glow: rgba(0, 212, 170, 0.28);
+  --color-primary-soft: rgba(0, 212, 170, 0.14);
+  --color-primary-faint: rgba(0, 212, 170, 0.08);
+
+  /* === Secondary — Soft Sky ===
+   * 从冷蓝改为更柔和、略带暖意的天空蓝，降低科技感。
+   */
+  --color-secondary: #7ab8f0;
+  --color-secondary-hover: #9ccbff;
+  --color-secondary-active: #5fa3d8;
+  --color-secondary-glow: rgba(122, 184, 240, 0.28);
+  --color-secondary-soft: rgba(122, 184, 240, 0.14);
+  --color-secondary-faint: rgba(122, 184, 240, 0.08);
+
+  /* === Highlight / Warm Amber ===
+   * 家庭温暖、里程碑、时间胶囊的高亮色。
+   */
+  --color-highlight: #f5b23d;
+  --color-highlight-hover: #ffc95c;
+  --color-highlight-active: #e09a2a;
+  --color-highlight-glow: rgba(245, 178, 61, 0.28);
+  --color-highlight-soft: rgba(245, 178, 61, 0.14);
+  --color-highlight-faint: rgba(245, 178, 61, 0.08);
+
+  /* === Warm Accent — Peach/Rose ===
+   * 用于家庭、爱、纪念日、情感等温暖场景。
+   */
+  --color-warm: #f4a27a;
+  --color-warm-hover: #ffb896;
+  --color-warm-glow: rgba(244, 162, 122, 0.28);
+  --color-warm-soft: rgba(244, 162, 122, 0.14);
+  --color-rose: #f2828c;
+  --color-rose-hover: #ff9aa3;
+  --color-rose-glow: rgba(242, 130, 140, 0.28);
+  --color-rose-soft: rgba(242, 130, 140, 0.14);
+
+  /* === Extended Semantic Palette === */
+  --color-cyan: #5dd3e8;
+  --color-cyan-glow: rgba(93, 211, 232, 0.28);
+  --color-purple: #b8a2f0;
+  --color-purple-glow: rgba(184, 162, 240, 0.28);
+  --color-orange: #fbad6e;
+  --color-orange-glow: rgba(251, 173, 110, 0.28);
+  --color-indigo: #7a78e6;
+  --color-indigo-glow: rgba(122, 120, 230, 0.28);
+
+  /* === Apple-style Reference Colors === */
+  --color-apple-blue: #0071e3;
+  --color-apple-gray: #86868b;
+  --color-apple-amber: #ff9f0a;
+  --color-apple-green: #30d158;
+  --color-apple-purple: #af52de;
+  --color-apple-red: #ff453a;
+  --color-apple-pink: #ff375f;
+  --color-apple-yellow: #ffd60a;
+  --color-apple-dark-gray: #636366;
+  --color-apple-sky: #32ade6;
+
+  /* === Semantic Colors === */
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.14);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.14);
+  --color-error: #fb7185;
+  --color-error-bg: rgba(251, 113, 133, 0.14);
+  --color-info: #7ab8f0;
+  --color-info-bg: rgba(122, 184, 240, 0.14);
+
+  /* === Shadow Base Color ===
+   * 使用深暖色而非纯黑，让阴影更柔和、有空气感。
+   */
+  --color-shadow: color-mix(in srgb, #0a0a10 75%, #1a1512 25%);
+
+  /* === Neutral Scale (dark theme, 10 steps) ===
+   * 暖调白，用于暗色模式下的文字与边框。
+   */
+  --color-gray-50: rgba(255, 255, 255, 0.96);
+  --color-gray-100: rgba(255, 255, 255, 0.88);
+  --color-gray-200: rgba(255, 255, 255, 0.72);
+  --color-gray-300: rgba(255, 255, 255, 0.56);
+  --color-gray-400: rgba(255, 255, 255, 0.42);
+  --color-gray-500: rgba(255, 255, 255, 0.30);
+  --color-gray-600: rgba(255, 255, 255, 0.20);
+  --color-gray-700: rgba(255, 255, 255, 0.13);
+  --color-gray-800: rgba(255, 255, 255, 0.08);
+  --color-gray-900: rgba(255, 255, 255, 0.05);
+  --color-gray-950: rgba(255, 255, 255, 0.03);
+
+  /* === Surface (warm obsidian) ===
+   * 背景从蓝宝石靛蓝改为近黑暖调，符合 Apple/VisionOS/iOS26 的安静高级。
+   */
+  --color-bg: #030305;
+  --color-bg-elevated: #07070a;
+  --color-bg-warm: #0d0b0a;
+  --color-bg-gradient-start: #0f0e12;
+  --color-bg-gradient-end: #030305;
+  --color-surface: rgba(255, 255, 255, 0.045);
+  --color-surface-raised: rgba(255, 255, 255, 0.07);
+  --color-surface-overlay: rgba(255, 255, 255, 0.10);
+
+  /* === Glass Surfaces ===
+   * 更克制、更真实的玻璃。避免过度模糊和白边。
+   */
+  --color-glass: rgba(255, 255, 255, 0.06);
+  --color-glass-hover: rgba(255, 255, 255, 0.10);
+  --color-glass-strong: rgba(255, 255, 255, 0.10);
+  --color-glass-strong-hover: rgba(255, 255, 255, 0.15);
+  --color-glass-extreme: rgba(255, 255, 255, 0.14);
+  --color-glass-extreme-hover: rgba(255, 255, 255, 0.20);
+  --color-glass-border: rgba(255, 255, 255, 0.10);
+  --color-glass-border-hover: rgba(255, 255, 255, 0.16);
+  --color-glass-border-strong: rgba(255, 255, 255, 0.20);
+  --color-glass-highlight: rgba(255, 255, 255, 0.18);
+  --color-glass-shimmer: rgba(255, 255, 255, 0.34);
+  --color-glass-tint-primary: rgba(0, 212, 170, 0.12);
+  --color-glass-tint-secondary: rgba(122, 184, 240, 0.12);
+  --color-glass-tint-rose: rgba(242, 130, 140, 0.10);
+  --color-glass-tint-highlight: rgba(245, 178, 61, 0.10);
+
+  /* === Liquid Glass Edge & Refraction Tokens ===
+   * 边缘高光从强白边改为柔和、有层次的微光。
+   */
+  --color-glass-edge-light: rgba(255, 255, 255, 0.55);
+  --color-glass-edge-soft: rgba(255, 255, 255, 0.42);
+  --color-glass-edge-faint: rgba(255, 255, 255, 0.30);
+  --color-glass-edge-subtle: rgba(255, 255, 255, 0.20);
+  --color-glass-edge-ghost: rgba(255, 255, 255, 0.12);
+  --color-glass-edge-dim: rgba(255, 255, 255, 0.08);
+  --color-glass-edge-micro: rgba(255, 255, 255, 0.06);
+  --color-glass-edge-nano: rgba(255, 255, 255, 0.04);
+  --color-glass-shine: rgba(255, 255, 255, 0.80);
+  --color-glass-shine-strong: rgba(255, 255, 255, 0.70);
+  --color-glass-shine-medium: rgba(255, 255, 255, 0.58);
+  --color-glass-shine-soft: rgba(255, 255, 255, 0.46);
+  --color-glass-shine-faint: rgba(255, 255, 255, 0.34);
+  --color-glass-shine-dim: rgba(255, 255, 255, 0.26);
+  --color-glass-shine-ghost: rgba(255, 255, 255, 0.18);
+  --color-glass-inner-shadow: color-mix(in srgb, var(--color-shadow) 18%, transparent);
+  --color-glass-inner-shadow-strong: color-mix(in srgb, var(--color-shadow) 28%, transparent);
+
+  /* === Glass Thickness Layer ===
+   * 模拟真实玻璃厚度：内阴影 + 边缘 0.5px 高光 + 内侧 1px 暗边。
+   */
+  --glass-thickness-edge: var(--color-glass-edge-ghost);
+  --glass-thickness-inner-shadow: var(--color-glass-inner-shadow);
+  --glass-thickness-inner-dark: var(--color-glass-inner-shadow-strong);
+
+  /* === Refraction & Caustic === */
+  --color-glass-refraction-light: rgba(255, 255, 255, 0.90);
+  --color-glass-refraction-soft: rgba(255, 255, 255, 0.72);
+  --color-glass-refraction-glow: rgba(255, 255, 255, 0.48);
+  --color-glass-refraction-faint: rgba(255, 255, 255, 0.28);
+  --color-glass-caustic-primary: rgba(0, 212, 170, 0.22);
+  --color-glass-caustic-secondary: rgba(122, 184, 240, 0.22);
+  --color-glass-caustic-rose: rgba(242, 130, 140, 0.16);
+  --color-glass-caustic-highlight: rgba(245, 178, 61, 0.16);
+
+  /* === Dispersion (微弱色散) ===
+   * 用于高级 glass 边缘的轻微彩虹折射感。
+   */
+  --color-dispersion-red: rgba(255, 120, 120, 0.16);
+  --color-dispersion-green: rgba(120, 255, 180, 0.16);
+  --color-dispersion-blue: rgba(120, 180, 255, 0.16);
+
+  /* === Dynamic Glass Lighting ===
+   * 由 JS 在鼠标移动/滚动时更新，实现真实环境反射。
+   */
+  --glass-light-x: 0.5;
+  --glass-light-y: 0.3;
+  --glass-light-intensity: 1;
+  --glass-fresnel: 0.18;
+  --glass-refraction-shift-x: 0px;
+  --glass-refraction-shift-y: 0px;
+
+  /* === Mask Tokens === */
+  --color-mask-pure: #ffffff;
+  --color-mask-solid: color-mix(in srgb, var(--color-shadow) 100%, transparent);
+  --color-mask-strong: color-mix(in srgb, var(--color-shadow) 80%, transparent);
+  --color-mask-medium: color-mix(in srgb, var(--color-shadow) 60%, transparent);
+  --color-mask-soft: color-mix(in srgb, var(--color-shadow) 40%, transparent);
+  --color-mask-fade: color-mix(in srgb, var(--color-shadow) 20%, transparent);
+  --color-mask-ghost: color-mix(in srgb, var(--color-shadow) 10%, transparent);
+  --color-mask-transparent: transparent;
+
+  /* === Family Member Colors ===
+   * 温暖、可区分、不刺眼。用于生命树分支、头像、状态。
+   */
+  --color-family-father: #7ab8f0;
+  --color-family-mother: #f2828c;
+  --color-family-child: #f5b23d;
+  --color-family-elder: #b8a2f0;
+  --color-family-pet: #9de0b8;
+  --color-family-other: #a8a8a8;
+
+  /* === Life Tree Colors ===
+   * 有机、自然、有生命感。避免霓虹/科技蓝。
+   * 在深色玻璃背景下需要足够亮度才能被看见，同时保持温暖木质调。
+   */
+  --color-tree-root: #9c8262;
+  --color-tree-root-glow: rgba(156, 130, 98, 0.32);
+  --color-tree-trunk: #a89480;
+  --color-tree-trunk-glow: rgba(168, 148, 128, 0.30);
+  --color-tree-branch: #b8a690;
+  --color-tree-branch-glow: rgba(184, 166, 144, 0.28);
+  --color-tree-leaf: #00d4aa;
+  --color-tree-leaf-glow: rgba(0, 212, 170, 0.30);
+  --color-tree-flower: #f2828c;
+  --color-tree-flower-glow: rgba(242, 130, 140, 0.32);
+  --color-tree-fruit: #f5b23d;
+  --color-tree-fruit-glow: rgba(245, 178, 61, 0.32);
+  --color-tree-sap: #5dd3e8;
+  --color-tree-sap-glow: rgba(93, 211, 232, 0.24);
+  --color-tree-neural: rgba(200, 190, 255, 0.16);
+  --color-tree-neural-glow: rgba(200, 190, 255, 0.20);
+  --tree-indent: 14px;
+  --tree-offset: 6px;
+
+  /* === 3D Scene Lighting ===
+   * 生命树 3D 场景光照颜色，全部引用 token 以保持氛围一致。
+   */
+  --color-light-ambient: #fff8f0;
+  --color-light-main: #fff5e8;
+  --color-light-rim: #c8e6ff;
+
+  /* === Ambient Background ===
+   * 温暖有机的氛围光，替代 SpheroAI 冷蓝波浪。
+   */
+  --color-aurora-primary: rgba(0, 212, 170, 0.06);
+  --color-aurora-secondary: rgba(122, 184, 240, 0.05);
+  --color-aurora-warm: rgba(245, 178, 61, 0.04);
+  --color-aurora-rose: rgba(242, 130, 140, 0.03);
+  --color-aurora-primary-soft: rgba(0, 212, 170, 0.04);
+  --color-aurora-secondary-soft: rgba(122, 184, 240, 0.03);
+  --color-aurora-warm-soft: rgba(245, 178, 61, 0.03);
+  --color-aurora-root: rgba(0, 212, 170, 0.18);
+  --color-aurora-root-dot: rgba(0, 212, 170, 0.24);
+
+  /* === Immersive Home Scene === */
+  --color-home-canvas: #010204;
+  --color-home-panel: rgba(10, 16, 24, 0.28);
+  --color-home-panel-tint: rgba(255, 255, 255, 0.06);
+  --color-home-panel-border: rgba(255, 255, 255, 0.14);
+  --color-home-panel-border-hover: rgba(255, 255, 255, 0.22);
+  --color-home-panel-shine: rgba(255, 255, 255, 0.32);
+  --color-home-panel-shadow: 0 24px 60px -20px rgba(2, 6, 10, 0.55), 0 8px 24px -12px rgba(2, 6, 10, 0.45);
+  --color-home-panel-inset: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --color-home-grid: rgba(93, 211, 232, 0.08);
+  --color-home-vignette: rgba(1, 2, 4, 0.62);
+  --home-panel-blur: blur(28px) saturate(1.6) brightness(1.05);
+  --home-panel-blur-strong: blur(40px) saturate(1.8) brightness(1.08);
+  --home-panel-width: 17rem;
+  --home-edge-gap: clamp(0.75rem, 1.8vw, 1.75rem);
+  --home-top-gap: clamp(4.75rem, 9vh, 6.75rem);
+  --home-dock-clearance: 7.5rem;
+  --home-mobile-dock-clearance: 8.25rem;
+
+  /* === Neural Background Tokens (subtle, hidden under tree bark) === */
+  --color-neural-stroke: rgba(180, 170, 220, 0.12);
+  --color-neural-stroke-soft: rgba(180, 170, 220, 0.08);
+  --color-neural-stroke-faint: rgba(180, 170, 220, 0.05);
+  --color-neural-fill: rgba(180, 170, 220, 0.16);
+
+  /* === Text === */
+  --color-text-primary: rgba(255, 255, 255, 0.94);
+  --color-text-secondary: rgba(255, 255, 255, 0.60);
+  --color-text-tertiary: rgba(255, 255, 255, 0.38);
+  --color-text-muted: rgba(255, 255, 255, 0.28);
+  --color-text-inverse: #06060e;
+
+  /* === Border === */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --color-border-focus: rgba(0, 212, 170, 0.45);
+
+  /* === Outline === */
+  --outline-width: 2px;
+  --outline-offset: 2px;
+
+  /* === Spacing Tokens (4px base) === */
+  --space-0: 0px;
+  --space-px: 1px;
+  --border-width: 1px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --space-4xl: 64px;
+  --space-5xl: 96px;
+  --space-6xl: 128px;
+
+  /* === Extended Numeric Spacing Tokens ===
+   * 用于 Tailwind 自定义 utility，替代硬编码任意值。
+   */
+  --space-25: 6.25rem;
+  --space-30: 7.5rem;
+  --space-104: 26rem;
+
+  /* === Extended Sizing Tokens === */
+  --min-h-screen: 100vh;
+  --max-w-50: 12.5rem;
+  --max-w-55: 13.75rem;
+  --max-w-60p: 60%;
+  --max-w-72p: 72%;
+  --max-w-80p: 80%;
+  --max-w-85p: 85%;
+  --max-w-calc-full-1rem: calc(100vw - 1rem);
+  --max-h-25: 6.25rem;
+  --max-h-30: 7.5rem;
+  --max-h-90vh: 90vh;
+  --max-h-vh-minus-13rem: calc(100vh - 13rem);
+  --min-h-40: 10rem;
+  --min-h-104: 26rem;
+  --min-h-110: 27.5rem;
+  --min-h-60vh: 60vh;
+  --height-40vh: 40vh;
+  --height-56vh: 56vh;
+  --height-60vh: 60vh;
+  --height-75vh: 75vh;
+  --height-80vh: 80vh;
+  --height-full-minus-0.5rem: calc(100% - 0.5rem);
+  --height-dvh-minus-4rem: calc(100dvh - 4rem);
+  --height-vh-minus-5rem: calc(100vh - 5rem);
+  --width-300px: 300px;
+  --inset-x-10p: 10%;
+
+  /* === Typography Scale === */
+  --font-display: 'SF Pro Display', 'Inter', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-body: 'SF Pro Text', 'Inter', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-3xs: 0.625rem;
+  --text-4xs: 0.5625rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: clamp(1.5rem, 4vw, 1.875rem);
+  --text-4xl: clamp(1.875rem, 5vw, 2.25rem);
+  --text-5xl: clamp(2.25rem, 6vw, 3rem);
+  --text-6xl: clamp(2.5rem, 8vw, 3.75rem);
+  --text-hero: clamp(3rem, 10vw, 5rem);
+  --text-display: clamp(2rem, 8vw, 5rem);
+  --text-headline: clamp(1.5rem, 5vw, 3rem);
+  --text-body-lg: clamp(1rem, 2.5vw, 1.125rem);
+
+  --leading-none: 1;
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-loose: 2;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  --tracking-tighter: -0.05em;
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.04em;
+  --tracking-widest: 0.08em;
+
+  /* === Border Radius Tokens === */
+  --radius-none: 0px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
+  --radius-4xl: 44px;
+  --radius-full: 9999px;
+
+  /* === Shadow System ===
+   * 所有阴影通过 color-mix 引用 --color-shadow。
+   */
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--color-shadow) 20%, transparent);
+  --shadow-sm: 0 2px 8px color-mix(in srgb, var(--color-shadow) 26%, transparent), 0 1px 2px color-mix(in srgb, var(--color-shadow) 14%, transparent);
+  --shadow-md: 0 8px 24px color-mix(in srgb, var(--color-shadow) 34%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 18%, transparent);
+  --shadow-lg: 0 16px 44px color-mix(in srgb, var(--color-shadow) 44%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 22%, transparent);
+  --shadow-xl: 0 24px 60px color-mix(in srgb, var(--color-shadow) 54%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 26%, transparent);
+  --shadow-2xl: 0 32px 80px color-mix(in srgb, var(--color-shadow) 64%, transparent);
+  --shadow-inner: inset 0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);
+  --shadow-focus: 0 0 0 3px var(--color-border-focus);
+  --shadow-glow-primary: 0 0 24px var(--color-primary-glow);
+  --shadow-glow-primary-sm: 0 0 16px var(--color-primary-glow);
+  --shadow-glow-primary-lg: 0 0 32px var(--color-primary-glow);
+  --shadow-glow-secondary: 0 0 24px var(--color-secondary-glow);
+  --shadow-glow-highlight: 0 0 24px var(--color-highlight-glow);
+
+  /* === Glass Shadows === */
+  --shadow-glass-soft: 0 8px 28px color-mix(in srgb, var(--color-shadow) 20%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 12%, transparent);
+  --shadow-glass-medium: 0 14px 40px color-mix(in srgb, var(--color-shadow) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 16%, transparent);
+  --shadow-glass-strong: 0 22px 56px color-mix(in srgb, var(--color-shadow) 40%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 20%, transparent);
+  --shadow-glass-extreme: 0 30px 76px color-mix(in srgb, var(--color-shadow) 50%, transparent), 0 12px 32px color-mix(in srgb, var(--color-shadow) 24%, transparent);
+
+  /* === Z-Index Layers === */
+  --z-base: 0;
+  --z-background: -1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-overlay: 400;
+  --z-modal: 1000;
+  --z-popover: 1100;
+  --z-toast: 2000;
+  --z-tooltip: 2100;
+
+  /* === Internal Z-Index (within isolate contexts) === */
+  --z-glass-below: -1;
+  --z-glass-base: 0;
+  --z-glass-dispersion: 1;
+  --z-glass-specular: 2;
+  --z-glass-thickness: 2;
+  --z-glass-fresnel: 3;
+  --z-glass-content: 4;
+  --z-local-above: 5;
+
+  /* === Motion Tokens === */
+  --duration-instant: 0ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
+  --duration-stately: 900ms;
+
+  --ease-linear: linear;
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-liquid: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-organic: cubic-bezier(0.4, 0, 0.2, 1.2);
+
+  --transition-fast: all var(--duration-fast) var(--ease-out);
+  --transition-normal: all var(--duration-normal) var(--ease-out);
+  --transition-slow: all var(--duration-slow) var(--ease-in-out);
+  --transition-spring: all var(--duration-normal) var(--ease-spring);
+  --transition-liquid: all var(--duration-slow) var(--ease-liquid);
+  --transition-organic: all var(--duration-slower) var(--ease-organic);
+
+  /* === Motion Translation Tokens === */
+  --motion-translate-xs: 4px;
+  --motion-translate-sm: 6px;
+  --motion-translate-md: 16px;
+  --motion-translate-lg: 32px;
+
+  /* === Component States === */
+  --state-hover-lift: -2px;
+  --state-hover-scale: 1.02;
+  --state-active-scale: 0.97;
+  --state-disabled-opacity: 0.45;
+  --state-focus-ring-width: 3px;
+
+  /* === Breakpoints === */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+  --bp-2xl: 1536px;
+  --bp-3xl: 1920px;
+
+  /* === Liquid Glass Effects === */
+  --glass-blur: blur(32px) saturate(1.6) brightness(1.04);
+  --glass-blur-strong: blur(44px) saturate(1.8) brightness(1.06);
+  --glass-blur-extreme: blur(60px) saturate(2.0) brightness(1.08);
+  --glass-blur-subtle: blur(20px) saturate(1.4) brightness(1.02);
+  --glass-blur-radius: 32px;
+  --glass-blur-radius-strong: 44px;
+  --glass-blur-radius-extreme: 60px;
+  --glass-blur-radius-subtle: 20px;
+  --glass-blur-radius-mobile: 8px;
+
+  /* === Ambient Blur Tokens === */
+  --blur-orb-sm: 50px;
+  --blur-orb-md: 80px;
+  --blur-orb-lg: 100px;
+  --blur-orb-xl: 120px;
+  --blur-orb-2xl: 140px;
+
+  /* === Decorative Orb Sizes === */
+  --orb-size-lg: 500px;
+
+  /* === Tooltip Tokens === */
+  --tooltip-text: rgba(255, 255, 255, 0.92);
+  --tooltip-bg: rgba(20, 20, 24, 0.72);
+
+  /* === Safe Areas === */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}

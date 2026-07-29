@@ -1,0 +1,239 @@
+'use client';
+
+/**
+ * useSSEChat - React hook for SSE-streaming AI interview chat.
+ *
+ * Manages a local message list, streaming state, and exposes sendMessage /
+ * stopStream controls. Handles token, entities, emotion, done and error
+ * events emitted by the backend /ai/chat endpoint.
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { nanoid } from 'nanoid';
+import { createSSEStream, type SSEHandle } from '@/lib/api-client';
+import type { ChatMessage } from '@/lib/types';
+
+export interface UseSSEChatOptions {
+  /** Optional interview session id to scope the conversation. */
+  interviewId?: string;
+  /** Initial messages (e.g. loaded from history). */
+  initialMessages?: ChatMessage[];
+}
+
+export interface SkillNotice {
+  type: 'exp' | 'levelup';
+  skillName: string;
+  exp?: number;
+  level?: number;
+  agentCode?: string;
+}
+
+export interface UseSSEChatReturn {
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  error: string | null;
+  skillNotice: SkillNotice | null;
+  /** Send a user message and stream the AI reply. */
+  sendMessage: (content: string) => void;
+  /** Abort the current stream. */
+  stopStream: () => void;
+  /** Clear all messages and reset error state. */
+  clearMessages: () => void;
+  /** Replace the message list (e.g. when loading a session). */
+  setMessages: (messages: ChatMessage[]) => void;
+}
+
+export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
+  const { interviewId, initialMessages = [] } = options;
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [skillNotice, setSkillNotice] = useState<SkillNotice | null>(null);
+
+  const streamRef = useRef<SSEHandle | null>(null);
+  // Keep a ref to the latest messages so streaming callbacks can append safely.
+  const messagesRef = useRef<ChatMessage[]>(initialMessages);
+  const interviewIdRef = useRef<string | undefined>(interviewId);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    interviewIdRef.current = interviewId;
+  }, [interviewId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      streamRef.current?.abort();
+    };
+  }, []);
+
+  // Auto-dismiss skill level-up / exp notice
+  useEffect(() => {
+    if (!skillNotice) return;
+    const timer = setTimeout(() => setSkillNotice(null), 3500);
+    return () => clearTimeout(timer);
+  }, [skillNotice]);
+
+  /** Append-or-update a message by id immutably. */
+  const upsertMessage = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === msg.id);
+      if (idx === -1) return [...prev, msg];
+      const next = [...prev];
+      next[idx] = msg;
+      return next;
+    });
+  }, []);
+
+  const sendMessage = useCallback(
+    (content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed || isStreaming) return;
+
+      setError(null);
+
+      const userMessage: ChatMessage = {
+        id: nanoid(),
+        role: 'user',
+        content: trimmed,
+        createdAt: Date.now(),
+      };
+
+      const aiMessageId = nanoid();
+      const aiPlaceholder: ChatMessage = {
+        id: aiMessageId,
+        role: 'ai',
+        content: '',
+        createdAt: Date.now(),
+        streaming: true,
+      };
+
+      setMessages((prev) => [...prev, userMessage, aiPlaceholder]);
+      setIsStreaming(true);
+
+      const handle = createSSEStream('/ai/chat', {
+        message: trimmed,
+        interviewId: interviewIdRef.current,
+      }, {
+        onToken: (token) => {
+          // Use setMessages with a callback to always append to the LATEST
+          // state, avoiding stale messagesRef race conditions where tokens
+          // arriving in quick succession would overwrite each other.
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              content: next[idx].content + token,
+              streaming: true,
+            };
+            return next;
+          });
+        },
+        onEntities: (entities) => {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { ...next[idx], entities, streaming: true };
+            return next;
+          });
+        },
+        onEmotion: (emotion, intensity) => {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              emotion,
+              emotionIntensity: intensity,
+              streaming: true,
+            };
+            return next;
+          });
+        },
+        onSkillExp: (skillName, expGained, agentCode) => {
+          setSkillNotice({ type: 'exp', skillName, exp: expGained, agentCode });
+        },
+        onSkillLevelUp: (skillName, level, agentCode) => {
+          setSkillNotice({ type: 'levelup', skillName, level, agentCode });
+        },
+        onDone: (data) => {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              streaming: false,
+              memoryId: data.memoryId,
+              summary: data.summary,
+              emotion: data.emotion ?? next[idx].emotion,
+            };
+            return next;
+          });
+          setIsStreaming(false);
+        },
+        onError: (message) => {
+          const current = messagesRef.current.find((m) => m.id === aiMessageId);
+          if (current) {
+            upsertMessage({
+              ...current,
+              streaming: false,
+              content: current.content || `[回复失败] ${message}`,
+            });
+          }
+          setError(message);
+          setIsStreaming(false);
+        },
+        onClose: () => {
+          // If the stream closed without a done event, finalize the placeholder.
+          const current = messagesRef.current.find((m) => m.id === aiMessageId);
+          if (current?.streaming) {
+            upsertMessage({ ...current, streaming: false });
+          }
+          setIsStreaming(false);
+          streamRef.current = null;
+        },
+      });
+
+      streamRef.current = handle;
+    },
+    [isStreaming, upsertMessage],
+  );
+
+  const stopStream = useCallback(() => {
+    streamRef.current?.abort();
+    streamRef.current = null;
+    setIsStreaming(false);
+    // Mark any still-streaming message as finalized.
+    setMessages((prev) =>
+      prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+    );
+  }, []);
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    setError(null);
+    setSkillNotice(null);
+  }, []);
+
+  const setMessagesExternal = useCallback((next: ChatMessage[]) => {
+    setMessages(next);
+  }, []);
+
+  return {
+    messages,
+    isStreaming,
+    error,
+    skillNotice,
+    sendMessage,
+    stopStream,
+    clearMessages,
+    setMessages: setMessagesExternal,
+  };
+}

@@ -1,0 +1,770 @@
+// EchoLife - AI Digital Life OS
+// Prisma Schema - 28 tables across 6 domains
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Domain 1: Auth & User Management
+// ============================================================
+
+model User {
+  id              String        @id @default(uuid()) @db.Uuid
+  email           String        @unique @db.VarChar(255)
+  phone           String?       @unique @db.VarChar(20)
+  passwordHash    String        @map("password_hash") @db.VarChar(255)
+  status          String        @default("active") @db.VarChar(20)
+  emailVerified   Boolean       @default(false) @map("email_verified")
+  phoneVerified   Boolean       @default(false) @map("phone_verified")
+  lastLoginAt     DateTime?     @map("last_login_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  profile         UserProfile?
+  settings        UserSettings?
+  subscription    Subscription?
+  userRoles       UserRole[]
+  memories        Memory[]
+  interviews      Interview[]
+  lifeTreeNodes   LifeTreeNode[]
+  personality     PersonalityProfile[]
+  capsules        TimeCapsule[]
+  summaries       Summary[]
+  notifications   Notification[]
+  aiCallLogs      AICallLog[]
+  agentExecutionLogs AgentExecutionLog[]
+  familyMembers   FamilyMember[]
+  auditLogs       AuditLog[]     @relation("AuditLogUser")
+  auditLogsBy     AuditLog[]     @relation("AuditLogBy")
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model UserProfile {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @unique @map("user_id") @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nickname    String    @db.VarChar(100)
+  avatarUrl   String?   @map("avatar_url") @db.VarChar(500)
+  bio         String?   @db.Text
+  birthDate   DateTime? @map("birth_date")
+  gender      String?   @db.VarChar(20)
+  location    String?   @db.VarChar(255)
+  occupation  String?   @db.VarChar(255)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("user_profiles")
+}
+
+model UserSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme               String   @default("dark") @db.VarChar(20)
+  language            String   @default("zh-CN") @db.VarChar(10)
+  notificationEmail   Boolean  @default(true) @map("notification_email")
+  notificationPush    Boolean  @default(true) @map("notification_push")
+  aiTemperature       Float    @default(0.7) @map("ai_temperature")
+  memoryRetentionDays Int      @default(365) @map("memory_retention_days")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+model Subscription {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier            String    @default("free") @db.VarChar(20)
+  status          String    @default("active") @db.VarChar(20)
+  startedAt       DateTime  @default(now()) @map("started_at")
+  expiresAt       DateTime? @map("expires_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([tier, status])
+  @@index([expiresAt])
+  @@map("subscriptions")
+}
+
+model Role {
+  id          Int                @id @default(autoincrement())
+  name        String             @unique @db.VarChar(50)
+  description String?            @db.Text
+  createdAt   DateTime           @default(now()) @map("created_at")
+  rolePermissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          Int                @id @default(autoincrement())
+  name        String             @unique @db.VarChar(100)
+  resource    String             @db.VarChar(50)
+  action      String             @db.VarChar(20)
+  description String?            @db.Text
+  createdAt   DateTime           @default(now()) @map("created_at")
+  rolePermissions RolePermission[]
+
+  @@index([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Uuid
+  roleId    Int      @map("role_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ============================================================
+// Domain 2: Memory & Interview
+// ============================================================
+
+model Memory {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interviewId   String?   @map("interview_id") @db.Uuid
+  interview     Interview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  title         String    @db.VarChar(200)
+  content       String    @db.Text
+  type          String    @default("story") @db.VarChar(30)
+  visibility    String    @default("private") @db.VarChar(20)
+  emotion       String?   @db.VarChar(50)
+  emotionScore  Float?    @map("emotion_score")
+  importance    Float?    @default(0.5)
+  occurredAt    DateTime? @map("occurred_at")
+  memoryLayer   String?   @default("episodic") @map("memory_layer") @db.VarChar(20)
+  sourceType    String?   @default("chat") @map("source_type") @db.VarChar(30)
+  metadata      Json?
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  isArchived    Boolean   @default(false) @map("is_archived")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+  archivedAt    DateTime? @map("archived_at")
+
+  embedding     MemoryEmbedding?
+  entities      MemoryEntity[]
+  lifeTreeNode  LifeTreeNode?    @relation("LifeTreeMemory")
+  familyMemories FamilyMemory[]
+
+  @@index([userId, type])
+  @@index([userId, visibility])
+  @@index([userId, occurredAt])
+  @@index([userId, createdAt])
+  @@index([emotion])
+  @@index([importance])
+  @@index([memoryLayer])
+  @@index([sourceType])
+  @@index([isArchived])
+  @@map("memories")
+}
+
+model MemoryEmbedding {
+  memoryId  String                          @id @map("memory_id") @db.Uuid
+  memory    Memory                          @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  embedding String
+  model     String                          @default("text-embedding") @db.VarChar(50)
+  createdAt DateTime                        @default(now()) @map("created_at")
+
+  @@map("memory_embeddings")
+}
+
+model Interview {
+  id           String              @id @default(uuid()) @db.Uuid
+  userId       String              @map("user_id") @db.Uuid
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String              @db.VarChar(200)
+  status       String              @default("active") @db.VarChar(20)
+  memoryCount  Int                 @default(0) @map("memory_count")
+  startedAt    DateTime            @default(now()) @map("started_at")
+  completedAt  DateTime?           @map("completed_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  messages     InterviewMessage[]
+  memories     Memory[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("interviews")
+}
+
+model InterviewMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  interviewId  String   @map("interview_id") @db.Uuid
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  sender       String   @db.VarChar(20)
+  content      String   @db.Text
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([interviewId, createdAt])
+  @@map("interview_messages")
+}
+
+model MemoryEntity {
+  id           String   @id @default(uuid()) @db.Uuid
+  memoryId     String   @map("memory_id") @db.Uuid
+  memory       Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  entityId     String   @map("entity_id") @db.Uuid
+  entity       KnowledgeEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  relevance    Float    @default(1.0)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([memoryId, entityId])
+  @@index([entityId])
+  @@map("memory_entities")
+}
+
+// ============================================================
+// Domain 3: Life Tree & Personality
+// ============================================================
+
+model LifeTreeNode {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId     String?       @map("parent_id") @db.Uuid
+  parent       LifeTreeNode? @relation("LifeTreeChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children     LifeTreeNode[] @relation("LifeTreeChildren")
+  type         String        @default("category") @db.VarChar(20)
+  title        String        @db.VarChar(200)
+  description  String?       @db.Text
+  metadata     Json?
+  memoryCount  Int           @default(0) @map("memory_count")
+  memoryId     String?       @unique @map("memory_id") @db.Uuid
+  memory       Memory?       @relation("LifeTreeMemory", fields: [memoryId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, parentId])
+  @@index([userId, type])
+  @@map("life_tree_nodes")
+}
+
+model PersonalityProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openness           Float    @default(0.5)
+  conscientiousness  Float    @default(0.5)
+  extraversion       Float    @default(0.5)
+  agreeableness      Float    @default(0.5)
+  neuroticism        Float    @default(0.5)
+  traits             Json?
+  analysis           String?  @db.Text
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("personality_profiles")
+}
+
+model PersonalitySnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  snapshotDate       DateTime @map("snapshot_date")
+  openness           Float
+  conscientiousness  Float
+  extraversion       Float
+  agreeableness      Float
+  neuroticism        Float
+  memoryCount        Int      @map("memory_count")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([userId, snapshotDate])
+  @@map("personality_snapshots")
+}
+
+// ============================================================
+// Domain 4: Family & Social
+// ============================================================
+
+model Family {
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String         @db.VarChar(100)
+  description String?        @db.Text
+  creatorId   String         @map("creator_id") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  members     FamilyMember[]
+  familyMemories FamilyMemory[]
+
+  @@map("families")
+}
+
+model FamilyMember {
+  id              String   @id @default(uuid()) @db.Uuid
+  familyId        String   @map("family_id") @db.Uuid
+  family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  userId          String   @map("user_id") @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            String   @default("member") @db.VarChar(20)
+  joinedAt        DateTime @default(now()) @map("joined_at")
+
+  // WeChat identity binding for the family member
+  wechatId        String?  @map("wechat_id") @db.VarChar(200)
+  wechatNickname  String?  @map("wechat_nickname") @db.VarChar(200)
+  wechatAlias     String?  @map("wechat_alias") @db.VarChar(200)
+
+  @@unique([familyId, userId])
+  @@index([userId])
+  @@index([wechatId])
+  @@index([wechatNickname])
+  @@map("family_members")
+}
+
+model FamilyMemory {
+  id                 String   @id @default(uuid()) @db.Uuid
+  familyId           String   @map("family_id") @db.Uuid
+  family             Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  memoryId           String   @map("memory_id") @db.Uuid
+  memory             Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  contributorId      String   @map("contributor_id") @db.Uuid
+  confirmationStatus String   @default("pending") @map("confirmation_status") @db.VarChar(20)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  confirmations      FamilyMemoryConfirmation[]
+
+  @@index([familyId, confirmationStatus])
+  @@index([memoryId])
+  @@map("family_memories")
+}
+
+model FamilyMemoryConfirmation {
+  id              String       @id @default(uuid()) @db.Uuid
+  familyMemoryId  String       @map("family_memory_id") @db.Uuid
+  familyMemory    FamilyMemory @relation(fields: [familyMemoryId], references: [id], onDelete: Cascade)
+  confirmerId     String       @map("confirmer_id") @db.Uuid
+  status          String       @db.VarChar(20)
+  comment         String?      @db.Text
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@unique([familyMemoryId, confirmerId])
+  @@index([confirmerId])
+  @@map("family_memory_confirmations")
+}
+
+// ============================================================
+// Domain 5: Capsule & Summary
+// ============================================================
+
+model TimeCapsule {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String    @db.VarChar(200)
+  content    String    @db.Text
+  type       String    @default("personal") @db.VarChar(20)
+  status     String    @default("sealed") @db.VarChar(20)
+  sealedAt   DateTime  @default(now()) @map("sealed_at")
+  openAt     DateTime  @map("open_at")
+  openedAt   DateTime? @map("opened_at")
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, status])
+  @@index([userId, openAt])
+  @@index([status, openAt])
+  @@map("time_capsules")
+}
+
+model Summary {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period       String   @db.VarChar(20)
+  periodStart  DateTime @map("period_start")
+  periodEnd    DateTime @map("period_end")
+  title        String   @db.VarChar(200)
+  content      String   @db.Text
+  highlights   String[]
+  emotionTrend Json?    @map("emotion_trend")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, period, periodStart])
+  @@map("summaries")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(200)
+  body      String   @db.Text
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, read, createdAt])
+  @@map("notifications")
+}
+
+// ============================================================
+// Domain 7: WeChat Bot
+// ============================================================
+
+model WechatContact {
+  id          String   @id @default(uuid()) @db.Uuid
+  userName    String   @unique @map("user_name") @db.VarChar(200)
+  nickName    String   @map("nick_name") @db.VarChar(200)
+  remarkName  String?  @map("remark_name") @db.VarChar(200)
+  alias       String?  @db.VarChar(200)
+  avatarUrl   String?  @map("avatar_url") @db.VarChar(500)
+  type        String   @db.VarChar(20)
+  isStar      Boolean  @default(false) @map("is_star")
+  signature   String?  @db.Text
+  status      String   @default("active") @db.VarChar(20)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([status])
+  @@map("wechat_contacts")
+}
+
+model WechatMessage {
+  id               String   @id @default(uuid()) @db.Uuid
+  contactId        String   @map("contact_id") @db.VarChar(200)
+  fromId           String   @map("from_id") @db.VarChar(200)
+  fromName         String   @map("from_name") @db.VarChar(200)
+  toId             String   @map("to_id") @db.VarChar(200)
+  toName           String   @map("to_name") @db.VarChar(200)
+  content          String   @db.Text
+  msgType          Int      @default(1) @map("msg_type")
+  isSelf           Boolean  @default(false) @map("is_self")
+  // Sender WeChat ID extracted from group messages
+  senderWechatId   String?  @map("sender_wechat_id") @db.VarChar(200)
+  // Bound family member user id if identified
+  familyMemberId   String?  @map("family_member_id") @db.Uuid
+  metadata         Json?
+  timestamp        DateTime @default(now()) @map("timestamp")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([contactId, createdAt])
+  @@index([fromId, createdAt])
+  @@index([familyMemberId])
+  @@map("wechat_messages")
+}
+
+// ============================================================
+// Domain 6: AI & System
+// ============================================================
+
+model AICallLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentType       String   @map("agent_type") @db.VarChar(50)
+  model           String   @db.VarChar(100)
+  promptTokens    Int      @default(0) @map("prompt_tokens")
+  completionTokens Int     @default(0) @map("completion_tokens")
+  totalTokens     Int      @default(0) @map("total_tokens")
+  latencyMs       Int      @map("latency_ms")
+  status          String   @default("success") @db.VarChar(20)
+  errorMessage    String?  @map("error_message") @db.Text
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId, agentType, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("ai_call_logs")
+}
+
+model AgentExecutionLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentCode       String   @map("agent_code") @db.VarChar(50)
+  message         String   @db.Text
+  response        String   @db.Text
+  model           String?  @db.VarChar(100)
+  promptTokens    Int      @default(0) @map("prompt_tokens")
+  completionTokens Int     @default(0) @map("completion_tokens")
+  totalTokens     Int      @default(0) @map("total_tokens")
+  latencyMs       Int      @default(0) @map("latency_ms")
+  status          String   @default("success") @db.VarChar(20)
+  errorMessage    String?  @map("error_message") @db.Text
+  toolResults     Json?    @map("tool_results")
+  workflowResults Json?    @map("workflow_results")
+  memoryIds       String[] @map("memory_ids")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId, agentCode, createdAt])
+  @@index([agentCode, createdAt])
+  @@index([status, createdAt])
+  @@map("agent_execution_logs")
+}
+
+model PromptVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  agentType   String   @map("agent_type") @db.VarChar(50)
+  version     String   @db.VarChar(20)
+  status      String   @default("draft") @db.VarChar(20)
+  content     String   @db.Text
+  variables   Json?
+  description String?  @db.Text
+  createdBy   String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  @@unique([agentType, version])
+  @@index([agentType, status])
+  @@map("prompt_versions")
+}
+
+model AgentConfig {
+  id          String   @id @default(uuid()) @db.Uuid
+  agentType   String   @unique @map("agent_type") @db.VarChar(50)
+  model       String   @default("glm-4-plus") @db.VarChar(100)
+  temperature Float    @default(0.7)
+  maxTokens   Int      @default(4096) @map("max_tokens")
+  systemPrompt String? @map("system_prompt") @db.Text
+  tools       Json?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("agent_configs")
+}
+
+model KnowledgeEntity {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(200)
+  type        String   @db.VarChar(30)
+  description String?  @db.Text
+  properties  Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  memoryEntities MemoryEntity[]
+  sourceRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
+  targetRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
+
+  @@unique([userId, name, type])
+  @@index([userId, type])
+  @@index([userId, name])
+  @@map("knowledge_entities")
+}
+
+model KnowledgeRelation {
+  id         String           @id @default(uuid()) @db.Uuid
+  sourceId   String           @map("source_id") @db.Uuid
+  source     KnowledgeEntity  @relation("KnowledgeRelationSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId   String           @map("target_id") @db.Uuid
+  target     KnowledgeEntity  @relation("KnowledgeRelationTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  type       String           @db.VarChar(50)
+  weight     Float            @default(1.0)
+  metadata   Json?
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@unique([sourceId, targetId, type])
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([type])
+  @@map("knowledge_relations")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  user       User?    @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  actionBy   String?  @map("action_by") @db.Uuid
+  actionByUser User?  @relation("AuditLogBy", fields: [actionBy], references: [id], onDelete: SetNull)
+  action     String   @db.VarChar(100)
+  resource   String   @db.VarChar(100)
+  resourceId String?  @map("resource_id") @db.VarChar(100)
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.Text
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([action, resource])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(100)
+  value     String   @db.Text
+  type      String   @default("string") @db.VarChar(20)
+  description String? @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("system_configs")
+}
+
+model Announcement {
+  id         String    @id @default(uuid()) @db.Uuid
+  title      String    @db.VarChar(200)
+  content    String    @db.Text
+  type       String    @default("info") @db.VarChar(20)
+  isPublished Boolean  @default(false) @map("is_published")
+  publishedAt DateTime? @map("published_at")
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([isPublished, publishedAt])
+  @@map("announcements")
+}
+
+// ============================================================
+// Domain 7: Agent Runtime & Skills
+// ============================================================
+
+/// A runtime agent instance visible on the home dashboard.
+/// Each row represents a specialized AI assistant (Kitchen, Repair, etc.)
+/// that the user can interact with directly.
+model AgentRuntime {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique @db.VarChar(50)
+  name            String   @db.VarChar(100)
+  role            String   @db.VarChar(100)
+  description     String?  @db.Text
+  icon            String   @default("Sparkles") @db.VarChar(50)
+  color           String   @default("#5E9EF5") @db.VarChar(20)
+  status          String   @default("idle") @db.VarChar(20)
+  level           Int      @default(1)
+  calls           Int      @default(0)
+  systemPrompt    String?  @map("system_prompt") @db.Text
+  welcomeMessage  String?  @map("welcome_message") @db.Text
+  capabilities    Json?
+  lastActiveAt    DateTime? @map("last_active_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  skills          Skill[]
+
+  @@map("agent_runtimes")
+}
+
+/// A skill mastered by (or being learned by) an agent.
+/// Skills are the concrete abilities that agents possess.
+model Skill {
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String   @map("agent_id") @db.Uuid
+  agent           AgentRuntime @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name            String   @db.VarChar(100)
+  description     String?  @db.Text
+  icon            String   @default("Sparkles") @db.VarChar(50)
+  color           String   @default("#5E9EF5") @db.VarChar(20)
+  level           Int      @default(1)
+  status          String   @default("new") @db.VarChar(20)
+  progress        Int      @default(0)
+  category        String   @default("general") @db.VarChar(50)
+  tags            Json?
+  examples        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  skillTools      SkillTool[]
+
+  @@index([agentId])
+  @@index([status])
+  @@index([category])
+  @@map("skills")
+}
+
+/// A tool that can be invoked by agents or skills.
+/// Tools may be built-in (implemented in code) or served by an external MCP server.
+model Tool {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique @db.VarChar(100)
+  description   String?  @db.Text
+  parameters    Json?    // JSON Schema for tool parameters
+  executor      String   @default("builtin") @db.VarChar(20) // builtin | mcp
+  mcpServerId   String?  @map("mcp_server_id") @db.Uuid
+  mcpServer     MCPServer? @relation(fields: [mcpServerId], references: [id], onDelete: SetNull)
+  config        Json?    // runtime configuration / fallback defaults
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  skillTools    SkillTool[]
+
+  @@index([executor])
+  @@index([isActive])
+  @@map("tools")
+}
+
+/// An external MCP server that provides additional tools.
+model MCPServer {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(100)
+  endpoint    String?  @db.VarChar(500)
+  transport   String   @default("sse") @db.VarChar(20) // stdio | sse
+  config      Json?
+  status      String   @default("active") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tools       Tool[]
+
+  @@map("mcp_servers")
+}
+
+/// Binds a Skill to a Tool.
+/// - required: available from level 1 and necessary for the skill to function.
+/// - unlockLevel: the skill level at which this tool/ability becomes available.
+/// - abilityName: human-readable name shown in the UI for this binding.
+/// - parameters: default parameters merged at invocation time.
+model SkillTool {
+  id            String   @id @default(uuid()) @db.Uuid
+  skillId       String   @map("skill_id") @db.Uuid
+  skill         Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  toolId        String   @map("tool_id") @db.Uuid
+  tool          Tool     @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  abilityName   String   @map("ability_name") @db.VarChar(100)
+  required      Boolean  @default(false)
+  unlockLevel   Int      @default(1) @map("unlock_level")
+  parameters    Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([skillId, toolId, abilityName])
+  @@index([skillId])
+  @@index([toolId])
+  @@map("skill_tools")
+}
