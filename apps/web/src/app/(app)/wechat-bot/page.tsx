@@ -296,6 +296,22 @@ export default function WeChatBotPage() {
 
   /* ── Poll status while waiting for scan ── */
   const wechatPhase = wechatStatus?.phase;
+
+  /**
+   * 未连接时自动拉取二维码：连接微信是本页的主动作，
+   * 不该让用户先点一次「获取二维码」才看到内容。
+   */
+  const autoQrRequested = useRef(false);
+  useEffect(() => {
+    if (autoQrRequested.current) return;
+    if (!wechatStatus) return; // 等首次状态返回，避免与 checkStatus 竞态
+    if (wechatStatus.loggedIn) return;
+    if (wechatStatus.qrCodeUrl) return;
+    if (wechatPhase === 'waiting_scan' || wechatPhase === 'waiting_confirm') return;
+    autoQrRequested.current = true;
+    void startLogin();
+  }, [wechatStatus, wechatPhase, startLogin]);
+
   useEffect(() => {
     if (!wechatPhase) return;
     if (wechatPhase === 'idle' || wechatPhase === 'logged_in' || wechatPhase === 'logged_out') {
@@ -456,6 +472,32 @@ export default function WeChatBotPage() {
   };
 
   /* ═══════════════ Render ═══════════════ */
+
+  /**
+   * 未连接微信时，页面主体是「扫码连接」，而不是聊天界面。
+   * 微信 Bot 的核心价值是把时墨接入家庭微信群，聊天只是连接成功后的附属能力。
+   */
+  if (!isWechatLoggedIn) {
+    return (
+      <PageTransition>
+        <div className="flex h-vh-minus-5rem flex-col">
+          <WechatOpsBar
+            runtime={opsRuntime}
+            session={opsSession}
+            bridge={opsBridge}
+            onRefresh={checkStatus}
+          />
+          <WechatConnectStage
+            status={wechatStatus}
+            loadingQR={loadingQR}
+            qrError={qrError}
+            isBlocked={isWechatBlocked}
+            onLogin={startLogin}
+          />
+        </div>
+      </PageTransition>
+    );
+  }
 
   return (
     <PageTransition>
@@ -696,6 +738,132 @@ export default function WeChatBotPage() {
 }
 
 /* ═══════════════ Sub-components ═══════════════ */
+
+/* ── WeChat Connect Stage（未连接时的页面主体：扫码连接）── */
+function WechatConnectStage({
+  status,
+  loadingQR,
+  qrError,
+  isBlocked,
+  onLogin,
+}: {
+  status: WechatStatus | null;
+  loadingQR: boolean;
+  qrError: string | null;
+  isBlocked: boolean;
+  onLogin: () => void;
+}) {
+  const phase = status?.phase ?? 'idle';
+  const qrCodeUrl = status?.qrCodeUrl ?? null;
+
+  const hint = useMemo(() => {
+    switch (phase) {
+      case 'waiting_scan':
+        return '打开手机微信，扫描上方二维码';
+      case 'waiting_confirm':
+        return '已扫描，请在手机上点击确认登录';
+      case 'error':
+        return '登录失败，账号可能被限制网页版登录';
+      default:
+        return '连接后，时墨可以在家庭微信群里陪伴家人';
+    }
+  }, [phase]);
+
+  return (
+    <div className="flex flex-1 items-center justify-center px-4 py-8 min-h-0 overflow-y-auto">
+      <GlassLayer
+        intensity="strong"
+        className="flex w-full max-w-md flex-col items-center gap-6 rounded-3xl px-8 py-10 text-center"
+      >
+        {/* 标题 */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/15">
+            <ScanLine className="h-6 w-6 text-success" aria-hidden="true" />
+          </div>
+          <h1 className="text-lg font-semibold text-text">连接家庭微信</h1>
+          <p className="max-w-xs text-xs leading-relaxed text-text-muted">{hint}</p>
+        </div>
+
+        {/* 二维码主视觉 */}
+        <div className="relative flex h-64 w-64 items-center justify-center rounded-2xl bg-[var(--color-glass)] border border-[var(--color-border-subtle)]">
+          {loadingQR ? (
+            <div className="flex flex-col items-center gap-3 text-text-muted">
+              <Loader2 className="h-7 w-7 animate-spin text-success" aria-hidden="true" />
+              <span className="text-xs">正在生成二维码...</span>
+            </div>
+          ) : qrCodeUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={qrCodeUrl}
+                alt="微信登录二维码"
+                className="h-56 w-56 rounded-xl bg-white p-2"
+              />
+              {phase === 'waiting_confirm' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-background/80 backdrop-blur-sm">
+                  <CheckCircle2 className="h-8 w-8 text-success" aria-hidden="true" />
+                  <span className="text-xs font-medium text-text">扫描成功，请在手机确认</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-3 px-6 text-text-subtle">
+              <Smartphone className="h-9 w-9 opacity-40" aria-hidden="true" />
+              <span className="text-xs leading-relaxed">
+                点击下方按钮获取二维码
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 错误提示 */}
+        {(qrError || isBlocked) && (
+          <div className="flex w-full items-start gap-2 rounded-xl border border-error/20 bg-error/10 p-3 text-left">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-error" aria-hidden="true" />
+            <p className="text-xs leading-relaxed text-text-muted">
+              {qrError || '该微信账号被限制网页版登录，请换一个注册满半年且常用的账号试试。'}
+            </p>
+          </div>
+        )}
+
+        {/* 操作按钮 */}
+        <button
+          onClick={onLogin}
+          disabled={loadingQR}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-success px-5 py-3 text-sm font-medium text-[var(--color-text-inverse)] transition-colors hover:bg-success/90 disabled:opacity-[var(--state-disabled-opacity)] focus-ring"
+        >
+          {loadingQR ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          )}
+          {qrCodeUrl ? '刷新二维码' : '获取二维码'}
+        </button>
+
+        {/* 连接后能力说明 */}
+        <div className="w-full border-t border-[var(--color-border-subtle)] pt-5 text-left">
+          <p className="mb-3 text-3xs font-medium uppercase tracking-wider text-text-subtle">
+            连接后时墨可以
+          </p>
+          <ul className="flex flex-col gap-2 text-xs text-text-muted">
+            <li className="flex items-start gap-2">
+              <Users className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-success" aria-hidden="true" />
+              在家庭群里回应家人的消息
+            </li>
+            <li className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-highlight" aria-hidden="true" />
+              把聊天中的家庭记忆自动沉淀下来
+            </li>
+            <li className="flex items-start gap-2">
+              <Smartphone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-purple" aria-hidden="true" />
+              给长辈发送健康与日程提醒
+            </li>
+          </ul>
+        </div>
+      </GlassLayer>
+    </div>
+  );
+}
 
 /* ── WeChat Connection Panel ── */
 function WechatPanel({

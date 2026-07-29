@@ -2,16 +2,17 @@
 
 import { useEffect } from 'react';
 import { PageTransition } from '@/components/page-transition';
-import { ImmersiveHome } from '@/components/home/immersive-home';
+import { SpatialHome } from '@/components/home/spatial-home';
 import { useFamilyHubStore } from '@/stores/family-hub-store';
 
 /**
- * 岁言意识空间 —— 首页 V3
+ * 岁言意识空间 —— 首页 V3 Spatial
  *
- * 从「双侧面板控制台」回归到「家庭陪伴入口」：
- * - 大量留白、单栏滚动、分节清晰
- * - 用户第一眼看到的是「时墨」而不是指标
- * - 生命树、家庭状态、成长、技能、时间线自然展开
+ * 从「双侧面板控制台」转向「未来家庭 AI 操作系统」：
+ * - 深蓝黑空间背景 + 高级液态玻璃卡片
+ * - 中心：粒子神经生命云（SuiYan Life Core）
+ * - 周围：悬浮状态信息面板 + 底部时间线 + 优雅输入框
+ * - 视觉气质：Apple Vision Pro + Linear + AI生命体 + 家庭记忆
  */
 export default function HomePage() {
   const fetchAll = useFamilyHubStore((s) => s.fetchAll);
@@ -29,7 +30,7 @@ export default function HomePage() {
 
   return (
     <PageTransition>
-      <ImmersiveHome />
+      <SpatialHome />
     </PageTransition>
   );
 }

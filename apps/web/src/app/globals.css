@@ -821,3 +821,310 @@
   0%, 100% { opacity: 0.35; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.05); }
 }
+
+/* ==============================
+ * Spatial Home V3
+ * 空间化首页：深蓝黑空间 + 液态玻璃卡片 + 中心粒子生命核
+ * ============================== */
+.spatial-home {
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - var(--safe-top));
+  padding: var(--space-2xl) var(--space-lg) var(--home-dock-clearance);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-xl);
+  place-items: center;
+}
+
+.spatial-home__canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 40%, color-mix(in srgb, var(--color-primary) 4%, transparent), transparent),
+    radial-gradient(ellipse 60% 40% at 20% 70%, color-mix(in srgb, var(--color-life-purple) 3%, transparent), transparent),
+    radial-gradient(ellipse 65% 42% at 80% 65%, color-mix(in srgb, var(--color-highlight) 3%, transparent), transparent);
+  opacity: 0.6;
+}
+
+/* 顶部四个状态卡片 */
+.spatial-home__top-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-md);
+  width: 100%;
+  max-width: 58rem;
+}
+
+.spatial-card {
+  padding: var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  border-radius: var(--radius-xl);
+  transition:
+    transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
+}
+
+.spatial-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glass-medium);
+}
+
+.spatial-card--compact {
+  padding: var(--space-md) var(--space-lg);
+}
+
+.spatial-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.spatial-card small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+
+.spatial-card strong {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* 中心粒子生命核 */
+.spatial-home__core {
+  position: relative;
+  width: 100%;
+  max-width: 52rem;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spatial-home__life-core {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-2xl);
+}
+
+/* 右侧信息面板 */
+.spatial-home__right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  width: 100%;
+  max-width: 24rem;
+}
+
+.spatial-panel {
+  padding: var(--space-xl);
+  border-radius: var(--radius-xl);
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.panel-title > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.panel-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.panel-list__row > span:first-child {
+  font-size: 8px;
+}
+
+.panel-list__row > span:nth-child(2) {
+  flex: 1;
+}
+
+.panel-list__row > small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* 底部时间线 */
+.spatial-home__bottom {
+  width: 100%;
+  max-width: 58rem;
+}
+
+.spatial-timeline {
+  padding: var(--space-lg) var(--space-xl);
+  border-radius: var(--radius-xl);
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.timeline-item:last-child {
+  border-bottom: none;
+}
+
+.timeline-item > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.timeline-item small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.timeline-item time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 输入框 */
+.spatial-home__input {
+  position: fixed;
+  left: var(--space-lg);
+  right: var(--space-lg);
+  bottom: calc(var(--home-dock-clearance) - var(--space-lg));
+  max-width: 48rem;
+  margin: 0 auto;
+  z-index: 20;
+}
+
+.spatial-input-shell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-full);
+}
+
+.spatial-input-shell > input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: var(--font-body);
+}
+
+.spatial-input-shell > input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.spatial-input-shell > button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.spatial-input-shell > button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: scale(1.08);
+}
+
+.spatial-input-shell > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 桌面端响应式 */
+@media (min-width: 1280px) {
+  .spatial-home {
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto 1fr auto;
+    padding: var(--space-3xl) var(--space-2xl) var(--home-dock-clearance);
+    gap: var(--space-2xl);
+  }
+
+  .spatial-home__top-cards {
+    grid-column: 1 / -1;
+    max-width: 100%;
+  }
+
+  .spatial-home__core {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: none;
+  }
+
+  .spatial-home__right {
+    grid-column: 3;
+    grid-row: 2;
+    max-width: 22rem;
+  }
+
+  .spatial-home__bottom {
+    grid-column: 1 / -1;
+    max-width: 100%;
+  }
+
+  .spatial-home__input {
+    max-width: 58rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spatial-card {
+    transition: none;
+  }
+  .spatial-card:hover {
+    transform: none;
+  }
+}
