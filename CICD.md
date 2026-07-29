@@ -22,7 +22,7 @@ git push  →  GitHub Actions (7 GiB runner) 构建 web/api 镜像
 |---|---|
 | `ACR_USERNAME` | `wwxfeel20` （阿里云主账号名）|
 | `ACR_PASSWORD` | 你在 ACR 控制台"访问凭证"设置的固定密码 |
-| `ACR_NAMESPACE` | 命名空间名（截图看到"摘要=00000"，实际值以命名空间管理页为准）|
+| `ACR_NAMESPACE` | `unnamed` |
 | `SSH_HOST` | `47.103.20.211` |
 | `SSH_USER` | `root` |
 | `SSH_PASSWORD` | 服务器 root 密码 |
@@ -32,7 +32,7 @@ git push  →  GitHub Actions (7 GiB runner) 构建 web/api 镜像
 
 ```
 ACR_REGISTRY=crpi-2ybx9wocff19tlzj.cn-hangzhou.personal.cr.aliyuncs.com
-ACR_NAMESPACE=<你在 ACR 建的命名空间名>
+ACR_NAMESPACE=unnamed
 ```
 
 ### 3. 服务器登录 ACR（一次）
