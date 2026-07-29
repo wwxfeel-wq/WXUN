@@ -1,13 +1,19 @@
 'use client';
 
 import { FormEvent, useState, useMemo } from 'react';
+import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   Activity,
   ArrowUp,
   BookOpen,
   BrainCircuit,
+  GraduationCap,
+  Hourglass,
+  Landmark,
   MessageCircle,
+  MessagesSquare,
+  Orbit,
   Sparkles,
   TrendingUp,
   Users,
@@ -24,6 +30,16 @@ function timelineIcon(type: TimelineEntry['type']) {
   if (type === 'agent') return BrainCircuit;
   return Activity;
 }
+
+/** 左侧家庭入口：进入家庭空间的六个方向 */
+const familyEntries = [
+  { href: '/family', icon: Users, label: '家人', hint: '成员与关系' },
+  { href: '/interview', icon: MessagesSquare, label: '陪伴', hint: '和时墨聊聊' },
+  { href: '/center', icon: Sparkles, label: '回忆', hint: '家庭记忆库' },
+  { href: '/capsules', icon: Hourglass, label: '时间胶囊', hint: '写给未来' },
+  { href: '/museum', icon: Landmark, label: '家庭博物馆', hint: '珍藏时刻' },
+  { href: '/skills', icon: GraduationCap, label: '能力', hint: '时墨的成长' },
+];
 
 /**
  * SuiYan V3 Spatial Home — 空间化首页
@@ -135,6 +151,38 @@ export function SpatialHome() {
           </GlassLayer>
         </motion.div>
       </div>
+
+      {/* 左侧：家庭入口 */}
+      <motion.nav
+        className="spatial-home__left"
+        initial={reduceMotion ? false : { opacity: 0, x: -24 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.45, duration: 0.5 }}
+        aria-label="家庭入口"
+      >
+        <GlassLayer intensity="strong" className="spatial-panel spatial-nav">
+          <div className="panel-title">
+            <span><Orbit size={14} /> 家庭空间</span>
+            <small>{metrics.familyMembers} 位家人</small>
+          </div>
+          <ul className="spatial-nav__list">
+            {familyEntries.map((entry) => {
+              const Icon = entry.icon;
+              return (
+                <li key={entry.href}>
+                  <Link href={entry.href} className="spatial-nav__item">
+                    <Icon size={16} aria-hidden="true" />
+                    <span>
+                      <strong>{entry.label}</strong>
+                      <small>{entry.hint}</small>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </GlassLayer>
+      </motion.nav>
 
       {/* 中心：粒子神经生命云 */}
       <motion.div
