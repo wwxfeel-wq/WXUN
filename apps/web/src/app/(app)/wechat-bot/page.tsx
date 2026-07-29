@@ -263,7 +263,7 @@ export default function WeChatBotPage() {
           const dataUrl = await QRCode.toDataURL(res.qrCodeUrl, {
             width: 264,
             margin: 2,
-            color: { dark: 'var(--color-text-inverse)', light: 'var(--color-text-primary)' },
+            color: { dark: '#06060e', light: '#ffffff' },
           });
           setWechatStatus((prev) => ({
             ...(prev || {}),

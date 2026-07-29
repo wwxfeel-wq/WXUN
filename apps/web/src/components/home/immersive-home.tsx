@@ -71,7 +71,7 @@ export function ImmersiveHome() {
     if (!value || sending) return;
     setSending(true);
     try {
-      await invokeAgent('life_coach', value);
+      await invokeAgent('life', value);
       setMessage('');
     } finally {
       setSending(false);

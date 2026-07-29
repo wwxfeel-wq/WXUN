@@ -6,24 +6,28 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home,
   MessagesSquare,
-  TreePine,
+  Orbit,
   Sparkles,
   Settings,
   LogOut,
-  MessageCircle,
+  Users,
   GraduationCap,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { GlassLayer } from '@/components/glass';
 
+/**
+ * visionOS Floating Dock 入口
+ * 首页 / 陪伴 / 生命核心 / 回忆 / 能力 / 家庭
+ */
 const dockItems = [
   { id: 'home', icon: Home, label: '首页', href: '/' },
   { id: 'interview', icon: MessagesSquare, label: '陪伴', href: '/interview' },
-  { id: 'tree', icon: TreePine, label: '生命树', href: '/life-tree' },
+  { id: 'life-core', icon: Orbit, label: '生命核心', href: '/life-tree' },
   { id: 'center', icon: Sparkles, label: '回忆', href: '/center' },
   { id: 'skills', icon: GraduationCap, label: '能力', href: '/skills' },
-  { id: 'wechat-bot', icon: MessageCircle, label: '家人', href: '/wechat-bot' },
+  { id: 'family', icon: Users, label: '家庭', href: '/family' },
   { id: 'settings', icon: Settings, label: '设置', href: '/settings' },
 ];
 

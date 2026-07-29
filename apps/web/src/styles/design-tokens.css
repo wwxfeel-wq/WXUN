@@ -1,17 +1,21 @@
 /* ============================================================================
- * 岁言（SuiYan）V3 Design Tokens — Apple Liquid Glass Dark for Family AI OS
+ * 岁言（SuiYan）V3 Design Tokens — VisionOS Liquid Glass for Family AI OS
  * ============================================================================
  * 单一真相来源。所有颜色、间距、字体、圆角、阴影、动效、玻璃效果、
  * 生命树色彩都必须引用此文件中的 token。
  *
- * 品牌关键词：Minimal / Premium / Soft / Organic / AI Native / Calm /
- *            Elegant / Modern / Future / Living / Warm / Family
+ * 视觉方向关键词：
+ * Premium Liquid Glass / Dark Spatial Interface / Floating Glass Panel /
+ * VisionOS / Linear / Apple Intelligence / Next Generation Family OS
  *
  * 设计方向：
- * - 背景：近黑暖调，避免冷蓝科技风
- * - Glass：真实厚度、动态高光、Fresnel 边缘、微弱色散、环境反射
+ * - 空间背景：深蓝黑空间，轻微环境光，微弱粒子，不要星空、不要大量发光
+ * - Glass：高级液态玻璃，半透明深色玻璃，灰蓝透明，内部轻微渐变，边缘柔光，动态折射，环境反射
+ * - 中心：粒子神经生命云，节点绑定 Memory/Event/Knowledge/Agent，支持流动/连接/成长
+ * - 色彩：时墨绿 #00E5A8 / 记忆金 #F5C85B / 生命紫 #A78BFA，不要彩虹科技风
+ * - 字体：HarmonyOS Sans SC / 思源黑体，高信息密度但保持 Apple 级留白
  * - 动效：Spring Motion、自然减速、Opacity/Scale/Blur
- * - 字体：SF Pro / Inter / HarmonyOS Sans / 黑体
+ * - 产品气质：未来家庭智能生命设备，结合科技外壳与童年温度
  * ============================================================================ */
 
 :root {
@@ -23,16 +27,16 @@
   --brand-color-philosophy: 'Warm obsidian canvas with soft liquid-glass refraction and warm organic life accents';
   --brand-motion-philosophy: 'Springy, calm, liquid-like transitions with subtle hover feedback';
 
-  /* === Primary Brand — Life Green ===
-   * 生命、成长、陪伴的主色。温暖而不过于冷艳。
+  /* === Primary Brand — 时墨绿 Shimo Green ===
+   * 生命、成长、陪伴的主色。更明亮、更青翠。
    */
-  --color-primary: #00d4aa;
-  --color-primary-hover: #00f0c0;
-  --color-primary-active: #00b898;
-  --color-primary-disabled: rgba(0, 212, 170, 0.35);
-  --color-primary-glow: rgba(0, 212, 170, 0.28);
-  --color-primary-soft: rgba(0, 212, 170, 0.14);
-  --color-primary-faint: rgba(0, 212, 170, 0.08);
+  --color-primary: #00E5A8;
+  --color-primary-hover: #00FFB8;
+  --color-primary-active: #00D098;
+  --color-primary-disabled: rgba(0, 229, 168, 0.35);
+  --color-primary-glow: rgba(0, 229, 168, 0.28);
+  --color-primary-soft: rgba(0, 229, 168, 0.14);
+  --color-primary-faint: rgba(0, 229, 168, 0.08);
 
   /* === Secondary — Soft Sky ===
    * 从冷蓝改为更柔和、略带暖意的天空蓝，降低科技感。
@@ -44,15 +48,15 @@
   --color-secondary-soft: rgba(122, 184, 240, 0.14);
   --color-secondary-faint: rgba(122, 184, 240, 0.08);
 
-  /* === Highlight / Warm Amber ===
+  /* === Highlight / 记忆金 Memory Gold ===
    * 家庭温暖、里程碑、时间胶囊的高亮色。
    */
-  --color-highlight: #f5b23d;
-  --color-highlight-hover: #ffc95c;
-  --color-highlight-active: #e09a2a;
-  --color-highlight-glow: rgba(245, 178, 61, 0.28);
-  --color-highlight-soft: rgba(245, 178, 61, 0.14);
-  --color-highlight-faint: rgba(245, 178, 61, 0.08);
+  --color-highlight: #F5C85B;
+  --color-highlight-hover: #FFD87A;
+  --color-highlight-active: #E0B748;
+  --color-highlight-glow: rgba(245, 200, 91, 0.28);
+  --color-highlight-soft: rgba(245, 200, 91, 0.14);
+  --color-highlight-faint: rgba(245, 200, 91, 0.08);
 
   /* === Warm Accent — Peach/Rose ===
    * 用于家庭、爱、纪念日、情感等温暖场景。
@@ -69,8 +73,14 @@
   /* === Extended Semantic Palette === */
   --color-cyan: #5dd3e8;
   --color-cyan-glow: rgba(93, 211, 232, 0.28);
-  --color-purple: #b8a2f0;
-  --color-purple-glow: rgba(184, 162, 240, 0.28);
+  --color-purple: #A78BFA;
+  --color-purple-hover: #B89FFF;
+  --color-purple-active: #9677E8;
+  --color-purple-glow: rgba(167, 139, 250, 0.28);
+  --color-purple-soft: rgba(167, 139, 250, 0.14);
+  --color-purple-faint: rgba(167, 139, 250, 0.08);
+  --color-life-purple: #A78BFA;
+  --color-life-purple-glow: rgba(167, 139, 250, 0.28);
   --color-orange: #fbad6e;
   --color-orange-glow: rgba(251, 173, 110, 0.28);
   --color-indigo: #7a78e6;
@@ -118,36 +128,36 @@
   --color-gray-900: rgba(255, 255, 255, 0.05);
   --color-gray-950: rgba(255, 255, 255, 0.03);
 
-  /* === Surface (warm obsidian) ===
-   * 背景从蓝宝石靛蓝改为近黑暖调，符合 Apple/VisionOS/iOS26 的安静高级。
+  /* === Surface (deep blue-black spatial space) ===
+   * 深蓝黑色空间背景，轻微环境光，符合 VisionOS 空间计算界面。
    */
-  --color-bg: #030305;
-  --color-bg-elevated: #07070a;
-  --color-bg-warm: #0d0b0a;
-  --color-bg-gradient-start: #0f0e12;
-  --color-bg-gradient-end: #030305;
-  --color-surface: rgba(255, 255, 255, 0.045);
-  --color-surface-raised: rgba(255, 255, 255, 0.07);
-  --color-surface-overlay: rgba(255, 255, 255, 0.10);
+  --color-bg: #0a0e14;
+  --color-bg-elevated: #0d1118;
+  --color-bg-warm: #0f1219;
+  --color-bg-gradient-start: #0d1118;
+  --color-bg-gradient-end: #080b10;
+  --color-surface: rgba(140, 160, 180, 0.045);
+  --color-surface-raised: rgba(140, 160, 180, 0.07);
+  --color-surface-overlay: rgba(140, 160, 180, 0.10);
 
-  /* === Glass Surfaces ===
-   * 更克制、更真实的玻璃。避免过度模糊和白边。
+  /* === Glass Surfaces (gray-blue translucent) ===
+   * 灰蓝透明液态玻璃，半透明深色玻璃，内部轻微渐变，边缘柔光。
    */
-  --color-glass: rgba(255, 255, 255, 0.06);
-  --color-glass-hover: rgba(255, 255, 255, 0.10);
-  --color-glass-strong: rgba(255, 255, 255, 0.10);
-  --color-glass-strong-hover: rgba(255, 255, 255, 0.15);
-  --color-glass-extreme: rgba(255, 255, 255, 0.14);
-  --color-glass-extreme-hover: rgba(255, 255, 255, 0.20);
-  --color-glass-border: rgba(255, 255, 255, 0.10);
-  --color-glass-border-hover: rgba(255, 255, 255, 0.16);
-  --color-glass-border-strong: rgba(255, 255, 255, 0.20);
-  --color-glass-highlight: rgba(255, 255, 255, 0.18);
-  --color-glass-shimmer: rgba(255, 255, 255, 0.34);
-  --color-glass-tint-primary: rgba(0, 212, 170, 0.12);
+  --color-glass: rgba(140, 160, 180, 0.08);
+  --color-glass-hover: rgba(140, 160, 180, 0.12);
+  --color-glass-strong: rgba(140, 160, 180, 0.14);
+  --color-glass-strong-hover: rgba(140, 160, 180, 0.18);
+  --color-glass-extreme: rgba(140, 160, 180, 0.18);
+  --color-glass-extreme-hover: rgba(140, 160, 180, 0.24);
+  --color-glass-border: rgba(160, 180, 200, 0.14);
+  --color-glass-border-hover: rgba(160, 180, 200, 0.20);
+  --color-glass-border-strong: rgba(160, 180, 200, 0.26);
+  --color-glass-highlight: rgba(180, 200, 220, 0.22);
+  --color-glass-shimmer: rgba(200, 220, 240, 0.38);
+  --color-glass-tint-primary: rgba(0, 229, 168, 0.12);
   --color-glass-tint-secondary: rgba(122, 184, 240, 0.12);
   --color-glass-tint-rose: rgba(242, 130, 140, 0.10);
-  --color-glass-tint-highlight: rgba(245, 178, 61, 0.10);
+  --color-glass-tint-highlight: rgba(245, 200, 91, 0.10);
 
   /* === Liquid Glass Edge & Refraction Tokens ===
    * 边缘高光从强白边改为柔和、有层次的微光。
@@ -225,8 +235,8 @@
   --color-family-other: #a8a8a8;
 
   /* === Life Tree Colors ===
-   * 有机、自然、有生命感。避免霓虹/科技蓝。
-   * 在深色玻璃背景下需要足够亮度才能被看见，同时保持温暖木质调。
+   * 有机、自然、有生命感。与新色系匹配。
+   * 在深蓝黑背景下需要足够亮度才能被看见，同时保持温暖木质调。
    */
   --color-tree-root: #9c8262;
   --color-tree-root-glow: rgba(156, 130, 98, 0.32);
@@ -234,16 +244,16 @@
   --color-tree-trunk-glow: rgba(168, 148, 128, 0.30);
   --color-tree-branch: #b8a690;
   --color-tree-branch-glow: rgba(184, 166, 144, 0.28);
-  --color-tree-leaf: #00d4aa;
-  --color-tree-leaf-glow: rgba(0, 212, 170, 0.30);
+  --color-tree-leaf: #00E5A8;
+  --color-tree-leaf-glow: rgba(0, 229, 168, 0.30);
   --color-tree-flower: #f2828c;
   --color-tree-flower-glow: rgba(242, 130, 140, 0.32);
-  --color-tree-fruit: #f5b23d;
-  --color-tree-fruit-glow: rgba(245, 178, 61, 0.32);
+  --color-tree-fruit: #F5C85B;
+  --color-tree-fruit-glow: rgba(245, 200, 91, 0.32);
   --color-tree-sap: #5dd3e8;
   --color-tree-sap-glow: rgba(93, 211, 232, 0.24);
-  --color-tree-neural: rgba(200, 190, 255, 0.16);
-  --color-tree-neural-glow: rgba(200, 190, 255, 0.20);
+  --color-tree-neural: rgba(167, 139, 250, 0.16);
+  --color-tree-neural-glow: rgba(167, 139, 250, 0.20);
   --tree-indent: 14px;
   --tree-offset: 6px;
 
@@ -255,29 +265,31 @@
   --color-light-rim: #c8e6ff;
 
   /* === Ambient Background ===
-   * 温暖有机的氛围光，替代 SpheroAI 冷蓝波浪。
+   * 温暖有机的氛围光，替代冷蓝波浪。轻微环境光、微弱粒子。
    */
-  --color-aurora-primary: rgba(0, 212, 170, 0.06);
+  --color-aurora-primary: rgba(0, 229, 168, 0.06);
   --color-aurora-secondary: rgba(122, 184, 240, 0.05);
-  --color-aurora-warm: rgba(245, 178, 61, 0.04);
+  --color-aurora-warm: rgba(245, 200, 91, 0.04);
   --color-aurora-rose: rgba(242, 130, 140, 0.03);
-  --color-aurora-primary-soft: rgba(0, 212, 170, 0.04);
+  --color-aurora-primary-soft: rgba(0, 229, 168, 0.04);
   --color-aurora-secondary-soft: rgba(122, 184, 240, 0.03);
-  --color-aurora-warm-soft: rgba(245, 178, 61, 0.03);
-  --color-aurora-root: rgba(0, 212, 170, 0.18);
-  --color-aurora-root-dot: rgba(0, 212, 170, 0.24);
+  --color-aurora-warm-soft: rgba(245, 200, 91, 0.03);
+  --color-aurora-root: rgba(0, 229, 168, 0.18);
+  --color-aurora-root-dot: rgba(0, 229, 168, 0.24);
 
-  /* === Immersive Home Scene === */
-  --color-home-canvas: #010204;
-  --color-home-panel: rgba(10, 16, 24, 0.28);
-  --color-home-panel-tint: rgba(255, 255, 255, 0.06);
-  --color-home-panel-border: rgba(255, 255, 255, 0.14);
-  --color-home-panel-border-hover: rgba(255, 255, 255, 0.22);
-  --color-home-panel-shine: rgba(255, 255, 255, 0.32);
-  --color-home-panel-shadow: 0 24px 60px -20px rgba(2, 6, 10, 0.55), 0 8px 24px -12px rgba(2, 6, 10, 0.45);
-  --color-home-panel-inset: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  /* === Immersive Home Scene ===
+   * 深蓝黑空间背景，灰蓝玻璃面板。
+   */
+  --color-home-canvas: #080b10;
+  --color-home-panel: rgba(20, 30, 40, 0.28);
+  --color-home-panel-tint: rgba(140, 160, 180, 0.08);
+  --color-home-panel-border: rgba(160, 180, 200, 0.16);
+  --color-home-panel-border-hover: rgba(160, 180, 200, 0.24);
+  --color-home-panel-shine: rgba(180, 200, 220, 0.34);
+  --color-home-panel-shadow: 0 24px 60px -20px rgba(8, 11, 16, 0.55), 0 8px 24px -12px rgba(8, 11, 16, 0.45);
+  --color-home-panel-inset: inset 0 1px 0 rgba(160, 180, 200, 0.16), inset 0 0 0 1px rgba(140, 160, 180, 0.06);
   --color-home-grid: rgba(93, 211, 232, 0.08);
-  --color-home-vignette: rgba(1, 2, 4, 0.62);
+  --color-home-vignette: rgba(8, 11, 16, 0.62);
   --home-panel-blur: blur(28px) saturate(1.6) brightness(1.05);
   --home-panel-blur-strong: blur(40px) saturate(1.8) brightness(1.08);
   --home-panel-width: 17rem;
@@ -358,9 +370,12 @@
   --width-300px: 300px;
   --inset-x-10p: 10%;
 
-  /* === Typography Scale === */
-  --font-display: 'SF Pro Display', 'Inter', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-body: 'SF Pro Text', 'Inter', 'HarmonyOS Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  /* === Typography Scale ===
+   * 字体优先级：HarmonyOS Sans SC / 思源黑体 / SF Pro / Inter
+   * 设计要求：高信息密度但保持 Apple 级留白
+   */
+  --font-display: 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'SF Pro Display', 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-body: 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'SF Pro Text', 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
   --text-2xs: 0.6875rem;
