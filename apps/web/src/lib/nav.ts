@@ -7,6 +7,8 @@ import {
   BookOpen,
   Heart,
   Sprout,
+  Bot,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,6 +55,18 @@ export const navItems: NavItem[] = [
 /** Extended nav items for page title resolution (includes non-dock pages). */
 export const allNavItems: NavItem[] = [
   ...navItems,
+  {
+    label: 'Agent 控制台',
+    href: '/agents',
+    icon: Bot,
+    description: 'OpenClaw ReAct 协作 Agent 集群',
+  },
+  {
+    label: '微信 Bot',
+    href: '/wechat-bot',
+    icon: MessageCircle,
+    description: 'wechat4u 会话与 Emergency Bridge',
+  },
   {
     label: '家庭知识库',
     href: '/knowledge',

@@ -27,6 +27,7 @@ import {
   type WorkflowResult,
 } from '@/stores/family-hub-store';
 import { GlassLayer } from '@/components/glass';
+import { ReActTimeline } from '@/components/home/react-timeline';
 
 interface ChatMessage {
   role: 'user' | 'agent';
@@ -171,7 +172,7 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
 
   if (!agent) return null;
 
-  const lastResult = [...messages].reverse().find((m) => m.result)?.result;
+  const lastResult = [...messages].reverse().find((m) => m.result)?.result ?? null;
   const hasDetails =
     lastResult &&
     ((lastResult.toolResults && lastResult.toolResults.length > 0) ||
@@ -247,6 +248,9 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* ReAct chain — Plan → Reason → Act → Observe */}
+            <ReActTimeline running={loading} lastResult={lastResult} />
 
             {/* Skill level-up / exp notice */}
             <AnimatePresence mode="wait">

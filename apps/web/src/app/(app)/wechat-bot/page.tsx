@@ -25,6 +25,7 @@ import { useFamilyHubStore } from '@/stores/family-hub-store';
 import { apiClient } from '@/lib/api-client';
 import { PageTransition } from '@/components/page-transition';
 import { GlassLayer } from '@/components/glass';
+import { WechatOpsBar, type OpsTileTone } from '@/components/wechat/wechat-ops-bar';
 
 /* ═══════════════ Types ═══════════════ */
 
@@ -145,7 +146,65 @@ export default function WeChatBotPage() {
   const [showMobileChat, setShowMobileChat] = useState(false);
 
   const invokeAgent = useFamilyHubStore((s) => s.invokeAgent);
+  const shimoCore = useFamilyHubStore((s) => s.shimoCore);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /* ── Derived ops-bar props ── */
+  const opsRuntime = useMemo((): { tone: OpsTileTone; label: string; activeAgents?: number } => {
+    if (!shimoCore) return { tone: 'idle', label: '加载中…' };
+    // Shimo core is always "on" — but different sub-states map to different tones
+    const activeStates: string[] = ['thinking', 'learning', 'updating_memory', 'updating_tree', 'syncing_wechat'];
+    const tone: OpsTileTone = shimoCore.status === 'online' ? 'ok' : activeStates.includes(shimoCore.status) ? 'pending' : 'warn';
+    const label =
+      shimoCore.status === 'online'
+        ? '运行中'
+        : shimoCore.status === 'thinking'
+          ? '思考中'
+          : shimoCore.status === 'learning'
+            ? '学习中'
+            : shimoCore.status === 'updating_memory'
+              ? '更新记忆'
+              : shimoCore.status === 'updating_tree'
+                ? '生长中'
+                : shimoCore.status === 'syncing_wechat'
+                  ? '同步微信'
+                  : '待机';
+    return { tone, label, activeAgents: shimoCore.agentCount };
+  }, [shimoCore]);
+
+  const opsSession = useMemo((): {
+    tone: OpsTileTone;
+    label: string;
+    nickName?: string | null;
+    contactCount?: number;
+    lastError?: string | null;
+    phase?: string;
+  } => {
+    if (!wechatStatus) return { tone: 'idle', label: '未连接', phase: 'idle' };
+    if (wechatStatus.loggedIn) {
+      const tone: OpsTileTone = wechatStatus.lastError ? 'warn' : 'ok';
+      return {
+        tone,
+        label: tone === 'warn' ? '同步中' : '已连接',
+        nickName: wechatStatus.userNickName,
+        contactCount: wechatStatus.contactCount,
+        lastError: wechatStatus.lastError,
+        phase: wechatStatus.phase,
+      };
+    }
+    if (wechatStatus.phase === 'waiting_scan' || wechatStatus.phase === 'waiting_confirm') {
+      return { tone: 'pending', label: '扫码登录', phase: wechatStatus.phase };
+    }
+    if (wechatStatus.phase === 'error') {
+      return { tone: 'error', label: '登录失败', phase: wechatStatus.phase };
+    }
+    return { tone: 'idle', label: '未连接', phase: wechatStatus.phase };
+  }, [wechatStatus]);
+
+  const opsBridge = useMemo((): { tone: OpsTileTone; label: string; detail?: string } => {
+    // Emergency bridge is always armed — it's the fallback AI path
+    return { tone: 'ok', label: '已就绪', detail: '时墨 AI 直连 · 无需微信' };
+  }, []);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiWelcomeInitRef = useRef(false);
@@ -400,8 +459,17 @@ export default function WeChatBotPage() {
 
   return (
     <PageTransition>
-      <div className="h-vh-minus-5rem px-3 pt-3 pb-1 sm:px-4 sm:pt-4">
-        <GlassLayer intensity="default" className="flex h-full overflow-hidden">
+      <div className="flex h-vh-minus-5rem flex-col">
+        {/* WeChat Operational Control Ribbon */}
+        <WechatOpsBar
+          runtime={opsRuntime}
+          session={opsSession}
+          bridge={opsBridge}
+          onRefresh={checkStatus}
+        />
+
+        <div className="flex-1 px-3 pt-3 pb-1 sm:px-4 sm:pt-3 min-h-0">
+          <GlassLayer intensity="default" className="flex h-full overflow-hidden">
           {/* ── Contact List (left) ── */}
           <div
             className={`${
@@ -605,7 +673,8 @@ export default function WeChatBotPage() {
               </div>
             </div>
           </div>
-        </GlassLayer>
+          </GlassLayer>
+        </div>
       </div>
 
       {/* ── WeChat Connection Panel (slide-in overlay) ── */}
