@@ -103,7 +103,8 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
   stemPoints: { x: number; y: number }[];
 } {
   const rand = mulberry32(42 + level * 7);
-  const total = Math.min(420, 180 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 6 + level * 10);
+  // 粒子上限从 420 降至 220 — 视觉效果几乎无损，GPU 负担减半
+  const total = Math.min(220, 100 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 4 + level * 6);
 
   // 按比例分配粒子类型
   const kindPool: NodeKind[] = [];
@@ -172,8 +173,8 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
 
   // 生成连线：连接距离较近的粒子
   const connections: Connection[] = [];
-  const connectionDist = 0.14; // 归一化距离阈值
-  const maxConnectionsPerParticle = 4;
+  const connectionDist = 0.12; // 归一化距离阈值（从 0.14 降低，减少连线数量）
+  const maxConnectionsPerParticle = 3;
 
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
@@ -446,8 +447,8 @@ export function LifeCoreCanvas({
 
       ctx.globalAlpha = Math.min(1, alpha);
 
-      // 绘制粒子光晕
-      const spriteSize = size * 7;
+      // 绘制粒子光晕（sprite 尺寸从 7x 降至 5x 减少 GPU overdraw）
+      const spriteSize = size * 5;
       ctx.drawImage(
         particleSprite,
         px - spriteSize / 2,
@@ -482,9 +483,13 @@ export function LifeCoreCanvas({
 
   useEffect(() => {
     let running = true;
-    const loop = () => {
+    let lastFrame = 0;
+    // 节流到 ~30fps，减少 GPU 绘制调用一半
+    const frameInterval = 1000 / 30;
+    const loop = (now: number) => {
       if (!running) return;
-      if (!reducedMotion) {
+      if (!reducedMotion && now - lastFrame >= frameInterval) {
+        lastFrame = now;
         draw();
       }
       rafRef.current = requestAnimationFrame(loop);

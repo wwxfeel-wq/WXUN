@@ -83,20 +83,22 @@ export function SpatialHome() {
       {/* 深蓝黑空间背景 */}
       <div className="spatial-home__canvas" aria-hidden="true" />
 
-      {/* 顶部状态卡片：四个横排悬浮卡片 */}
+      {/* 顶部状态卡片：四个横排悬浮卡片
+          使用轻量 div 替代 GlassLayer — 小卡片不需要 backdrop-filter，
+          半透明背景 + 边框 + 阴影即可达到玻璃质感，大幅减少 GPU 负担 */}
       <div className="spatial-home__top-cards">
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.5 }}
         >
-          <GlassLayer intensity="default" className="spatial-card spatial-card--compact">
+          <div className="spatial-card spatial-card--compact">
             <Users size={16} />
             <div>
               <small>家庭理解度</small>
               <strong>{metrics.understandingPercent}%</strong>
             </div>
-          </GlassLayer>
+          </div>
         </motion.div>
 
         <motion.div
@@ -104,13 +106,13 @@ export function SpatialHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
         >
-          <GlassLayer intensity="default" className="spatial-card spatial-card--compact">
+          <div className="spatial-card spatial-card--compact">
             <BookOpen size={16} />
             <div>
               <small>Memory 数量</small>
               <strong>{metrics.longTermMemories}</strong>
             </div>
-          </GlassLayer>
+          </div>
         </motion.div>
 
         <motion.div
@@ -118,13 +120,13 @@ export function SpatialHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
         >
-          <GlassLayer intensity="default" className="spatial-card spatial-card--compact">
+          <div className="spatial-card spatial-card--compact">
             <TrendingUp size={16} />
             <div>
               <small>生命等级</small>
               <strong>Lv.{metrics.aiLevel}</strong>
             </div>
-          </GlassLayer>
+          </div>
         </motion.div>
 
         <motion.div
@@ -132,13 +134,13 @@ export function SpatialHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.5 }}
         >
-          <GlassLayer intensity="default" className="spatial-card spatial-card--compact">
+          <div className="spatial-card spatial-card--compact">
             <Zap size={16} />
             <div>
               <small>掌握能力</small>
               <strong>{metrics.masteredSkills}</strong>
             </div>
-          </GlassLayer>
+          </div>
         </motion.div>
       </div>
 

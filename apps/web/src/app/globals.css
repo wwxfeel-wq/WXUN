@@ -954,6 +954,12 @@
   gap: var(--space-md);
   border-radius: var(--radius-xl);
   min-height: 3.5rem;
+  /* 轻量玻璃质感：半透明背景 + 边框 + 阴影（无 backdrop-filter，GPU 零负担） */
+  background: color-mix(in srgb, var(--color-glass) 85%, transparent);
+  border: var(--border-width) solid var(--color-glass-border);
+  box-shadow:
+    var(--shadow-glass-medium),
+    inset 0 1px 0 rgba(255,255,255,0.08);
   transition:
     transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 0.35s ease;
@@ -1317,7 +1323,7 @@
 
 /* ==============================
  * Consciousness Panel — 时墨意识状态面板
- * 缺失样式补全：头部、数值、波形布局
+ * 纯 CSS 波形（无 canvas / 无 RAF），消除白色区域 + 性能提升
  * ============================== */
 .consciousness-panel {
   display: flex;
@@ -1377,17 +1383,45 @@
   color: var(--color-text-muted);
 }
 
+/* CSS 波形容器 */
 .consciousness__wave {
   position: relative;
-  height: 5rem;
-  margin: var(--space-sm) calc(var(--space-lg) * -1) 0;
-  padding: 0 var(--space-lg);
+  height: 4.5rem;
   overflow: hidden;
   border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
 }
 
-.consciousness__wave canvas {
-  width: 100%;
+/* 波形线 — 用 SVG 波浪 path 作为 background-image，通过 CSS animation 平移 */
+.consciousness__wave-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
   height: 100%;
-  display: block;
+  background-repeat: repeat-x;
+  background-position: 0 50%;
+  background-size: 200% 100%;
+  animation-name: consciousnessWaveDrift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  /* SVG 波浪 path — 两端平齐确保无缝循环 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'%3E%3Cpath d='M0 20 Q 25 5, 50 20 T 100 20 T 150 20 T 200 20' fill='none' stroke='rgb(0,229,168)' stroke-width='1.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  transform: translateY(-50%);
+}
+
+/* 静态模式（reduced-motion）— 不动画 */
+.consciousness__wave--static .consciousness__wave-line {
+  animation: none;
+}
+
+@keyframes consciousnessWaveDrift {
+  0% { background-position-x: 0%; }
+  100% { background-position-x: -200%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consciousness__wave-line {
+    animation: none !important;
+  }
 }
