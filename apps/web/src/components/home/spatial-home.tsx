@@ -10,8 +10,6 @@ import {
   BrainCircuit,
   GraduationCap,
   Hourglass,
-  Landmark,
-  MessageCircle,
   MessagesSquare,
   Orbit,
   Sparkles,
@@ -31,13 +29,12 @@ function timelineIcon(type: TimelineEntry['type']) {
   return Activity;
 }
 
-/** 左侧家庭入口：进入家庭空间的六个方向 */
+/** 左侧家庭入口：进入家庭空间的五个核心方向 */
 const familyEntries = [
   { href: '/family', icon: Users, label: '家人', hint: '成员与关系' },
   { href: '/interview', icon: MessagesSquare, label: '陪伴', hint: '和时墨聊聊' },
   { href: '/center', icon: Sparkles, label: '回忆', hint: '家庭记忆库' },
   { href: '/capsules', icon: Hourglass, label: '时间胶囊', hint: '写给未来' },
-  { href: '/museum', icon: Landmark, label: '家庭博物馆', hint: '珍藏时刻' },
   { href: '/skills', icon: GraduationCap, label: '能力', hint: '时墨的成长' },
 ];
 
@@ -279,7 +276,7 @@ export function SpatialHome() {
         transition={{ delay: 0.9, duration: 0.5 }}
       >
         <GlassLayer intensity="strong" className="spatial-input-shell">
-          <MessageCircle size={16} aria-hidden="true" />
+          <MessagesSquare size={16} aria-hidden="true" />
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}

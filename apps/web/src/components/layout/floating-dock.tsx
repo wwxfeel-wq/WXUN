@@ -19,7 +19,7 @@ import { GlassLayer } from '@/components/glass';
 
 /**
  * visionOS Floating Dock 入口
- * 首页 / 陪伴 / 生命核心 / 回忆 / 能力 / 家庭
+ * 6 项核心功能 + 用户头像（含设置入口）
  */
 const dockItems = [
   { id: 'home', icon: Home, label: '首页', href: '/' },
@@ -28,7 +28,6 @@ const dockItems = [
   { id: 'center', icon: Sparkles, label: '回忆', href: '/center' },
   { id: 'skills', icon: GraduationCap, label: '能力', href: '/skills' },
   { id: 'family', icon: Users, label: '家庭', href: '/family' },
-  { id: 'settings', icon: Settings, label: '设置', href: '/settings' },
 ];
 
 const SPRING = { type: 'spring' as const, stiffness: 400, damping: 25, mass: 0.6 };
@@ -219,6 +218,13 @@ export default function FloatingDock() {
                 <div className="text-xs text-text-subtle truncate">{user?.email || ''}</div>
               </div>
             </div>
+            <button
+              onClick={() => { handleNavigate('/settings'); setShowUserDropdown(false); }}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-text-muted hover:bg-surface hover:text-text transition-colors focus-ring"
+            >
+              <Settings size={15} />
+              设置
+            </button>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-error hover:bg-error-bg transition-colors focus-ring"

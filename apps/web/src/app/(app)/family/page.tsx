@@ -77,17 +77,23 @@ export default function FamilyPage() {
         <GlassLayer
           asChild
           intensity="strong"
-          className="flex flex-col items-center justify-center py-20 text-center"
+          className="relative flex flex-col items-center justify-center overflow-hidden py-24 text-center"
         >
+          {/* Ambient glow behind seedling */}
+          <div
+            className="pointer-events-none absolute top-1/2 left-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.12] blur-[60px]"
+            style={{ background: 'var(--color-primary)' }}
+          />
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10"
           >
             {/* Breathing seedling */}
             <motion.svg
-              width="72"
-              height="88"
+              width="80"
+              height="96"
               viewBox="0 0 64 80"
               fill="none"
               animate={{ scale: [1, 1.04, 1] }}
@@ -151,16 +157,16 @@ export default function FamilyPage() {
               />
             </motion.svg>
 
-            <p className="mt-4 text-base font-medium text-text">还没有加入家庭</p>
-            <p className="mt-1 max-w-sm text-sm text-text-muted">
+            <p className="mt-6 text-base font-medium text-text">还没有加入家庭</p>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-text-muted">
               创建一个家庭组，邀请家人加入，共同记录和分享珍贵的家庭记忆。
             </p>
-            <div className="mt-6 flex gap-3">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button onClick={() => setCreateOpen(true)} className="gap-2">
                 <Plus className="h-4 w-4" />
                 创建家庭
               </Button>
-              <Button variant="secondary" onClick={() => setJoinOpen(true)} className="gap-2">
+              <Button variant="ghost" onClick={() => setJoinOpen(true)} className="gap-2">
                 <LogIn className="h-4 w-4" />
                 加入家庭
               </Button>

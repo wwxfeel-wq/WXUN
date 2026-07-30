@@ -10,6 +10,10 @@ import {
   Tag,
   Heart,
   Zap,
+  Calendar,
+  Users,
+  Sun,
+  type LucideIcon,
 } from "lucide-react";
 import { useSSEChat } from "@/hooks/use-sse-chat";
 import { PageTransition } from "@/components/page-transition";
@@ -20,12 +24,12 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn, getEmotionColor, getEmotionLabel } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/types";
 
-/** Suggested conversation starters. */
-const STARTERS = [
-  "今天我想聊聊我小时候的故事",
-  "最近发生了一件让我难忘的事",
-  "说说我对家人的感情",
-  "我想回忆一段童年的夏天",
+/** Suggested conversation starters with icons. */
+const STARTERS: { text: string; icon: LucideIcon }[] = [
+  { text: "今天我想聊聊我小时候的故事", icon: Sun },
+  { text: "最近发生了一件让我难忘的事", icon: Calendar },
+  { text: "说说我对家人的感情", icon: Users },
+  { text: "我想回忆一段童年的夏天", icon: Heart },
 ];
 
 export default function InterviewPage() {
@@ -215,21 +219,21 @@ function EmptyConversation({
 }: {
   nickname?: string;
   onStart: (text: string) => void;
-  starters: string[];
+  starters: { text: string; icon: LucideIcon }[];
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center py-6 text-center">
+    <div className="flex h-full flex-col items-center justify-center py-8 text-center">
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 200, damping: 20 }}
-        className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-[var(--color-indigo)]"
+        className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-[var(--color-indigo)]"
       >
         <motion.div
-          animate={{ y: [0, -8, 0] }}
+          animate={{ y: [0, -6, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Sparkles className="h-8 w-8 text-[var(--color-text-inverse)]" />
+          <Sparkles className="h-7 w-7 text-[var(--color-text-inverse)]" />
         </motion.div>
       </motion.div>
 
@@ -237,7 +241,7 @@ function EmptyConversation({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-        className="mt-4 text-lg font-semibold text-text"
+        className="mt-5 text-xl font-display font-semibold tracking-tight text-text"
       >
         你好{nickname ? `，${nickname}` : ""}，准备好开始访谈了吗？
       </motion.h2>
@@ -246,7 +250,7 @@ function EmptyConversation({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
-        className="mt-2 max-w-sm text-sm text-text-muted"
+        className="mt-2.5 max-w-sm text-sm leading-relaxed text-text-muted"
       >
         我会引导你回忆人生的点点滴滴，并帮你把它们变成珍贵的数字记忆。
       </motion.p>
@@ -255,28 +259,32 @@ function EmptyConversation({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, type: "spring", stiffness: 200, damping: 20 }}
-        className="mt-6 grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2"
+        className="mt-8 grid w-full max-w-lg grid-cols-1 gap-2.5 sm:grid-cols-2"
       >
-        {starters.map((starter, i) => (
-          <GlassLayer asChild intensity="default" interactive key={starter}>
-            <motion.button
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                delay: 0.35 + i * 0.05,
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-              }}
-              whileHover={{ scale: 1.02, y: -1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => onStart(starter)}
-              className="px-4 py-3 text-left text-sm text-text-muted transition-colors hover:text-text focus-ring"
-            >
-              {starter}
-            </motion.button>
-          </GlassLayer>
-        ))}
+        {starters.map((starter, i) => {
+          const Icon = starter.icon;
+          return (
+            <GlassLayer asChild intensity="default" interactive key={starter.text}>
+              <motion.button
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: 0.35 + i * 0.05,
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 25,
+                }}
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onStart(starter.text)}
+                className="flex items-center gap-3 px-4 py-3 text-left text-sm text-text-muted transition-colors hover:text-text focus-ring"
+              >
+                <Icon size={16} className="shrink-0 text-accent/70" aria-hidden="true" />
+                <span>{starter.text}</span>
+              </motion.button>
+            </GlassLayer>
+          );
+        })}
       </motion.div>
     </div>
   );

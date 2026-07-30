@@ -785,7 +785,7 @@ function WechatConnectStage({
         </div>
 
         {/* 二维码主视觉 */}
-        <div className="relative flex h-64 w-64 items-center justify-center rounded-2xl bg-[var(--color-glass)] border border-[var(--color-border-subtle)]">
+        <div className="relative flex h-64 w-64 items-center justify-center rounded-2xl bg-[var(--color-glass)] border border-[var(--color-border)]">
           {loadingQR ? (
             <div className="flex flex-col items-center gap-3 text-text-muted">
               <Loader2 className="h-7 w-7 animate-spin text-success" aria-hidden="true" />
@@ -841,7 +841,7 @@ function WechatConnectStage({
         </button>
 
         {/* 连接后能力说明 */}
-        <div className="w-full border-t border-[var(--color-border-subtle)] pt-5 text-left">
+        <div className="w-full border-t border-[var(--color-border)] pt-5 text-left">
           <p className="mb-3 text-3xs font-medium uppercase tracking-wider text-text-subtle">
             连接后时墨可以
           </p>

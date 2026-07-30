@@ -4,7 +4,6 @@ import * as React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   TreePine,
-  ChevronRight,
   User,
   Calendar,
   MapPin,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition } from '@/components/page-transition';
+import NeuralTreeCanvas from '@/components/tree/neural-tree-canvas';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -101,7 +101,6 @@ export default function LifeTreePage() {
   );
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createParentId, setCreateParentId] = React.useState<string | null>(null);
 
@@ -123,15 +122,6 @@ export default function LifeTreePage() {
   );
 
   const selectedNode = selectedId ? findNode(nodes, selectedId) : null;
-
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const handleOpenCreate = (parentId: string | null) => {
     setCreateParentId(parentId);
@@ -178,27 +168,28 @@ export default function LifeTreePage() {
 
       {/* ===== Main Content ===== */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-6">
-        {/* Tree panel */}
+        {/* Neural tree canvas */}
         <GlassLayer
           asChild
           intensity="strong"
-          className="lg:col-span-4 xl:col-span-3 flex flex-col overflow-hidden"
+          className="lg:col-span-7 flex flex-col overflow-hidden"
         >
           <motion.div
             {...fadeUp}
             transition={{ ...fadeUp.transition, delay: 0.1 }}
+            className="flex flex-col"
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
-                <Folder className="h-3.5 w-3.5 text-text-muted" />
-                <span className="text-xs font-medium text-text-muted">节点目录</span>
+                <Sparkles className="h-3.5 w-3.5 text-text-muted" />
+                <span className="text-xs font-medium text-text-muted">粒子云神经元</span>
               </div>
               <span className="text-3xs text-text-subtle">{nodes.length} 个根节点</span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 lg:max-h-vh-minus-13rem">
+            <div className="relative min-h-[400px] flex-1 lg:h-[calc(100vh-15rem)]">
               {nodes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="flex h-full min-h-[400px] flex-col items-center justify-center py-16 text-center">
                   <GlassLayer
                     asChild
                     intensity="default"
@@ -216,20 +207,12 @@ export default function LifeTreePage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-0.5">
-                  {nodes.map((node) => (
-                    <TreeNode
-                      key={node.id}
-                      node={node}
-                      depth={0}
-                      expanded={expanded}
-                      selectedId={selectedId}
-                      onToggle={toggleExpand}
-                      onSelect={setSelectedId}
-                      onAddChild={handleOpenCreate}
-                    />
-                  ))}
-                </div>
+                <NeuralTreeCanvas
+                  nodes={nodes}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  className="h-full w-full"
+                />
               )}
             </div>
           </motion.div>
@@ -239,7 +222,7 @@ export default function LifeTreePage() {
         <motion.div
           {...fadeUp}
           transition={{ ...fadeUp.transition, delay: 0.15 }}
-          className="lg:col-span-8 xl:col-span-9"
+          className="lg:col-span-5"
         >
           <AnimatePresence mode="wait">
             {selectedNode ? (
@@ -276,7 +259,7 @@ export default function LifeTreePage() {
                   </GlassLayer>
                   <p className="mt-4 text-base font-medium text-text">选择一个节点</p>
                   <p className="mt-1 text-sm text-text-muted max-w-xs">
-                    在左侧树中选择节点查看详情与关联记忆
+                    在左侧粒子云中点击发光粒子查看详情与关联记忆
                   </p>
                 </motion.div>
               </GlassLayer>
@@ -295,125 +278,6 @@ export default function LifeTreePage() {
         }}
       />
     </PageTransition>
-  );
-}
-
-/** Recursive tree node renderer. */
-function TreeNode({
-  node,
-  depth,
-  expanded,
-  selectedId,
-  onToggle,
-  onSelect,
-  onAddChild,
-}: {
-  node: LifeTreeNode;
-  depth: number;
-  expanded: Set<string>;
-  selectedId: string | null;
-  onToggle: (id: string) => void;
-  onSelect: (id: string) => void;
-  onAddChild: (parentId: string) => void;
-}) {
-  const children = node.children ?? [];
-  const hasChildren = children.length > 0;
-  const isExpanded = expanded.has(node.id);
-  const isSelected = selectedId === node.id;
-  const meta = nodeTypeMeta[node.type] ?? nodeTypeMeta[LifeTreeNodeType.CATEGORY];
-  const Icon = meta.icon;
-
-  return (
-    <div>
-      <motion.div
-        className={cn(
-          'group flex items-center gap-1.5 rounded-xl border py-2 pr-2 transition-[background-color,border-color,color] duration-300',
-          isSelected
-            ? 'bg-surface border-[var(--color-border-focus)]/30'
-            : 'border-transparent hover:bg-[var(--color-gray-950)]',
-        )}
-        style={{
-          paddingLeft: 'calc(var(--tree-indent) * var(--depth) + var(--tree-offset))',
-          '--depth': depth,
-        } as React.CSSProperties}
-        whileHover={{ scale: 1.005 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      >
-        {hasChildren ? (
-          <button
-            onClick={() => onToggle(node.id)}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface hover:text-text focus-ring"
-            aria-label={isExpanded ? '收起' : '展开'}
-          >
-            <ChevronRight
-              className={cn('h-3.5 w-3.5 transition-transform duration-200', isExpanded && 'rotate-90')}
-            />
-          </button>
-        ) : (
-          <span className="h-6 w-6 shrink-0" />
-        )}
-
-        <button
-          onClick={() => onSelect(node.id)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-ring rounded-lg py-1 pr-1"
-        >
-          <span
-            className={cn(
-              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors duration-200',
-              isSelected ? 'bg-surface border-border' : 'bg-surface/50 border-border',
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" style={{ color: meta.color }} />
-          </span>
-          <span
-            className={cn(
-              'truncate text-sm transition-colors',
-              isSelected ? 'font-medium text-accent' : 'text-text',
-            )}
-          >
-            {node.title}
-          </span>
-          {hasChildren && (
-            <span className="shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-3xs text-text-muted">
-              {children.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => onAddChild(node.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-surface hover:text-accent group-hover:opacity-100 focus-ring"
-          aria-label="添加子节点"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      </motion.div>
-
-      <AnimatePresence initial={false}>
-        {isExpanded && hasChildren && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: EASE }}
-            className="overflow-hidden"
-          >
-            {children.map((child) => (
-              <TreeNode
-                key={child.id}
-                node={child}
-                depth={depth + 1}
-                expanded={expanded}
-                selectedId={selectedId}
-                onToggle={onToggle}
-                onSelect={onSelect}
-                onAddChild={onAddChild}
-              />
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }
 

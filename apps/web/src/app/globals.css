@@ -830,11 +830,36 @@
   position: relative;
   isolation: isolate;
   min-height: calc(100dvh - var(--safe-top));
-  padding: var(--space-2xl) var(--space-lg) var(--home-dock-clearance);
+  padding: var(--space-xl) var(--space-lg) var(--home-dock-clearance);
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-xl);
-  place-items: center;
+  grid-template-areas:
+    "top"
+    "left"
+    "core"
+    "right"
+    "bottom";
+  gap: var(--space-lg);
+  max-width: 100rem;
+  margin: 0 auto;
+}
+
+@media (min-width: 64rem) {
+  .spatial-home {
+    grid-template-columns: 15rem 1fr 18rem;
+    grid-template-areas:
+      "top    top    top"
+      "left   core   right"
+      "bottom bottom bottom";
+    gap: var(--space-xl);
+    padding: var(--space-xl) var(--space-2xl) var(--home-dock-clearance);
+  }
+}
+
+@media (min-width: 80rem) {
+  .spatial-home {
+    grid-template-columns: 16rem 1fr 19rem;
+  }
 }
 
 .spatial-home__canvas {
@@ -850,11 +875,18 @@
 
 /* 顶部四个状态卡片 */
 .spatial-home__top-cards {
+  grid-area: top;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-sm);
   width: 100%;
-  max-width: 58rem;
+}
+
+@media (min-width: 48rem) {
+  .spatial-home__top-cards {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+  }
 }
 
 .spatial-card {
@@ -884,26 +916,26 @@
 }
 
 .spatial-card small {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   font-weight: 400;
 }
 
 .spatial-card strong {
-  font-size: var(--font-size-xl);
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 /* 左侧家庭入口 */
 .spatial-home__left {
+  grid-area: left;
   width: 100%;
-  max-width: 58rem;
 }
 
 .spatial-nav__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-xs);
   margin: 0;
   padding: 0;
@@ -940,13 +972,13 @@
 }
 
 .spatial-nav__item strong {
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: inherit;
 }
 
 .spatial-nav__item small {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -955,33 +987,71 @@
 
 /* 中心粒子生命核 */
 .spatial-home__core {
+  grid-area: core;
   position: relative;
   width: 100%;
-  max-width: 52rem;
   aspect-ratio: 16 / 10;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 20rem;
+}
+
+@media (min-width: 64rem) {
+  .spatial-home__core {
+    aspect-ratio: 4 / 3;
+    min-height: 24rem;
+  }
 }
 
 .spatial-home__life-core {
+  position: relative;
   width: 100%;
   height: 100%;
   border-radius: var(--radius-2xl);
 }
 
+.life-core__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* 悬停时浮出的粒子类别标签 */
+.life-core__tag {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - var(--space-sm)));
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-glass-strong);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(12px);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* 右侧信息面板 */
 .spatial-home__right {
+  grid-area: right;
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
   width: 100%;
-  max-width: 24rem;
 }
 
 .spatial-panel {
-  padding: var(--space-xl);
+  padding: var(--space-lg);
   border-radius: var(--radius-xl);
+}
+
+@media (min-width: 48rem) {
+  .spatial-panel {
+    padding: var(--space-xl);
+  }
 }
 
 .panel-title {
@@ -989,7 +1059,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-lg);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -1010,7 +1080,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-primary);
 }
 
@@ -1023,14 +1093,14 @@
 }
 
 .panel-list__row > small {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
 
 /* 底部时间线 */
 .spatial-home__bottom {
+  grid-area: bottom;
   width: 100%;
-  max-width: 58rem;
 }
 
 .spatial-timeline {
@@ -1043,7 +1113,7 @@
   align-items: center;
   gap: var(--space-sm);
   margin-bottom: var(--space-lg);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -1059,10 +1129,10 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--space-md);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-primary);
   padding: var(--space-sm) 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .timeline-item:last-child {
@@ -1076,12 +1146,12 @@
 }
 
 .timeline-item small {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
 
 .timeline-item time {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -1089,20 +1159,35 @@
 /* 输入框 */
 .spatial-home__input {
   position: fixed;
-  left: var(--space-lg);
-  right: var(--space-lg);
-  bottom: calc(var(--home-dock-clearance) - var(--space-lg));
+  left: var(--space-sm);
+  right: var(--space-sm);
+  bottom: calc(var(--home-mobile-dock-clearance) - var(--space-sm));
   max-width: 48rem;
   margin: 0 auto;
   z-index: 20;
 }
 
+@media (min-width: 48rem) {
+  .spatial-home__input {
+    left: var(--space-lg);
+    right: var(--space-lg);
+    bottom: calc(var(--home-dock-clearance) - var(--space-lg));
+  }
+}
+
 .spatial-input-shell {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md) var(--space-lg);
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-full);
+}
+
+@media (min-width: 48rem) {
+  .spatial-input-shell {
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+  }
 }
 
 .spatial-input-shell > input {
@@ -1111,7 +1196,7 @@
   border: none;
   outline: none;
   color: var(--color-text-primary);
-  font-size: var(--font-size-md);
+  font-size: var(--text-base);
   font-family: var(--font-body);
 }
 
