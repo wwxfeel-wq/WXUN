@@ -424,7 +424,7 @@ function SharedMemoryRow({
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-medium text-text">记忆 #{shared.memoryId.slice(0, 8)}</p>
+            <p className="truncate text-sm font-medium text-text">记忆 #{(shared.memoryId ?? 'unknown').slice(0, 8)}</p>
             <Badge className={status.className}>{status.label}</Badge>
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
