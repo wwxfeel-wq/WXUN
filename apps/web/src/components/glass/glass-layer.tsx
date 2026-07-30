@@ -91,66 +91,74 @@ function GlassEffects({
 }) {
   return (
     <>
+      {/* 外阴影：柔和的环境阴影 + 紧贴的接地阴影
+          Apple Liquid Glass 的阴影特点：大范围、低透明度、柔和扩散 */}
       {shadow && (
         <span
           aria-hidden
           className="pointer-events-none absolute -inset-y-3 -inset-x-2 z-glass-below rounded-[inherit] opacity-70 blur-2xl"
           style={{
             background:
-              'radial-gradient(ellipse 80% 70% at 50% 100%, rgba(0,0,0,0.45), transparent 70%)',
+              'radial-gradient(ellipse 90% 80% at 50% 100%, rgba(0,0,0,0.40), transparent 70%)',
           }}
         />
       )}
 
-      {/* 玻璃材质渐变：顶部微亮 → 底部微暗，模拟真实玻璃的厚度感 */}
+      {/* 顶部高光渐变：模拟光线从上方照射玻璃表面
+          这是 Apple Liquid Glass 最关键的效果——顶部亮、底部暗
+          高光集中在顶部 15% 区域，中段保持通透，底部轻微暗化 */}
       {smoke && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
             background: `linear-gradient(180deg,
-              rgba(200,210,220,0.06) 0%,
-              rgba(180,190,200,0.03) 25%,
-              transparent 50%,
-              rgba(8,12,18,0.08) 80%,
-              rgba(6,10,16,0.14) 100%
+              rgba(255,255,255,0.22) 0%,
+              rgba(255,255,255,0.10) 6%,
+              rgba(255,255,255,0.03) 15%,
+              transparent 30%,
+              transparent 85%,
+              rgba(0,0,0,0.06) 100%
             )`,
           }}
         />
       )}
 
-      {/* 厚度感：多层内阴影塑造玻璃的实体厚度 */}
+      {/* 厚度感：内阴影塑造玻璃实体厚度
+          顶部内高光 + 底部内暗影 + 0.5px 白色内边 = 凸面玻璃效果
+          这是让玻璃看起来"厚"的关键 */}
       {thickness && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
           style={{
             boxShadow: `
-              inset 0 0 0 1px rgba(160,175,190,0.14),
-              inset 0 1px 3px rgba(0,0,0,0.25),
-              inset 0 -1px 3px rgba(0,0,0,0.15),
-              inset 0 0 20px rgba(0,0,0,0.06)
+              inset 0 1.5px 1px rgba(255,255,255,0.15),
+              inset 0 -1px 1.5px rgba(0,0,0,0.10),
+              inset 0 0 0 0.5px rgba(255,255,255,0.10)
             `,
           }}
         />
       )}
 
-      {/* 顶部边缘高光：细而清晰的浅色线，模拟玻璃切面反光 */}
+      {/* 顶部边缘高光：细而亮的白色线，模拟玻璃切面反光
+          Apple Liquid Glass 的标志性顶部反光线 */}
       {edge && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-2 top-0 z-glass-specular h-px rounded-full opacity-70"
+          className="pointer-events-none absolute inset-x-1.5 top-0 z-glass-specular h-px rounded-full"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(190,205,220,0.28) 25%, rgba(220,235,250,0.38) 50%, rgba(190,205,220,0.28) 75%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(255,255,255,0.35) 15%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.35) 85%, transparent)',
           }}
         />
       )}
 
+      {/* 微弱噪点纹理：防止色带，增加材质真实感 */}
       {noise && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.02] mix-blend-overlay"
+          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.012] mix-blend-overlay"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
           }}
@@ -161,14 +169,15 @@ function GlassEffects({
 }
 
 /**
- * 深色烟熏液态玻璃 — Smoked Liquid Glass
+ * Apple Liquid Glass — 浅色毛玻璃
  *
- * 视觉特征（参考 Apple Liquid Glass）：
- * - 深色半透明灰黑底色，不是亮白透明
- * - 柔和的垂直材质渐变（顶部微亮→底部微暗），模拟玻璃厚度
- * - 极微弱的顶部边缘细线
- * - 细腻的内阴影塑造厚度
- * - 无横向光带、无白色光斑、无强烈折射
+ * 视觉特征（完全复刻 Apple Liquid Glass）：
+ * - 白色半透明底色，背景透过但高度模糊
+ * - 顶部高光渐变（亮白→透明），模拟光线从上方照射
+ * - 顶部边缘细亮线，模拟玻璃切面反光
+ * - 内阴影塑造玻璃厚度（顶部内高光 + 底部内暗影）
+ * - 柔和的外阴影提供悬浮感
+ * - 微弱噪点纹理防止色带
  */
 const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
   (
@@ -265,7 +274,7 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
           children: (
             <>
               {effects}
-              <span className="relative z-glass-content">{child.props.children}</span>
+              <div className="relative z-glass-content">{child.props.children}</div>
             </>
           ),
         } as unknown as React.PropsWithChildren<{ className?: string; style?: React.CSSProperties }>,

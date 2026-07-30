@@ -80,56 +80,62 @@ export default function InterviewPage() {
 
   return (
     <PageTransition>
-      <div className="flex h-dvh-minus-4rem flex-col">
+      <div className="flex h-dvh-minus-4rem flex-col px-3 sm:px-6 pb-2">
         <h1 className="sr-only">家庭访谈</h1>
         {/* Immersive liquid glass chat container */}
-        <GlassLayer asChild intensity="strong">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* Messages */}
-            <div
-              ref={scrollRef}
-              className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-8 sm:py-8"
-            >
-              {messages.length === 0 ? (
-                <EmptyConversation
-                  nickname={user?.profile.nickname}
-                  onStart={(text) => {
-                    sendMessage(text);
-                  }}
-                  starters={STARTERS}
-                />
-              ) : (
-                messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
-                ))
-              )}
-            </div>
+        <GlassLayer
+          intensity="strong"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          {/* Messages */}
+          <div
+            ref={scrollRef}
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-8 sm:py-8 space-y-4 sm:space-y-6"
+          >
+            {messages.length === 0 ? (
+              <EmptyConversation
+                nickname={user?.profile.nickname}
+                onStart={(text) => {
+                  sendMessage(text);
+                }}
+                starters={STARTERS}
+              />
+            ) : (
+              messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))
+            )}
+          </div>
 
-            {/* Error banner */}
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 border-t border-error/30 bg-error/10 px-4 py-2.5 text-sm text-error"
+          {/* Error banner */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex items-center gap-2 border-t border-error/30 bg-error/10 px-4 py-2.5 text-sm text-error"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{error}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Skill level-up / exp notice */}
+          <AnimatePresence>
+            {skillNotice && (
+              <div className="px-4 pt-3">
+                <GlassLayer
+                  intensity="default"
+                  className="rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg"
                 >
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span className="flex-1">{error}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Skill level-up / exp notice */}
-            <AnimatePresence>
-              {skillNotice && (
-                <GlassLayer asChild intensity="strong">
                   <motion.div
                     initial={{ opacity: 0, y: -8, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.99 }}
                     transition={{ type: "spring", stiffness: 400, damping: 28 }}
-                    className="mx-4 mb-3 rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg"
+                    className="flex items-center gap-2.5 w-full"
                   >
                     {skillNotice.type === "levelup" ? (
                       <>
@@ -149,62 +155,60 @@ export default function InterviewPage() {
                     )}
                   </motion.div>
                 </GlassLayer>
-              )}
-            </AnimatePresence>
+              </div>
+            )}
+          </AnimatePresence>
 
-            {/* Input area */}
-            <div
-              className="border-t border-border px-3 py-3 sm:px-8 sm:py-4"
-              style={{
-                paddingBottom: "calc(var(--space-md) + var(--safe-bottom))",
-              }}
+          {/* Input area — 独立玻璃输入框，不嵌套 GlassLayer */}
+          <div
+            className="px-4 py-3 sm:px-6 sm:py-4 border-t border-border"
+            style={{
+              paddingBottom: "calc(var(--space-md) + var(--safe-bottom))",
+            }}
+          >
+            <form
+              onSubmit={handleSubmit}
+              className="mx-auto flex max-w-2xl items-end gap-2 sm:gap-3"
             >
-              <form
-                onSubmit={handleSubmit}
-                className="mx-auto flex max-w-2xl items-end gap-2 sm:gap-3"
+              <div className="glass-card flex flex-1 items-end overflow-hidden !rounded-2xl">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="说点什么，或分享一段回忆..."
+                  aria-label="访谈输入"
+                  rows={1}
+                  disabled={isStreaming}
+                  className="min-h-11 w-full flex-1 resize-none bg-transparent px-4 py-3 text-sm text-text placeholder:text-text-muted/60 outline-none disabled:opacity-[var(--state-disabled-opacity)]"
+                />
+              </div>
+              <motion.button
+                type={isStreaming ? "button" : "submit"}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={isStreaming ? stopStream : undefined}
+                disabled={!isStreaming && !input.trim()}
+                aria-label={isStreaming ? '停止' : '发送'}
+                className={cn(
+                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors focus-ring",
+                  isStreaming
+                    ? "bg-error/20 text-error"
+                    : input.trim()
+                      ? "bg-accent/20 text-accent hover:bg-accent/30"
+                      : "bg-surface text-text-muted",
+                )}
               >
-                <GlassLayer asChild intensity="subtle">
-                  <div className="relative flex flex-1 items-end">
-                    <textarea
-                      ref={inputRef}
-                      value={input}
-                      onChange={handleInputChange}
-                      onKeyDown={handleKeyDown}
-                      placeholder="说点什么，或分享一段回忆..."
-                      aria-label="访谈输入"
-                      rows={1}
-                      disabled={isStreaming}
-                      className="min-h-11 w-full flex-1 resize-none bg-transparent px-4 py-3 text-sm text-text placeholder:text-text-muted/60 outline-none disabled:opacity-[var(--state-disabled-opacity)]"
-                    />
-                  </div>
-                </GlassLayer>
-                <motion.button
-                  type={isStreaming ? "button" : "submit"}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={isStreaming ? stopStream : undefined}
-                  disabled={!isStreaming && !input.trim()}
-                  aria-label={isStreaming ? '停止' : '发送'}
-                  className={cn(
-                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors focus-ring",
-                    isStreaming
-                      ? "bg-error/20 text-error"
-                      : input.trim()
-                        ? "bg-accent/20 text-accent hover:bg-accent/30"
-                        : "bg-surface text-text-muted",
-                  )}
-                >
-                  {isStreaming ? (
-                    <Square className="h-4 w-4" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </motion.button>
-              </form>
-              <p className="mt-2 text-center text-xs text-text-muted/50">
-                按 Enter 发送，Shift + Enter 换行
-              </p>
-            </div>
+                {isStreaming ? (
+                  <Square className="h-4 w-4" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </motion.button>
+            </form>
+            <p className="mt-2 text-center text-xs text-text-muted/50">
+              按 Enter 发送，Shift + Enter 换行
+            </p>
           </div>
         </GlassLayer>
       </div>
