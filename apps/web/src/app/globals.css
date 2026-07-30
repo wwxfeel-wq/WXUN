@@ -1126,7 +1126,7 @@
   position: fixed;
   left: var(--space-sm);
   right: var(--space-sm);
-  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-md));
+  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-lg));
   max-width: 48rem;
   margin: 0 auto;
   z-index: 20;

@@ -102,31 +102,20 @@ function GlassEffects({
         />
       )}
 
-      {/* 烟熏横向光带：模拟光线穿过深色毛玻璃形成的柔和横向模糊条带
-          参考图中的效果：几条水平拉长的浅灰色模糊光带，不是白色光斑 */}
+      {/* 玻璃材质渐变：顶部微亮 → 底部微暗，模拟真实玻璃的厚度感
+          不是横向光带，而是一条柔和的垂直渐变，让玻璃看起来有立体感 */}
       {smoke && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
-            background: `
-              linear-gradient(180deg,
-                transparent 0%,
-                rgba(180,200,220,0.06) 8%,
-                rgba(200,220,240,0.10) 12%,
-                rgba(180,200,220,0.06) 16%,
-                transparent 22%,
-                transparent 42%,
-                rgba(160,180,200,0.05) 48%,
-                rgba(180,200,220,0.08) 52%,
-                rgba(160,180,200,0.04) 58%,
-                transparent 66%,
-                transparent 78%,
-                rgba(140,160,180,0.04) 84%,
-                rgba(160,180,200,0.06) 88%,
-                transparent 94%
-              )
-            `,
+            background: `linear-gradient(180deg,
+              rgba(200,210,220,0.05) 0%,
+              rgba(180,190,200,0.02) 30%,
+              transparent 50%,
+              rgba(10,14,20,0.06) 85%,
+              rgba(8,12,18,0.10) 100%
+            )`,
           }}
         />
       )}
@@ -138,9 +127,9 @@ function GlassEffects({
           className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
           style={{
             boxShadow: `
-              inset 0 0 0 0.5px rgba(180,200,220,0.12),
-              inset 0 1px 2px rgba(0,0,0,0.15),
-              inset 0 -1px 2px rgba(0,0,0,0.08)
+              inset 0 0 0 0.5px rgba(160,175,190,0.10),
+              inset 0 1px 2px rgba(0,0,0,0.18),
+              inset 0 -1px 2px rgba(0,0,0,0.10)
             `,
           }}
         />
@@ -150,10 +139,10 @@ function GlassEffects({
       {edge && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 top-0 z-glass-specular h-px rounded-full opacity-60"
+          className="pointer-events-none absolute inset-x-3 top-0 z-glass-specular h-px rounded-full opacity-50"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(200,220,240,0.25) 30%, rgba(220,235,250,0.35) 50%, rgba(200,220,240,0.25) 70%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(180,195,210,0.18) 30%, rgba(200,215,230,0.24) 50%, rgba(180,195,210,0.18) 70%, transparent)',
           }}
         />
       )}
@@ -161,7 +150,7 @@ function GlassEffects({
       {noise && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.025] mix-blend-overlay"
+          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.02] mix-blend-overlay"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
           }}
@@ -174,12 +163,12 @@ function GlassEffects({
 /**
  * 深色烟熏液态玻璃 — Smoked Liquid Glass
  *
- * 视觉特征（参考用户提供的毛玻璃效果）：
+ * 视觉特征（参考 Apple Liquid Glass）：
  * - 深色半透明灰黑底色，不是亮白透明
- * - 柔和的横向模糊光带（模拟光线穿过毛玻璃）
+ * - 柔和的垂直材质渐变（顶部微亮→底部微暗），模拟玻璃厚度
  * - 极微弱的顶部边缘细线
  * - 细腻的内阴影塑造厚度
- * - 无白色光斑、无强烈折射、无色散彩虹边
+ * - 无横向光带、无白色光斑、无强烈折射
  */
 const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
   (
