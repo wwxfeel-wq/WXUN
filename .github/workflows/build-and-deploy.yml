@@ -84,6 +84,8 @@ jobs:
           script: |
             set -e
             cd /www/wwwroot/echolife
+            echo "== 同步配置文件 =="
+            git pull origin main
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \
