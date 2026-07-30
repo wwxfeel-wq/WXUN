@@ -294,8 +294,8 @@
   --color-home-panel-inset: inset 0 1px 0 rgba(160, 180, 200, 0.08), inset 0 0 0 1px rgba(140, 160, 180, 0.04);
   --color-home-grid: rgba(93, 211, 232, 0.04);
   --color-home-vignette: rgba(8, 11, 16, 0.62);
-  --home-panel-blur: blur(22px) saturate(1.5);
-  --home-panel-blur-strong: blur(28px) saturate(1.6);
+  --home-panel-blur: blur(22px) saturate(1.2);
+  --home-panel-blur-strong: blur(28px) saturate(1.25);
   --home-panel-width: 17rem;
   --home-edge-gap: clamp(0.75rem, 1.8vw, 1.75rem);
   --home-top-gap: clamp(4.75rem, 9vh, 6.75rem);
@@ -521,14 +521,14 @@
   --bp-3xl: 1920px;
 
   /* === Liquid Glass Effects ===
-   * Apple Liquid Glass: blur(24px) saturate(1.5)
-   * 适度模糊 + 较高饱和度提升，让背景透过但色彩更鲜活。
-   * saturate 是 Apple Liquid Glass 的关键——让玻璃后的颜色更生动。
+   * Apple Liquid Glass: blur(24px) saturate(1.2)
+   * 适度模糊 + 适度饱和度，避免过高 saturate 导致颜色溢出（白色斑块）
+   * 和 GPU 性能问题。saturate 1.2 是性能与视觉效果的最佳平衡点。
    */
-  --glass-blur: blur(24px) saturate(1.5);
-  --glass-blur-strong: blur(32px) saturate(1.6);
-  --glass-blur-extreme: blur(40px) saturate(1.7);
-  --glass-blur-subtle: blur(16px) saturate(1.35);
+  --glass-blur: blur(24px) saturate(1.2);
+  --glass-blur-strong: blur(32px) saturate(1.25);
+  --glass-blur-extreme: blur(40px) saturate(1.3);
+  --glass-blur-subtle: blur(16px) saturate(1.15);
   --glass-blur-radius: 24px;
   --glass-blur-radius-strong: 32px;
   --glass-blur-radius-extreme: 40px;

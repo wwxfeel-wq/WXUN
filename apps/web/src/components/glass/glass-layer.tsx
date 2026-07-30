@@ -106,39 +106,53 @@ function GlassEffects({
 
       {/* 顶部高光渐变：模拟光线从上方照射玻璃表面
           这是 Apple Liquid Glass 最关键的效果——顶部亮、底部暗
-          高光集中在顶部 15% 区域，中段保持通透，底部轻微暗化 */}
+          高光集中在顶部 12% 区域，中段保持通透，底部轻微暗化 */}
       {smoke && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
             background: `linear-gradient(180deg,
-              rgba(255,255,255,0.22) 0%,
-              rgba(255,255,255,0.10) 6%,
-              rgba(255,255,255,0.03) 15%,
-              transparent 30%,
-              transparent 85%,
-              rgba(0,0,0,0.06) 100%
+              rgba(255,255,255,0.28) 0%,
+              rgba(255,255,255,0.14) 5%,
+              rgba(255,255,255,0.04) 12%,
+              transparent 25%,
+              transparent 82%,
+              rgba(0,0,0,0.08) 100%
             )`,
           }}
         />
       )}
 
-      {/* 厚度感：内阴影塑造玻璃实体厚度
-          顶部内高光 + 底部内暗影 + 0.5px 白色内边 = 凸面玻璃效果
+      {/* 厚度感：双层内阴影塑造玻璃实体厚度
+          第一层：顶部内高光（亮）+ 底部内暗影（深）= 凸面玻璃效果
+          第二层：1px 白色内边框 + 内侧暗边 = 玻璃切面厚度
           这是让玻璃看起来"厚"的关键 */}
       {thickness && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
-          style={{
-            boxShadow: `
-              inset 0 1.5px 1px rgba(255,255,255,0.15),
-              inset 0 -1px 1.5px rgba(0,0,0,0.10),
-              inset 0 0 0 0.5px rgba(255,255,255,0.10)
-            `,
-          }}
-        />
+        <>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
+            style={{
+              boxShadow: `
+                inset 0 2px 2px rgba(255,255,255,0.20),
+                inset 0 -2px 3px rgba(0,0,0,0.14),
+                inset 0 0 0 1px rgba(255,255,255,0.12)
+              `,
+            }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
+            style={{
+              boxShadow: `
+                inset 0 0 0 0.5px rgba(255,255,255,0.06),
+                inset 2px 0 4px -2px rgba(0,0,0,0.10),
+                inset -2px 0 4px -2px rgba(0,0,0,0.10)
+              `,
+            }}
+          />
+        </>
       )}
 
       {/* 顶部边缘高光：细而亮的白色线，模拟玻璃切面反光
@@ -146,10 +160,10 @@ function GlassEffects({
       {edge && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-1.5 top-0 z-glass-specular h-px rounded-full"
+          className="pointer-events-none absolute inset-x-1 top-0 z-glass-specular h-px rounded-full"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(255,255,255,0.35) 15%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.35) 85%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(255,255,255,0.40) 12%, rgba(255,255,255,0.65) 50%, rgba(255,255,255,0.40) 88%, transparent)',
           }}
         />
       )}
