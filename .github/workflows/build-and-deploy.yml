@@ -85,8 +85,16 @@ jobs:
             set -e
             cd /www/wwwroot/echolife
             echo "== 同步 nginx 配置 =="
-            curl -sL --max-time 30 https://cdn.jsdelivr.net/gh/wwxfeel-wq/WXUN@main/infra/nginx/nginx.conf -o infra/nginx/nginx.conf || \
-              curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf -o infra/nginx/nginx.conf
+            curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
+              -o infra/nginx/nginx.conf || \
+              curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
+              -o infra/nginx/nginx.conf
+            # 验证下载的配置不包含 HSTS（自签名证书不应该用 HSTS）
+            if grep -q "Strict-Transport-Security" infra/nginx/nginx.conf; then
+              echo "WARNING: Downloaded config contains HSTS, removing..."
+              sed -i '/Strict-Transport-Security/d' infra/nginx/nginx.conf
+            fi
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \
