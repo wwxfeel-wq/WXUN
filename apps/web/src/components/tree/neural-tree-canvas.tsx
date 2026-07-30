@@ -106,10 +106,10 @@ function buildNeuralNodes(roots: LifeTreeNode[]): BuiltTree {
     let orbitSpeed: number;
     if (parentIndex < 0) {
       // 根节点：多个则围绕中心排布，单个则居于正中
-      orbitRadius = rootCount > 1 ? 0.32 : 0;
+      orbitRadius = rootCount > 1 ? 0.38 : 0.05;
       orbitSpeed = 0.0012;
     } else {
-      orbitRadius = 0.2 + depth * 0.05 + (Math.random() - 0.5) * 0.04;
+      orbitRadius = 0.32 + depth * 0.06 + (Math.random() - 0.5) * 0.04;
       // 相邻层级反向公转，制造有机的神经元流动感
       const dir = depth % 2 === 0 ? 1 : -1;
       orbitSpeed = (0.0035 + Math.random() * 0.002) * dir;
@@ -125,7 +125,7 @@ function buildNeuralNodes(roots: LifeTreeNode[]): BuiltTree {
       orbitRadius,
       orbitSpeed,
       phase: Math.random() * Math.PI * 2,
-      size: depth === 0 ? 3.6 : Math.max(1.5, 2.6 - depth * 0.28),
+      size: depth === 0 ? 7.5 : Math.max(3.5, 5.5 - depth * 0.4),
       color,
     });
 
@@ -300,7 +300,7 @@ export default function NeuralTreeCanvas({
     const render = () => {
       const cx = width / 2;
       const cy = height / 2;
-      const baseScale = Math.min(width, height) * 0.4;
+      const baseScale = Math.min(width, height) * 0.82;
       const t = frame;
 
       // 指针视差：缓动到目标偏移，松手后回正
@@ -413,8 +413,8 @@ export default function NeuralTreeCanvas({
       for (const q of projected) {
         const isHover = q.id === hoveredId;
         const isSel = q.id === selId;
-        const boost = isHover ? 1.8 : isSel ? 1.3 : 1;
-        const glow = q.size * 5.2 * boost;
+        const boost = isHover ? 1.8 : isSel ? 1.4 : 1;
+        const glow = q.size * 8.0 * boost;
 
         let alpha = q.depth === 0 ? 0.85 : 0.62;
         if (isHover) alpha = Math.min(1, alpha + 0.3);
@@ -524,7 +524,7 @@ export default function NeuralTreeCanvas({
     <div
       ref={containerRef}
       className={cn('relative w-full overflow-hidden', className)}
-      style={{ minHeight: 400 }}
+      style={{ minHeight: 480 }}
     >
       <canvas
         ref={canvasRef}

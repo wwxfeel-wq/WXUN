@@ -16,6 +16,16 @@ async function bootstrap() {
   const corsOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:3000');
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
+  // Expand CORS origins: auto-add HTTP versions of HTTPS origins
+  // so that HTTP access (e.g. http://47.103.20.211) also works
+  const rawOrigins = corsOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+  const expandedOrigins = rawOrigins.flatMap((o) => {
+    if (o.startsWith('https://')) {
+      return [o, o.replace('https://', 'http://')];
+    }
+    return [o];
+  });
+
   // Security: Helmet middleware
   app.use(
     helmet({
@@ -34,15 +44,15 @@ async function bootstrap() {
             },
           }
         : false,
-      hsts: isProduction
-        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-        : false,
+      // Disable HSTS — the site is served via HTTP without SSL,
+      // HSTS would force browsers to HTTPS and break access
+      hsts: false,
     }),
   );
 
   // Enable CORS
   app.enableCors({
-    origin: corsOrigins.split(',').map((o) => o.trim()),
+    origin: expandedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With'],

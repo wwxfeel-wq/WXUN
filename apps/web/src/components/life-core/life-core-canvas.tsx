@@ -115,7 +115,7 @@ function buildNodes(counts: LifeCoreCounts, level: number): Node[] {
         drift: 0.35 + Math.random() * 0.65,
         activation: 0,
         birth: 1,
-        size: kind === 'agent' ? 2.6 : kind === 'memory' ? 2.1 : 1.7,
+        size: kind === 'agent' ? 4.5 : kind === 'memory' ? 3.6 : 3.0,
       });
     }
   });
@@ -257,7 +257,7 @@ export default function LifeCoreCanvas({
       const currentState = stateRef.current;
       const cx = width / 2;
       const cy = height / 2;
-      const baseScale = Math.min(width, height) * 0.42;
+      const baseScale = Math.min(width, height) * 0.68;
 
       // 陪伴：核心区域呼吸（约 4 秒一次，接近人的静息呼吸）
       const breath = Math.sin((frame / 240) * Math.PI * 2);
@@ -278,14 +278,14 @@ export default function LifeCoreCanvas({
       ctx.clearRect(0, 0, width, height);
 
       // ── 核心光晕：生命体的心脏 ──
-      const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseScale * 0.9);
+      const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseScale * 1.1);
       const coreAlpha = 0.15 + (currentState === 'companion' ? breath * 0.05 : 0.02);
       coreGlow.addColorStop(0, `rgba(0, 229, 168, ${Math.max(0.05, coreAlpha).toFixed(3)})`);
       coreGlow.addColorStop(0.45, 'rgba(0, 229, 168, 0.04)');
       coreGlow.addColorStop(1, 'rgba(0, 229, 168, 0)');
       ctx.fillStyle = coreGlow;
       ctx.beginPath();
-      ctx.arc(cx, cy, baseScale * 0.9, 0, Math.PI * 2);
+      ctx.arc(cx, cy, baseScale * 1.1, 0, Math.PI * 2);
       ctx.fill();
 
       // ── 回忆：逐个点亮节点 ──
@@ -377,7 +377,7 @@ export default function LifeCoreCanvas({
           const dx = a.x - b.x;
           const dy = a.y - b.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const maxDist = baseScale * 0.16;
+          const maxDist = baseScale * 0.20;
           if (dist > maxDist) continue;
 
           const closeness = 1 - dist / maxDist;
@@ -404,7 +404,7 @@ export default function LifeCoreCanvas({
 
       for (const q of projected) {
         const lit = q.n.activation;
-        const glow = q.n.size * q.depth * (5.4 + lit * 4.2);
+        const glow = q.n.size * q.depth * (7.5 + lit * 5.0);
         const alpha = Math.min(1, q.alpha * 0.85 + lit * 0.5);
 
         ctx.globalAlpha = alpha;

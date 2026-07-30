@@ -958,11 +958,26 @@ export class FamilyHubService {
         toolResults,
       });
 
+      // 提供更具诊断性的错误提示
+      let diagHint = '请检查 API Key 配置后再试。';
+      const lowerErr = errorMessage.toLowerCase();
+      if (lowerErr.includes('401') || lowerErr.includes('403')) {
+        diagHint = 'API Key 无效或已过期，请在设置页面重新配置 AI 密钥。';
+      } else if (lowerErr.includes('400') || lowerErr.includes('model')) {
+        diagHint = '模型名称可能不正确，请检查 AI 提供商配置。';
+      } else if (lowerErr.includes('timeout') || lowerErr.includes('aborted')) {
+        diagHint = '请求超时，AI 服务可能繁忙，请稍后重试。';
+      } else if (lowerErr.includes('fetch') || lowerErr.includes('network') || lowerErr.includes('econnrefused')) {
+        diagHint = '无法连接到 AI 服务，请检查服务器网络和 API 地址配置。';
+      } else if (lowerErr.includes('quota') || lowerErr.includes('rate') || lowerErr.includes('429')) {
+        diagHint = 'AI 调用额度已用完或请求过于频繁，请稍后重试。';
+      }
+
       return {
         success: false,
         agentName: agent.name,
         agentCode: agent.code,
-        response: `抱歉，我暂时无法响应。错误信息：${errorMessage}。请检查 API Key 配置后再试。`,
+        response: `抱歉，我暂时无法响应。错误信息：${errorMessage}。${diagHint}`,
         tokensUsed: 0,
         model: '',
         toolResults,

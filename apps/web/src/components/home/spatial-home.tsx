@@ -10,6 +10,7 @@ import {
   BrainCircuit,
   GraduationCap,
   Hourglass,
+  MessageCircle,
   MessagesSquare,
   Orbit,
   Sparkles,
@@ -35,6 +36,7 @@ const familyEntries = [
   { href: '/interview', icon: MessagesSquare, label: '陪伴', hint: '和时墨聊聊' },
   { href: '/center', icon: Sparkles, label: '回忆', hint: '家庭记忆库' },
   { href: '/capsules', icon: Hourglass, label: '时间胶囊', hint: '写给未来' },
+  { href: '/wechat-bot', icon: MessageCircle, label: '微信 Bot', hint: '扫码连接家庭群' },
   { href: '/skills', icon: GraduationCap, label: '能力', hint: '时墨的成长' },
 ];
 
