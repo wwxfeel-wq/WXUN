@@ -143,40 +143,40 @@
   /* === Glass Surfaces (gray-blue translucent) ===
    * 灰蓝透明液态玻璃，半透明深色玻璃，内部轻微渐变，边缘柔光。
    */
-  --color-glass: rgba(155, 175, 195, 0.20);
-  --color-glass-hover: rgba(155, 175, 195, 0.30);
-  --color-glass-strong: rgba(155, 175, 195, 0.34);
-  --color-glass-strong-hover: rgba(155, 175, 195, 0.44);
-  --color-glass-extreme: rgba(155, 175, 195, 0.46);
-  --color-glass-extreme-hover: rgba(155, 175, 195, 0.56);
-  --color-glass-border: rgba(170, 190, 210, 0.28);
-  --color-glass-border-hover: rgba(170, 190, 210, 0.40);
-  --color-glass-border-strong: rgba(195, 215, 235, 0.58);
-  --color-glass-highlight: rgba(215, 230, 250, 0.56);
-  --color-glass-shimmer: rgba(225, 240, 255, 0.70);
-  --color-glass-tint-primary: rgba(0, 229, 168, 0.12);
-  --color-glass-tint-secondary: rgba(122, 184, 240, 0.12);
-  --color-glass-tint-rose: rgba(242, 130, 140, 0.10);
-  --color-glass-tint-highlight: rgba(245, 200, 91, 0.10);
+  --color-glass: rgba(155, 175, 195, 0.10);
+  --color-glass-hover: rgba(155, 175, 195, 0.16);
+  --color-glass-strong: rgba(155, 175, 195, 0.16);
+  --color-glass-strong-hover: rgba(155, 175, 195, 0.24);
+  --color-glass-extreme: rgba(155, 175, 195, 0.22);
+  --color-glass-extreme-hover: rgba(155, 175, 195, 0.30);
+  --color-glass-border: rgba(170, 190, 210, 0.14);
+  --color-glass-border-hover: rgba(170, 190, 210, 0.22);
+  --color-glass-border-strong: rgba(195, 215, 235, 0.30);
+  --color-glass-highlight: rgba(215, 230, 250, 0.32);
+  --color-glass-shimmer: rgba(225, 240, 255, 0.42);
+  --color-glass-tint-primary: rgba(0, 229, 168, 0.06);
+  --color-glass-tint-secondary: rgba(122, 184, 240, 0.06);
+  --color-glass-tint-rose: rgba(242, 130, 140, 0.05);
+  --color-glass-tint-highlight: rgba(245, 200, 91, 0.05);
 
   /* === Liquid Glass Edge & Refraction Tokens ===
    * 边缘高光从强白边改为柔和、有层次的微光。
    */
-  --color-glass-edge-light: rgba(255, 255, 255, 0.80);
-  --color-glass-edge-soft: rgba(255, 255, 255, 0.64);
-  --color-glass-edge-faint: rgba(255, 255, 255, 0.48);
-  --color-glass-edge-subtle: rgba(255, 255, 255, 0.34);
-  --color-glass-edge-ghost: rgba(255, 255, 255, 0.22);
-  --color-glass-edge-dim: rgba(255, 255, 255, 0.14);
-  --color-glass-edge-micro: rgba(255, 255, 255, 0.10);
-  --color-glass-edge-nano: rgba(255, 255, 255, 0.06);
-  --color-glass-shine: rgba(255, 255, 255, 0.94);
-  --color-glass-shine-strong: rgba(255, 255, 255, 0.86);
-  --color-glass-shine-medium: rgba(255, 255, 255, 0.72);
-  --color-glass-shine-soft: rgba(255, 255, 255, 0.58);
-  --color-glass-shine-faint: rgba(255, 255, 255, 0.44);
-  --color-glass-shine-dim: rgba(255, 255, 255, 0.32);
-  --color-glass-shine-ghost: rgba(255, 255, 255, 0.22);
+  --color-glass-edge-light: rgba(255, 255, 255, 0.45);
+  --color-glass-edge-soft: rgba(255, 255, 255, 0.34);
+  --color-glass-edge-faint: rgba(255, 255, 255, 0.24);
+  --color-glass-edge-subtle: rgba(255, 255, 255, 0.16);
+  --color-glass-edge-ghost: rgba(255, 255, 255, 0.10);
+  --color-glass-edge-dim: rgba(255, 255, 255, 0.07);
+  --color-glass-edge-micro: rgba(255, 255, 255, 0.05);
+  --color-glass-edge-nano: rgba(255, 255, 255, 0.03);
+  --color-glass-shine: rgba(255, 255, 255, 0.55);
+  --color-glass-shine-strong: rgba(255, 255, 255, 0.42);
+  --color-glass-shine-medium: rgba(255, 255, 255, 0.32);
+  --color-glass-shine-soft: rgba(255, 255, 255, 0.24);
+  --color-glass-shine-faint: rgba(255, 255, 255, 0.16);
+  --color-glass-shine-dim: rgba(255, 255, 255, 0.10);
+  --color-glass-shine-ghost: rgba(255, 255, 255, 0.06);
   --color-glass-inner-shadow: color-mix(in srgb, var(--color-shadow) 18%, transparent);
   --color-glass-inner-shadow-strong: color-mix(in srgb, var(--color-shadow) 28%, transparent);
 
@@ -281,17 +281,17 @@
    * 深蓝黑空间背景，灰蓝玻璃面板。
    */
   --color-home-canvas: #080b10;
-  --color-home-panel: rgba(20, 30, 40, 0.28);
-  --color-home-panel-tint: rgba(140, 160, 180, 0.08);
-  --color-home-panel-border: rgba(160, 180, 200, 0.16);
-  --color-home-panel-border-hover: rgba(160, 180, 200, 0.24);
-  --color-home-panel-shine: rgba(180, 200, 220, 0.34);
-  --color-home-panel-shadow: 0 24px 60px -20px rgba(8, 11, 16, 0.55), 0 8px 24px -12px rgba(8, 11, 16, 0.45);
-  --color-home-panel-inset: inset 0 1px 0 rgba(160, 180, 200, 0.16), inset 0 0 0 1px rgba(140, 160, 180, 0.06);
-  --color-home-grid: rgba(93, 211, 232, 0.08);
+  --color-home-panel: rgba(20, 30, 40, 0.16);
+  --color-home-panel-tint: rgba(140, 160, 180, 0.04);
+  --color-home-panel-border: rgba(160, 180, 200, 0.10);
+  --color-home-panel-border-hover: rgba(160, 180, 200, 0.16);
+  --color-home-panel-shine: rgba(180, 200, 220, 0.18);
+  --color-home-panel-shadow: 0 20px 48px -20px rgba(8, 11, 16, 0.40), 0 6px 18px -12px rgba(8, 11, 16, 0.32);
+  --color-home-panel-inset: inset 0 1px 0 rgba(160, 180, 200, 0.10), inset 0 0 0 1px rgba(140, 160, 180, 0.04);
+  --color-home-grid: rgba(93, 211, 232, 0.05);
   --color-home-vignette: rgba(8, 11, 16, 0.62);
-  --home-panel-blur: blur(28px) saturate(1.6) brightness(1.05);
-  --home-panel-blur-strong: blur(40px) saturate(1.8) brightness(1.08);
+  --home-panel-blur: blur(20px) saturate(1.35) brightness(1.02);
+  --home-panel-blur-strong: blur(28px) saturate(1.5) brightness(1.04);
   --home-panel-width: 17rem;
   --home-edge-gap: clamp(0.75rem, 1.8vw, 1.75rem);
   --home-top-gap: clamp(4.75rem, 9vh, 6.75rem);

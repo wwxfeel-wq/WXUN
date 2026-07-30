@@ -830,7 +830,7 @@
   position: relative;
   isolation: isolate;
   min-height: calc(100dvh - var(--safe-top));
-  padding: var(--space-xl) var(--space-lg) calc(var(--home-dock-clearance) + var(--space-2xl));
+  padding: var(--space-xl) var(--space-lg) calc(var(--home-dock-clearance) + var(--space-3xl));
   display: grid;
   grid-template-columns: 1fr;
   grid-template-areas:
@@ -838,7 +838,7 @@
     "left"
     "core"
     "right";
-  gap: var(--space-lg);
+  gap: var(--space-xl);
   align-items: center;
   max-width: 100rem;
   margin: 0 auto;
@@ -851,8 +851,8 @@
       "top    top    top"
       "left   core   right";
     grid-template-rows: auto 1fr;
-    gap: var(--space-xl);
-    padding: var(--space-xl) var(--space-2xl) calc(var(--home-dock-clearance) + var(--space-2xl));
+    gap: var(--space-2xl);
+    padding: var(--space-xl) var(--space-2xl) calc(var(--home-dock-clearance) + var(--space-3xl));
     align-items: center;
     align-content: center;
     justify-items: center;
@@ -1004,14 +1004,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: clamp(20rem, 42vh, 30rem);
+  min-height: clamp(18rem, 38vh, 26rem);
 }
 
 @media (min-width: 64rem) {
   .spatial-home__core {
-    aspect-ratio: 4 / 3;
-    min-height: clamp(26rem, 52vh, 44rem);
-    max-height: 60vh;
+    aspect-ratio: 1 / 1;
+    min-height: clamp(24rem, 48vh, 38rem);
+    max-height: 54vh;
   }
 }
 
@@ -1118,7 +1118,7 @@
   position: fixed;
   left: var(--space-sm);
   right: var(--space-sm);
-  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-lg));
+  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-xl));
   max-width: 48rem;
   margin: 0 auto;
   z-index: 20;
@@ -1128,7 +1128,7 @@
   .spatial-home__input {
     left: var(--space-lg);
     right: var(--space-lg);
-    bottom: calc(var(--home-dock-clearance) + var(--space-xl));
+    bottom: calc(var(--home-dock-clearance) + var(--space-2xl));
   }
 }
 

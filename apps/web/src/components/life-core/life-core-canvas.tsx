@@ -472,8 +472,8 @@ export default function LifeCoreCanvas({
     const render = () => {
       const currentState = stateRef.current;
       const cx = width / 2;
-      const cy = height * 0.60;
-      const baseScale = Math.min(width, height) * 0.92;
+      const cy = height * 0.62;
+      const baseScale = Math.min(width, height) * 0.48;
 
       const breath = Math.sin((frame / 240) * Math.PI * 2);
       const breathScale = currentState === 'companion' ? 1 + breath * 0.025 : 1;
@@ -488,15 +488,15 @@ export default function LifeCoreCanvas({
 
       ctx.clearRect(0, 0, width, height);
 
-      // 根部环境光晕：更强、更温润的根系辉光
-      const rootGlow = ctx.createRadialGradient(cx, cy + scale * 0.36, 0, cx, cy + scale * 0.36, baseScale * 1.05);
-      const rootAlpha = 0.22 + (currentState === 'companion' ? breath * 0.06 : 0.03);
-      rootGlow.addColorStop(0, `rgba(0, 229, 168, ${Math.max(0.12, rootAlpha).toFixed(3)})`);
-      rootGlow.addColorStop(0.45, 'rgba(0, 229, 168, 0.07)');
+      // 根部环境光晕：极微弱，只给根系一个淡淡的呼吸底光
+      const rootGlow = ctx.createRadialGradient(cx, cy + scale * 0.36, 0, cx, cy + scale * 0.36, baseScale * 0.55);
+      const rootAlpha = 0.06 + (currentState === 'companion' ? breath * 0.02 : 0.01);
+      rootGlow.addColorStop(0, `rgba(0, 229, 168, ${Math.max(0.04, rootAlpha).toFixed(3)})`);
+      rootGlow.addColorStop(0.6, 'rgba(0, 229, 168, 0.02)');
       rootGlow.addColorStop(1, 'rgba(0, 229, 168, 0)');
       ctx.fillStyle = rootGlow;
       ctx.beginPath();
-      ctx.arc(cx, cy + scale * 0.36, baseScale * 1.05, 0, Math.PI * 2);
+      ctx.arc(cx, cy + scale * 0.36, baseScale * 0.55, 0, Math.PI * 2);
       ctx.fill();
 
       // 回忆状态逐个点亮
@@ -582,10 +582,10 @@ export default function LifeCoreCanvas({
         projected.push({ x, y, alpha, n, depth: n.depth });
       }
 
-      // 绘制分支：先发光层再实体层
+      // 绘制分支：先极细发光层再实体层，避免分支融成光斑
       for (let bi = 0; bi < branches.length; bi++) {
-        drawBranchCurve(bData, bi, scale, 5.5, 0.14, true);
-        drawBranchCurve(bData, bi, scale, 3.2, 0.20, false);
+        drawBranchCurve(bData, bi, scale, 2.4, 0.06, true);
+        drawBranchCurve(bData, bi, scale, 1.1, 0.16, false);
       }
 
       // 绘制脉冲
@@ -594,21 +594,21 @@ export default function LifeCoreCanvas({
         if (pulse.branchIndex < 0 || pulse.branchIndex >= branches.length) continue;
         const pos = pointOnBranch(bData, pulse.branchIndex, Math.min(pulse.t, 1), scale);
         const [r, g, b] = pulse.color;
-        const glow = 9 * pulse.life;
-        ctx.globalAlpha = pulse.life * 0.95;
+        const glow = 4 * pulse.life;
+        ctx.globalAlpha = pulse.life * 0.65;
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${pulse.life})`;
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, glow, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // 绘制突触簇：更亮、更大
+      // 绘制突触簇：小而克制，只在末端形成微光点
       for (const syn of synapses) {
         const tip = pointOnBranch(bData, syn.branchIndex, 1, scale);
         const sx = tip.x + Math.cos(syn.angle + frame * 0.003 + syn.phase) * syn.dist * scale;
         const sy = tip.y + Math.sin(syn.angle + frame * 0.003 + syn.phase) * syn.dist * scale;
-        const glow = syn.size * scale * 14;
-        ctx.globalAlpha = 0.70 + Math.sin(frame * 0.05 + syn.phase) * 0.20;
+        const glow = syn.size * scale * 6;
+        ctx.globalAlpha = 0.35 + Math.sin(frame * 0.05 + syn.phase) * 0.12;
         ctx.drawImage(synapseSprite, sx - glow, sy - glow, glow * 2, glow * 2);
       }
 
@@ -620,9 +620,9 @@ export default function LifeCoreCanvas({
       for (const q of projected) {
         const lit = q.n.activation;
         const isSynapse = q.n.isSynapse;
-        const baseSize = isSynapse ? q.n.size * 1.45 : q.n.size;
-        const glow = baseSize * scale * (8.5 + lit * 7.5);
-        const alpha = Math.min(1, q.alpha * 0.95 + lit * 0.75);
+        const baseSize = isSynapse ? q.n.size * 1.25 : q.n.size;
+        const glow = baseSize * scale * (3.8 + lit * 2.2);
+        const alpha = Math.min(1, q.alpha * 0.85 + lit * 0.45);
 
         ctx.globalAlpha = alpha;
 
@@ -634,7 +634,7 @@ export default function LifeCoreCanvas({
 
         if (p) {
           const d = Math.hypot(q.x - p.x, q.y - p.y);
-          if (d < 36 && (!best || d < best.d)) {
+          if (d < 28 && (!best || d < best.d)) {
             best = { kind: q.n.kind, x: q.x, y: q.y, d };
           }
         }
@@ -647,13 +647,13 @@ export default function LifeCoreCanvas({
       if (best) {
         ctx.globalCompositeOperation = 'lighter';
         const [r, g, b] = NODE_COLOR[best.kind];
-        const hoverGlow = ctx.createRadialGradient(best.x, best.y, 0, best.x, best.y, 32);
-        hoverGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.6)`);
-        hoverGlow.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.2)`);
+        const hoverGlow = ctx.createRadialGradient(best.x, best.y, 0, best.x, best.y, 18);
+        hoverGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`);
+        hoverGlow.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.1)`);
         hoverGlow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
         ctx.fillStyle = hoverGlow;
         ctx.beginPath();
-        ctx.arc(best.x, best.y, 32, 0, Math.PI * 2);
+        ctx.arc(best.x, best.y, 18, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       }

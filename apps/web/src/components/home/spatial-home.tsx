@@ -150,7 +150,7 @@ export function SpatialHome() {
         transition={{ delay: 0.45, duration: 0.5 }}
         aria-label="家庭入口"
       >
-        <GlassLayer intensity="strong" className="spatial-panel spatial-nav">
+        <GlassLayer intensity="default" className="spatial-panel spatial-nav">
           <div className="panel-title">
             <span><Orbit size={14} /> 家庭空间</span>
             <small>{metrics.familyMembers} 位家人</small>
@@ -197,7 +197,7 @@ export function SpatialHome() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.6, duration: 0.5 }}
         >
-          <GlassLayer intensity="strong" className="spatial-panel">
+          <GlassLayer intensity="default" className="spatial-panel">
             <ConsciousnessPanel
               state={lifeCoreState}
               activity={shimoCore.understanding}
@@ -211,7 +211,7 @@ export function SpatialHome() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.7, duration: 0.5 }}
         >
-          <GlassLayer intensity="strong" className="spatial-panel">
+          <GlassLayer intensity="default" className="spatial-panel">
             <div className="panel-title">
               <span><BrainCircuit size={14} /> 掌握能力</span>
               <small>{metrics.masteredSkills} 项</small>
@@ -237,7 +237,7 @@ export function SpatialHome() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.9, duration: 0.5 }}
       >
-        <GlassLayer intensity="strong" className="spatial-input-shell">
+        <GlassLayer intensity="default" className="spatial-input-shell">
           <MessagesSquare size={16} aria-hidden="true" />
           <input
             value={message}
