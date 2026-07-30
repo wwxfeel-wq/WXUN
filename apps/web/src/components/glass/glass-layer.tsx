@@ -15,16 +15,16 @@ export const glassLayerVariants = cva(
     variants: {
       intensity: {
         subtle:
-          'rounded-2xl border border-[var(--color-glass-border)] bg-[var(--color-glass)] backdrop-blur-glass',
+          'rounded-2xl border border-[var(--color-glass-border)] bg-[var(--color-glass)] backdrop-blur-subtle',
         default:
-          'rounded-2xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-strong)] backdrop-blur-extreme',
+          'rounded-2xl border border-[var(--color-glass-border)] bg-[var(--color-glass)] backdrop-blur-glass',
         strong:
-          'rounded-3xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-extreme)] backdrop-blur-extreme',
+          'rounded-2xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-strong)] backdrop-blur-heavy',
         modal:
-          'rounded-3xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-strong)] backdrop-blur-extreme',
+          'rounded-3xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-strong)] backdrop-blur-heavy',
       },
       interactive: {
-        true: 'cursor-pointer hover:bg-[var(--color-glass-hover)] hover:border-[var(--color-glass-border-hover)] hover:shadow-glass-strong active:scale-[var(--state-active-scale)]',
+        true: 'cursor-pointer hover:bg-[var(--color-glass-hover)] hover:border-[var(--color-glass-border-hover)] hover:shadow-glass active:scale-[var(--state-active-scale)]',
         false: '',
       },
     },
@@ -41,26 +41,30 @@ export interface GlassLayerProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof glassLayerVariants>,
     UseGlassLightingOptions {
-  /** Render an additional caustic refraction tint layer. Default true. */
-  caustic?: boolean;
-  /** Render a subtle specular highlight bar. Default true. */
-  specular?: boolean;
-  /** Render a Fresnel edge rim using CSS masks. Default true. */
-  fresnel?: boolean;
+  /** Render smoky horizontal light streaks (frosted-glass light bands). Default true. */
+  smoke?: boolean;
+  /** Render a very subtle top edge highlight. Default true. */
+  edge?: boolean;
   /** Render a micro-noise grain to break banding. Default true. */
   noise?: boolean;
   /** Render ambient shadow beneath the glass. Default true. */
   shadow?: boolean;
-  /** Render subtle dispersion on edges. Default false to stay restrained. */
-  dispersion?: boolean;
-  /** Render a physical thickness layer (inner shadow + edge highlight + inner dark rim). Default true. */
+  /** Render physical thickness: subtle inner dark rim. Default true. */
   thickness?: boolean;
-  /** Render an inner liquid sheen / glow for extra volume. Default true. */
-  innerGlow?: boolean;
   /** When true, merge props onto the single child element instead of wrapping a div. */
   asChild?: boolean;
   /** Pass-through ref to the underlying DOM node. */
   innerRef?: React.Ref<HTMLElement>;
+  /** @deprecated Use smoke instead */
+  caustic?: boolean;
+  /** @deprecated Use edge instead */
+  specular?: boolean;
+  /** @deprecated Reserved */
+  fresnel?: boolean;
+  /** @deprecated Reserved */
+  dispersion?: boolean;
+  /** @deprecated Reserved */
+  innerGlow?: boolean;
 }
 
 const GLASS_CSS_VARS = {
@@ -73,155 +77,83 @@ const GLASS_CSS_VARS = {
 } as React.CSSProperties;
 
 function GlassEffects({
-  caustic,
-  specular,
-  fresnel,
+  smoke,
+  edge,
   noise,
   shadow,
-  dispersion,
   thickness,
-  innerGlow,
-}: Required<Pick<GlassLayerProps, 'caustic' | 'specular' | 'fresnel' | 'noise' | 'shadow' | 'dispersion' | 'thickness' | 'innerGlow'>>) {
+}: {
+  smoke: boolean;
+  edge: boolean;
+  noise: boolean;
+  shadow: boolean;
+  thickness: boolean;
+}) {
   return (
     <>
       {shadow && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-y-3 -inset-x-2 z-glass-below rounded-[inherit] opacity-70 blur-2xl"
+          className="pointer-events-none absolute -inset-y-2 -inset-x-1 z-glass-below rounded-[inherit] opacity-50 blur-xl"
           style={{
             background:
-              'radial-gradient(ellipse 85% 65% at 50% 100%, var(--color-shadow), transparent 72%)',
+              'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(0,0,0,0.35), transparent 70%)',
           }}
         />
       )}
 
-      {caustic && (
+      {/* 烟熏横向光带：模拟光线穿过深色毛玻璃形成的柔和横向模糊条带
+          参考图中的效果：几条水平拉长的浅灰色模糊光带，不是白色光斑 */}
+      {smoke && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.92] mix-blend-screen"
+          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
             background: `
-              radial-gradient(ellipse 95% 70% at 16% 4%, var(--color-glass-shine-strong), transparent 50%),
-              radial-gradient(ellipse 78% 55% at 92% 98%, var(--color-glass-shine-soft), transparent 40%),
-              radial-gradient(ellipse 65% 48% at 78% 4%, var(--color-glass-tint-secondary), transparent 50%),
-              radial-gradient(ellipse 70% 55% at 48% 52%, var(--color-glass-refraction-faint), transparent 58%),
-              radial-gradient(ellipse 60% 40% at 6% 90%, var(--color-glass-tint-rose), transparent 54%),
-              radial-gradient(ellipse 50% 35% at 64% 94%, var(--color-glass-tint-highlight), transparent 60%),
-              radial-gradient(ellipse 55% 42% at 32% 96%, var(--color-glass-tint-primary), transparent 62%)
+              linear-gradient(180deg,
+                transparent 0%,
+                rgba(180,200,220,0.06) 8%,
+                rgba(200,220,240,0.10) 12%,
+                rgba(180,200,220,0.06) 16%,
+                transparent 22%,
+                transparent 42%,
+                rgba(160,180,200,0.05) 48%,
+                rgba(180,200,220,0.08) 52%,
+                rgba(160,180,200,0.04) 58%,
+                transparent 66%,
+                transparent 78%,
+                rgba(140,160,180,0.04) 84%,
+                rgba(160,180,200,0.06) 88%,
+                transparent 94%
+              )
             `,
           }}
         />
       )}
 
-      {innerGlow && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-75"
-          style={{
-            background: `
-              radial-gradient(ellipse 95% 70% at 22% 14%, color-mix(in srgb, var(--color-glass-shine-soft) 54%, transparent), transparent 52%),
-              radial-gradient(ellipse 85% 65% at 84% 80%, color-mix(in srgb, var(--color-glass-tint-secondary) 42%, transparent), transparent 52%),
-              radial-gradient(ellipse 70% 50% at 50% 50%, color-mix(in srgb, var(--color-glass-refraction-soft) 20%, transparent), transparent 64%),
-              radial-gradient(ellipse 60% 40% at 72% 18%, color-mix(in srgb, var(--color-glass-tint-primary) 18%, transparent), transparent 68%)
-            `,
-          }}
-        />
-      )}
-
-      {specular && (
-        <>
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-x-10p top-0 z-glass-specular h-[3.5px] rounded-full opacity-95"
-            style={{
-              background: `linear-gradient(90deg, transparent, var(--color-glass-shine-soft) 14%, var(--color-glass-shine-strong) 42%, var(--color-glass-shine-soft) 86%, transparent)`,
-              boxShadow: `0 0 28px color-mix(in srgb, var(--color-glass-shine-strong) 78%, transparent), 0 4px 14px color-mix(in srgb, var(--color-glass-shine-soft) 52%, transparent)`,
-            }}
-          />
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-x-25 top-0 z-glass-specular h-[2px] rounded-full opacity-80"
-            style={{
-              background: `linear-gradient(90deg, transparent, var(--color-glass-shine-faint) 20%, var(--color-glass-shine-soft) 48%, var(--color-glass-shine-faint) 80%, transparent)`,
-              boxShadow: `0 4px 18px color-mix(in srgb, var(--color-glass-shine-soft) 56%, transparent)`,
-            }}
-          />
-        </>
-      )}
-
+      {/* 厚度感：极微弱的内阴影 + 边缘暗化，塑造玻璃的实体感 */}
       {thickness && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
           style={{
             boxShadow: `
-              inset 0 0 0 0.5px var(--color-glass-edge-light),
-              inset 0 0 0 2.5px var(--glass-thickness-inner-dark),
-              inset 0 2px 6px var(--glass-thickness-inner-shadow),
-              inset 0 0 32px color-mix(in srgb, var(--color-shadow) 34%, transparent)
+              inset 0 0 0 0.5px rgba(180,200,220,0.12),
+              inset 0 1px 2px rgba(0,0,0,0.15),
+              inset 0 -1px 2px rgba(0,0,0,0.08)
             `,
           }}
         />
       )}
 
-      {fresnel && (
+      {/* 顶部极微弱边缘光：一条非常细的浅灰色线，不是亮白色 */}
+      {edge && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-fresnel rounded-[inherit] p-px"
+          className="pointer-events-none absolute inset-x-3 top-0 z-glass-specular h-px rounded-full opacity-60"
           style={{
-            background: `linear-gradient(
-              155deg,
-              color-mix(in srgb, var(--color-glass-edge-light) 95%, transparent) 0%,
-              color-mix(in srgb, var(--color-glass-edge-soft) 52%, transparent) 22%,
-              transparent 44%,
-              color-mix(in srgb, var(--color-glass-edge-ghost) 42%, transparent) 66%,
-              color-mix(in srgb, var(--color-glass-edge-faint) 72%, transparent) 100%
-            )`,
-            WebkitMask:
-              'linear-gradient(var(--color-mask-pure) 0 0) content-box, linear-gradient(var(--color-mask-pure) 0 0)',
-            WebkitMaskComposite: 'xor',
-            maskComposite: 'exclude',
-          }}
-        />
-      )}
-
-      {dispersion && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-dispersion rounded-[inherit] p-px opacity-45"
-          style={{
-            background: `linear-gradient(
-              160deg,
-              var(--color-dispersion-red) 0%,
-              var(--color-dispersion-green) 35%,
-              var(--color-dispersion-blue) 70%,
-              transparent 100%
-            )`,
-            WebkitMask:
-              'linear-gradient(var(--color-mask-pure) 0 0) content-box, linear-gradient(var(--color-mask-pure) 0 0)',
-            WebkitMaskComposite: 'xor',
-            maskComposite: 'exclude',
-          }}
-        />
-      )}
-
-      {/* 默认开启极微弱的色散边缘，增强液态玻璃的真实感 */}
-      {!dispersion && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-dispersion rounded-[inherit] p-px opacity-18"
-          style={{
-            background: `linear-gradient(
-              165deg,
-              var(--color-dispersion-red) 0%,
-              transparent 30%,
-              var(--color-dispersion-blue) 70%,
-              transparent 100%
-            )`,
-            WebkitMask:
-              'linear-gradient(var(--color-mask-pure) 0 0) content-box, linear-gradient(var(--color-mask-pure) 0 0)',
-            WebkitMaskComposite: 'xor',
-            maskComposite: 'exclude',
+            background:
+              'linear-gradient(90deg, transparent, rgba(200,220,240,0.25) 30%, rgba(220,235,250,0.35) 50%, rgba(200,220,240,0.25) 70%, transparent)',
           }}
         />
       )}
@@ -229,9 +161,9 @@ function GlassEffects({
       {noise && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.04] mix-blend-overlay"
+          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.025] mix-blend-overlay"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
           }}
         />
       )}
@@ -240,18 +172,14 @@ function GlassEffects({
 }
 
 /**
- * Foundational Liquid Glass surface.
+ * 深色烟熏液态玻璃 — Smoked Liquid Glass
  *
- * Combines:
- * - backdrop-filter blur + saturate
- * - environment reflection driven by pointer/scroll CSS variables
- * - Fresnel edge rim
- * - specular highlight
- * - caustic corner refraction tint
- * - micro noise texture
- * - ambient shadow
- *
- * All visual parameters reference design tokens.
+ * 视觉特征（参考用户提供的毛玻璃效果）：
+ * - 深色半透明灰黑底色，不是亮白透明
+ * - 柔和的横向模糊光带（模拟光线穿过毛玻璃）
+ * - 极微弱的顶部边缘细线
+ * - 细腻的内阴影塑造厚度
+ * - 无白色光斑、无强烈折射、无色散彩虹边
  */
 const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
   (
@@ -259,14 +187,17 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
       className,
       intensity = 'default',
       interactive = false,
-      caustic = true,
-      specular = true,
-      fresnel = true,
+      smoke = true,
+      edge = true,
       noise = true,
       shadow = true,
-      dispersion = false,
       thickness = true,
-      innerGlow = true,
+      // Deprecated props - accept but ignore in favor of new defaults
+      caustic: _caustic,
+      specular: _specular,
+      fresnel: _fresnel,
+      dispersion: _dispersion,
+      innerGlow: _innerGlow,
       asChild = false,
       trackMouse = false,
       trackScroll = false,
@@ -313,23 +244,11 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
     );
 
     const effects = (
-      <GlassEffects
-        caustic={caustic}
-        specular={specular}
-        fresnel={fresnel}
-        noise={noise}
-        shadow={shadow}
-        dispersion={dispersion}
-        thickness={thickness}
-        innerGlow={innerGlow}
-      />
+      <GlassEffects smoke={smoke} edge={edge} noise={noise} shadow={shadow} thickness={thickness} />
     );
 
     if (asChild) {
       const count = React.Children.count(children);
-      // Fallback to a normal wrapper if children is not exactly one valid React element.
-      // This prevents "React.Children.only expected to receive a single React element child"
-      // crashes when data is loading, null, or a fragment/array.
       if (count !== 1 || !React.isValidElement(children)) {
         return (
           <div
