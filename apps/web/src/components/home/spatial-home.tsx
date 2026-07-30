@@ -4,7 +4,6 @@ import { FormEvent, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
-  Activity,
   ArrowUp,
   BookOpen,
   BrainCircuit,
@@ -21,16 +20,9 @@ import {
 import { GlassLayer } from '@/components/glass';
 import LifeCoreCanvas, { type LifeCoreState, type LifeCoreCounts } from '@/components/life-core/life-core-canvas';
 import ConsciousnessPanel from '@/components/life-core/consciousness-panel';
-import { useFamilyHubStore, type TimelineEntry } from '@/stores/family-hub-store';
+import { useFamilyHubStore } from '@/stores/family-hub-store';
 
-function timelineIcon(type: TimelineEntry['type']) {
-  if (type === 'memory') return BookOpen;
-  if (type === 'skill') return Sparkles;
-  if (type === 'agent') return BrainCircuit;
-  return Activity;
-}
-
-/** 左侧家庭入口：进入家庭空间的五个核心方向 */
+/** 左侧家庭入口：进入家庭空间的六个核心方向 */
 const familyEntries = [
   { href: '/family', icon: Users, label: '家人', hint: '成员与关系' },
   { href: '/interview', icon: MessagesSquare, label: '陪伴', hint: '和时墨聊聊' },
@@ -52,7 +44,6 @@ export function SpatialHome() {
   const metrics = useFamilyHubStore((state) => state.metrics);
   const shimoCore = useFamilyHubStore((state) => state.shimoCore);
   const skills = useFamilyHubStore((state) => state.skills);
-  const timeline = useFamilyHubStore((state) => state.timeline);
   const invokeAgent = useFamilyHubStore((state) => state.invokeAgent);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -238,38 +229,7 @@ export function SpatialHome() {
         </motion.div>
       </aside>
 
-      {/* 底部时间线 */}
-      <motion.footer
-        className="spatial-home__bottom"
-        initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
-        aria-label="近期动态"
-      >
-        <GlassLayer intensity="default" className="spatial-timeline">
-          <div className="timeline-header">
-            <Activity size={14} />
-            <span>近期动态</span>
-          </div>
-          <div className="timeline-list">
-            {timeline.slice(0, 4).map((item) => {
-              const Icon = timelineIcon(item.type);
-              return (
-                <div className="timeline-item" key={item.id}>
-                  <Icon size={14} />
-                  <div>
-                    <span>{item.title}</span>
-                    <small>{item.detail}</small>
-                  </div>
-                  <time>{item.date}</time>
-                </div>
-              );
-            })}
-          </div>
-        </GlassLayer>
-      </motion.footer>
-
-      {/* 输入框 */}
+      {/* 输入框 — 位于全局 dock 上方，留出清晰间隙 */}
       <motion.form
         className="spatial-home__input"
         onSubmit={submit}

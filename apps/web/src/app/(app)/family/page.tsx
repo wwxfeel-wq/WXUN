@@ -204,33 +204,35 @@ export default function FamilyPage() {
 
   return (
     <PageTransition>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-text">{family?.name ?? '家庭记忆'}</h1>
-          <p className="text-sm text-text-muted">
-            {family?.memberCount ?? 0} 位成员 · 与家人共享回忆
-          </p>
+      <div className="pb-[var(--home-dock-clearance)]">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-text">{family?.name ?? '家庭记忆'}</h1>
+            <p className="text-sm text-text-muted">
+              {family?.memberCount ?? 0} 位成员 · 与家人共享回忆
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              if (!confirm('确定离开这个家庭吗？')) return;
+              try {
+                await apiClient.delete(`/families/${familyId}/leave`);
+                setCurrentFamilyId(null);
+                setFamilyId(null);
+              } catch (err) {
+                alert(err instanceof ApiError ? err.message : '操作失败');
+              }
+            }}
+            className="gap-2 text-error hover:bg-error/10"
+          >
+            <LogOut className="h-4 w-4" />
+            离开家庭
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          onClick={async () => {
-            if (!confirm('确定离开这个家庭吗？')) return;
-            try {
-              await apiClient.delete(`/families/${familyId}/leave`);
-              setCurrentFamilyId(null);
-              setFamilyId(null);
-            } catch (err) {
-              alert(err instanceof ApiError ? err.message : '操作失败');
-            }
-          }}
-          className="gap-2 text-error hover:bg-error/10"
-        >
-          <LogOut className="h-4 w-4" />
-          离开家庭
-        </Button>
-      </div>
 
-      <FamilyDetail familyId={familyId} />
+        <FamilyDetail familyId={familyId} />
+      </div>
     </PageTransition>
   );
 }
@@ -295,7 +297,7 @@ function FamilyDetail({ familyId }: { familyId: string }) {
             <p className="py-6 text-center text-xs text-text-muted">暂无成员</p>
           ) : (
             <div className="space-y-2">
-              {members.map((m) => (
+              {members.filter((m) => m?.id).map((m) => (
                 <GlassLayer
                   asChild
                   intensity="default"
@@ -306,11 +308,11 @@ function FamilyDetail({ familyId }: { familyId: string }) {
                     whileHover={{ y: -2, scale: 1.01 }}
                     transition={springHover}
                   >
-                    <Avatar src={m.avatarUrl} name={m.nickname} size="sm" />
+                    <Avatar src={m.avatarUrl ?? undefined} name={m.nickname || '未知'} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-text">{m.nickname}</p>
+                      <p className="truncate text-sm font-medium text-text">{m.nickname || '未知成员'}</p>
                       <p className="text-xs text-text-muted">
-                        {formatRelativeTime(m.joinedAt)} 加入
+                        {m.joinedAt ? `${formatRelativeTime(m.joinedAt)} 加入` : '加入时间未知'}
                       </p>
                     </div>
                     <Badge variant={m.role === 'admin' ? 'accent' : 'default'}>

@@ -117,7 +117,7 @@ export default function InkDrop() {
     });
 
   return (
-    <div ref={containerRef} className="fixed bottom-6 left-6 z-fixed hidden sm:block">
+    <div ref={containerRef} className="fixed left-6 z-fixed hidden sm:block" style={{ bottom: 'calc(var(--home-dock-clearance) + var(--space-2xl))' }}>
       {/* Ink Drop Button */}
       <motion.button
         onClick={() => setExpanded(!expanded)}

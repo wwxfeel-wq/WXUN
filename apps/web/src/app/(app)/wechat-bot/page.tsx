@@ -480,7 +480,7 @@ export default function WeChatBotPage() {
   if (!isWechatLoggedIn) {
     return (
       <PageTransition>
-        <div className="flex h-vh-minus-5rem flex-col">
+        <div className="flex flex-col" style={{ minHeight: 'calc(100dvh - var(--safe-top) - var(--home-dock-clearance))' }}>
           <WechatOpsBar
             runtime={opsRuntime}
             session={opsSession}
@@ -501,7 +501,7 @@ export default function WeChatBotPage() {
 
   return (
     <PageTransition>
-      <div className="flex h-vh-minus-5rem flex-col">
+      <div className="flex flex-col" style={{ minHeight: 'calc(100dvh - var(--safe-top) - var(--home-dock-clearance))' }}>
         {/* WeChat Operational Control Ribbon */}
         <WechatOpsBar
           runtime={opsRuntime}

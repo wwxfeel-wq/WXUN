@@ -830,16 +830,16 @@
   position: relative;
   isolation: isolate;
   min-height: calc(100dvh - var(--safe-top));
-  padding: var(--space-xl) var(--space-lg) var(--home-dock-clearance);
+  padding: var(--space-xl) var(--space-lg) calc(var(--home-dock-clearance) + var(--space-2xl));
   display: grid;
   grid-template-columns: 1fr;
   grid-template-areas:
     "top"
     "left"
     "core"
-    "right"
-    "bottom";
+    "right";
   gap: var(--space-lg);
+  align-items: center;
   max-width: 100rem;
   margin: 0 auto;
 }
@@ -849,10 +849,13 @@
     grid-template-columns: 15rem 1fr 18rem;
     grid-template-areas:
       "top    top    top"
-      "left   core   right"
-      "bottom bottom bottom";
+      "left   core   right";
+    grid-template-rows: auto 1fr;
     gap: var(--space-xl);
-    padding: var(--space-xl) var(--space-2xl) var(--home-dock-clearance);
+    padding: var(--space-xl) var(--space-2xl) calc(var(--home-dock-clearance) + var(--space-2xl));
+    align-items: center;
+    align-content: center;
+    justify-items: center;
   }
 }
 
@@ -931,6 +934,13 @@
 .spatial-home__left {
   grid-area: left;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  justify-self: center;
+  height: fit-content;
+  min-height: 0;
 }
 
 .spatial-nav__list {
@@ -994,13 +1004,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 20rem;
+  min-height: clamp(20rem, 42vh, 30rem);
 }
 
 @media (min-width: 64rem) {
   .spatial-home__core {
     aspect-ratio: 4 / 3;
-    min-height: 24rem;
+    min-height: clamp(26rem, 52vh, 44rem);
+    max-height: 60vh;
   }
 }
 
@@ -1039,8 +1050,13 @@
   grid-area: right;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  justify-self: center;
   gap: var(--space-lg);
   width: 100%;
+  height: fit-content;
+  min-height: 0;
 }
 
 .spatial-panel {
@@ -1097,71 +1113,12 @@
   color: var(--color-text-tertiary);
 }
 
-/* 底部时间线 */
-.spatial-home__bottom {
-  grid-area: bottom;
-  width: 100%;
-}
-
-.spatial-timeline {
-  padding: var(--space-lg) var(--space-xl);
-  border-radius: var(--radius-xl);
-}
-
-.timeline-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.timeline-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.timeline-item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: var(--space-md);
-  font-size: var(--text-sm);
-  color: var(--color-text-primary);
-  padding: var(--space-sm) 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.timeline-item:last-child {
-  border-bottom: none;
-}
-
-.timeline-item > div {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.timeline-item small {
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-}
-
-.timeline-item time {
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 输入框 */
+/* 输入框 — 位于全局 dock 上方，留出清晰呼吸间隙 */
 .spatial-home__input {
   position: fixed;
   left: var(--space-sm);
   right: var(--space-sm);
-  bottom: calc(var(--home-mobile-dock-clearance) - var(--space-sm));
+  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-lg));
   max-width: 48rem;
   margin: 0 auto;
   z-index: 20;
@@ -1171,7 +1128,7 @@
   .spatial-home__input {
     left: var(--space-lg);
     right: var(--space-lg);
-    bottom: calc(var(--home-dock-clearance) - var(--space-lg));
+    bottom: calc(var(--home-dock-clearance) + var(--space-xl));
   }
 }
 
@@ -1231,9 +1188,10 @@
 @media (min-width: 1280px) {
   .spatial-home {
     grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto 1fr auto;
-    padding: var(--space-3xl) var(--space-2xl) var(--home-dock-clearance);
+    grid-template-rows: auto 1fr;
+    padding: var(--space-3xl) var(--space-2xl) calc(var(--home-dock-clearance) + var(--space-2xl));
     gap: var(--space-2xl);
+    align-items: center;
   }
 
   .spatial-home__top-cards {
@@ -1245,7 +1203,13 @@
     grid-column: 1;
     grid-row: 2;
     max-width: 15rem;
-    align-self: start;
+    align-self: center;
+    justify-self: center;
+    height: fit-content;
+  }
+
+  .spatial-home__left > * {
+    height: fit-content;
   }
 
   .spatial-home__left .spatial-nav__list {
@@ -1256,17 +1220,20 @@
     grid-column: 2;
     grid-row: 2;
     max-width: none;
+    align-self: center;
   }
 
   .spatial-home__right {
     grid-column: 3;
     grid-row: 2;
     max-width: 22rem;
+    align-self: center;
+    justify-self: center;
+    height: fit-content;
   }
 
-  .spatial-home__bottom {
-    grid-column: 1 / -1;
-    max-width: 100%;
+  .spatial-home__right > * {
+    height: fit-content;
   }
 
   .spatial-home__input {

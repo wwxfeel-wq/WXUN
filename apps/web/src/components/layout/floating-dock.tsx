@@ -116,7 +116,7 @@ export default function FloatingDock() {
       >
         <GlassLayer
           intensity="default"
-          className="pointer-events-auto !overflow-x-auto max-w-calc-full-1rem"
+          className="pointer-events-auto !overflow-x-auto max-w-2xl"
         >
           <motion.nav
             ref={dockRef}
