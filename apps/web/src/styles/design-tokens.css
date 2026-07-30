@@ -141,21 +141,20 @@
   --color-surface-overlay: rgba(140, 160, 180, 0.10);
 
   /* === Glass Surfaces (dark smoked glass) ===
-   * 深色烟熏毛玻璃：暗灰黑半透明底色，不是亮白透明。
-   * 纯净深色玻璃质感，无横向光带、无白色光斑。
-   * 适度不透明度让背景模糊但不会透出亮色。
+   * 深色烟熏毛玻璃：厚实、有深度的暗灰黑半透明底色。
+   * 高不透明度 + 强阴影 + 内阴影 = 真实玻璃厚度感。
    */
-  --color-glass: rgba(26, 32, 40, 0.72);
-  --color-glass-hover: rgba(32, 38, 48, 0.80);
-  --color-glass-strong: rgba(28, 34, 44, 0.78);
-  --color-glass-strong-hover: rgba(34, 40, 52, 0.85);
-  --color-glass-extreme: rgba(30, 36, 46, 0.82);
-  --color-glass-extreme-hover: rgba(36, 42, 54, 0.88);
-  --color-glass-border: rgba(140, 155, 170, 0.14);
-  --color-glass-border-hover: rgba(160, 175, 190, 0.22);
-  --color-glass-border-strong: rgba(160, 175, 190, 0.20);
-  --color-glass-highlight: rgba(160, 175, 190, 0.08);
-  --color-glass-shimmer: rgba(180, 195, 210, 0.10);
+  --color-glass: rgba(22, 28, 36, 0.82);
+  --color-glass-hover: rgba(28, 34, 44, 0.88);
+  --color-glass-strong: rgba(24, 30, 40, 0.86);
+  --color-glass-strong-hover: rgba(30, 36, 48, 0.92);
+  --color-glass-extreme: rgba(26, 32, 42, 0.90);
+  --color-glass-extreme-hover: rgba(32, 38, 50, 0.94);
+  --color-glass-border: rgba(150, 165, 180, 0.20);
+  --color-glass-border-hover: rgba(170, 185, 200, 0.30);
+  --color-glass-border-strong: rgba(170, 185, 200, 0.26);
+  --color-glass-highlight: rgba(170, 185, 200, 0.10);
+  --color-glass-shimmer: rgba(190, 205, 220, 0.12);
   --color-glass-tint-primary: rgba(0, 229, 168, 0.03);
   --color-glass-tint-secondary: rgba(122, 184, 240, 0.03);
   --color-glass-tint-rose: rgba(242, 130, 140, 0.02);
@@ -297,8 +296,8 @@
   --home-panel-width: 17rem;
   --home-edge-gap: clamp(0.75rem, 1.8vw, 1.75rem);
   --home-top-gap: clamp(4.75rem, 9vh, 6.75rem);
-  --home-dock-clearance: 7.5rem;
-  --home-mobile-dock-clearance: 7rem;
+  --home-dock-clearance: 6rem;
+  --home-mobile-dock-clearance: 6rem;
 
   /* === Neural Background Tokens (subtle, hidden under tree bark) === */
   --color-neural-stroke: rgba(180, 170, 220, 0.12);

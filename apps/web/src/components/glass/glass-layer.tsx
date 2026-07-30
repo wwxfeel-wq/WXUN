@@ -94,55 +94,55 @@ function GlassEffects({
       {shadow && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-y-2 -inset-x-1 z-glass-below rounded-[inherit] opacity-50 blur-xl"
+          className="pointer-events-none absolute -inset-y-3 -inset-x-2 z-glass-below rounded-[inherit] opacity-70 blur-2xl"
           style={{
             background:
-              'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(0,0,0,0.35), transparent 70%)',
+              'radial-gradient(ellipse 80% 70% at 50% 100%, rgba(0,0,0,0.45), transparent 70%)',
           }}
         />
       )}
 
-      {/* 玻璃材质渐变：顶部微亮 → 底部微暗，模拟真实玻璃的厚度感
-          不是横向光带，而是一条柔和的垂直渐变，让玻璃看起来有立体感 */}
+      {/* 玻璃材质渐变：顶部微亮 → 底部微暗，模拟真实玻璃的厚度感 */}
       {smoke && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
             background: `linear-gradient(180deg,
-              rgba(200,210,220,0.05) 0%,
-              rgba(180,190,200,0.02) 30%,
+              rgba(200,210,220,0.06) 0%,
+              rgba(180,190,200,0.03) 25%,
               transparent 50%,
-              rgba(10,14,20,0.06) 85%,
-              rgba(8,12,18,0.10) 100%
+              rgba(8,12,18,0.08) 80%,
+              rgba(6,10,16,0.14) 100%
             )`,
           }}
         />
       )}
 
-      {/* 厚度感：极微弱的内阴影 + 边缘暗化，塑造玻璃的实体感 */}
+      {/* 厚度感：多层内阴影塑造玻璃的实体厚度 */}
       {thickness && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
           style={{
             boxShadow: `
-              inset 0 0 0 0.5px rgba(160,175,190,0.10),
-              inset 0 1px 2px rgba(0,0,0,0.18),
-              inset 0 -1px 2px rgba(0,0,0,0.10)
+              inset 0 0 0 1px rgba(160,175,190,0.14),
+              inset 0 1px 3px rgba(0,0,0,0.25),
+              inset 0 -1px 3px rgba(0,0,0,0.15),
+              inset 0 0 20px rgba(0,0,0,0.06)
             `,
           }}
         />
       )}
 
-      {/* 顶部极微弱边缘光：一条非常细的浅灰色线，不是亮白色 */}
+      {/* 顶部边缘高光：细而清晰的浅色线，模拟玻璃切面反光 */}
       {edge && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 top-0 z-glass-specular h-px rounded-full opacity-50"
+          className="pointer-events-none absolute inset-x-2 top-0 z-glass-specular h-px rounded-full opacity-70"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(180,195,210,0.18) 30%, rgba(200,215,230,0.24) 50%, rgba(180,195,210,0.18) 70%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(190,205,220,0.28) 25%, rgba(220,235,250,0.38) 50%, rgba(190,205,220,0.28) 75%, transparent)',
           }}
         />
       )}

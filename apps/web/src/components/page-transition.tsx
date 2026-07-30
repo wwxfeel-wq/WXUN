@@ -5,13 +5,23 @@ import * as React from 'react';
 
 /**
  * PageTransition - wraps page content with a fade + slide-up animation.
+ *
+ * IMPORTANT: After the entrance animation completes, the `transform` is
+ * cleared so that descendant elements using `position: fixed` (e.g. the
+ * spatial-home input bar) behave relative to the viewport, not this wrapper.
+ * Framer Motion leaves `transform: translateY(0px)` which creates a new
+ * containing block and breaks fixed positioning.
  */
 export function PageTransition({ children }: { children: React.ReactNode }) {
+  const [animationDone, setAnimationDone] = React.useState(false);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      onAnimationComplete={() => setAnimationDone(true)}
+      style={animationDone ? { transform: 'none', y: 0 } : undefined}
     >
       {children}
     </motion.div>

@@ -103,7 +103,7 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
   stemPoints: { x: number; y: number }[];
 } {
   const rand = mulberry32(42 + level * 7);
-  const total = Math.min(380, 160 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 6 + level * 10);
+  const total = Math.min(420, 180 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 6 + level * 10);
 
   // 按比例分配粒子类型
   const kindPool: NodeKind[] = [];
@@ -130,29 +130,29 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
 
   const particles: Particle[] = [];
 
-  // 生成粒子：使用极坐标 + 有机变形，创建星云形状
-  // 星云形状：中心密集的胞体，周围散布的树突场，整体像神经元
+  // 生成粒子：大面积散布的星云，不是集中的一团
+  // 使用极坐标 + 有机变形，创建宽广的星云形状
   for (let i = 0; i < total; i++) {
-    // 距中心距离：使用平方根分布让中心更密
-    const r = Math.pow(rand(), 0.6);
+    // 距中心距离：使用线性分布让粒子均匀散布，不是全挤在中心
+    const r = Math.pow(rand(), 0.45);
     // 角度
     const angle = rand() * Math.PI * 2;
-    // 有机变形：添加多个谐波让形状不规则，像星云
+    // 有机变形：多个谐波让形状不规则，像真实星云
     const organicR = r * (
-      0.7 +
-      Math.sin(angle * 2 + rand() * 0.5) * 0.15 +
-      Math.sin(angle * 3 + rand() * 0.3) * 0.1 +
-      Math.sin(angle * 5 + rand() * 0.7) * 0.08 +
-      rand() * 0.12
+      0.85 +
+      Math.sin(angle * 2 + rand() * 0.5) * 0.12 +
+      Math.sin(angle * 3 + rand() * 0.3) * 0.08 +
+      Math.sin(angle * 5 + rand() * 0.7) * 0.06 +
+      rand() * 0.08
     );
 
-    // 转换为归一化坐标（中心在 (0, -0.1) 让胞体偏上）
-    const nx = Math.cos(angle) * organicR * 0.45;
-    const ny = Math.sin(angle) * organicR * 0.38 - 0.08;
+    // 转换为归一化坐标 — 大范围散布
+    const nx = Math.cos(angle) * organicR * 0.62;
+    const ny = Math.sin(angle) * organicR * 0.52 - 0.05;
 
-    // 大小：中心粒子更大，外围更小
-    const coreFactor = Math.max(0, 1 - r * 0.8);
-    const size = 0.5 + coreFactor * 1.5 + rand() * 0.5;
+    // 粒子大小：更均匀，中心略大但不悬殊
+    const coreFactor = Math.max(0.4, 1 - r * 0.5);
+    const size = 0.8 + coreFactor * 0.8 + rand() * 0.4;
 
     particles.push({
       kind: kindPool[i] || 'agent',
@@ -161,10 +161,10 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
       size,
       phase: rand() * Math.PI * 2,
       pulseSpeed: 0.3 + rand() * 0.5,
-      driftAmp: 0.002 + rand() * 0.004,
+      driftAmp: 0.003 + rand() * 0.005,
       driftPhaseX: rand() * Math.PI * 2,
       driftPhaseY: rand() * Math.PI * 2,
-      activation: 0.2 + rand() * 0.3,
+      activation: 0.3 + rand() * 0.3,
       dist: organicR,
       neighbors: [],
     });
@@ -172,7 +172,7 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
 
   // 生成连线：连接距离较近的粒子
   const connections: Connection[] = [];
-  const connectionDist = 0.10; // 归一化距离阈值
+  const connectionDist = 0.14; // 归一化距离阈值
   const maxConnectionsPerParticle = 4;
 
   for (let i = 0; i < particles.length; i++) {
@@ -187,7 +187,6 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
         near.push({ idx: j, dist: d });
       }
     }
-    // 只保留最近的几个
     near.sort((a, b) => a.dist - b.dist);
     const maxConn = Math.min(maxConnectionsPerParticle, near.length);
     for (let k = 0; k < maxConn; k++) {
@@ -208,7 +207,7 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
     const curveX = Math.sin(t * 1.2) * 0.02 * (1 - t * 0.5);
     stemPoints.push({
       x: curveX,
-      y: 0.15 + t * 0.55,
+      y: 0.20 + t * 0.50,
     });
   }
 
@@ -299,8 +298,8 @@ export function LifeCoreCanvas({
 
     const frame = performance.now() / 1000;
     const cx = width / 2;
-    const cy = height * 0.48;
-    const nebulaScale = Math.min(width, height) * 0.55;
+    const cy = height * 0.45;
+    const nebulaScale = Math.min(width, height) * 0.72;
 
     // 星云整体呼吸
     const breath = state === 'companion'
@@ -313,11 +312,11 @@ export function LifeCoreCanvas({
 
     const scale = nebulaScale * breath;
 
-    // 1. 星云背景光晕（大而柔和，不是亮白）
+    // 1. 星云背景光晕（大而柔和，范围广，不是亮白）
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.6;
-    const glowW = nebulaScale * 1.6;
-    const glowH = nebulaScale * 1.3;
+    ctx.globalAlpha = 0.4;
+    const glowW = nebulaScale * 2.0;
+    const glowH = nebulaScale * 1.7;
     ctx.drawImage(nebulaGlowSprite, cx - glowW / 2, cy - glowH / 2, glowW, glowH);
 
     // 2. 轴突茎（从星云底部向下延伸）
@@ -440,15 +439,15 @@ export function LifeCoreCanvas({
       const pulse = 0.6 + Math.sin(frame * p.pulseSpeed + p.phase) * 0.4;
       const [r, g, b] = NODE_COLOR[p.kind];
 
-      // 外围粒子更小更暗，中心粒子更亮
-      const coreFactor = Math.max(0.15, 1 - p.dist * 0.7);
-      const size = p.size * (1.5 + pulse * 0.8) * coreFactor;
-      const alpha = (0.3 + p.activation * 0.4) * pulse * coreFactor;
+      // 外围粒子保持亮度，不再急剧衰减
+      const coreFactor = Math.max(0.5, 1 - p.dist * 0.35);
+      const size = p.size * (1.8 + pulse * 0.6) * coreFactor;
+      const alpha = (0.4 + p.activation * 0.4) * pulse * coreFactor;
 
       ctx.globalAlpha = Math.min(1, alpha);
 
       // 绘制粒子光晕
-      const spriteSize = size * 6;
+      const spriteSize = size * 7;
       ctx.drawImage(
         particleSprite,
         px - spriteSize / 2,
@@ -461,20 +460,20 @@ export function LifeCoreCanvas({
       ctx.globalAlpha = Math.min(1, alpha * 1.5);
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.beginPath();
-      ctx.arc(px, py, Math.max(0.5, size * 0.6), 0, Math.PI * 2);
+      ctx.arc(px, py, Math.max(0.8, size * 0.7), 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 6. 中心胞体核心（极微弱的亮心，不是白色）
+    // 6. 中心胞体核心（微弱的亮心，不是亮白团）
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.35;
-    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.15);
-    coreGrad.addColorStop(0, 'rgba(0, 229, 168, 0.35)');
-    coreGrad.addColorStop(0.5, 'rgba(0, 180, 140, 0.12)');
+    ctx.globalAlpha = 0.2;
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.12);
+    coreGrad.addColorStop(0, 'rgba(0, 229, 168, 0.20)');
+    coreGrad.addColorStop(0.5, 'rgba(0, 180, 140, 0.08)');
     coreGrad.addColorStop(1, 'rgba(0, 140, 120, 0)');
     ctx.fillStyle = coreGrad;
     ctx.beginPath();
-    ctx.arc(cx, cy, scale * 0.15, 0, Math.PI * 2);
+    ctx.arc(cx, cy, scale * 0.12, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.globalCompositeOperation = 'source-over';
@@ -513,8 +512,8 @@ export function LifeCoreCanvas({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const cx = rect.width / 2;
-    const cy = rect.height * 0.48;
-    const scale = Math.min(rect.width, rect.height) * 0.55;
+    const cy = rect.height * 0.45;
+    const scale = Math.min(rect.width, rect.height) * 0.72;
 
     // 找到最近的粒子
     const { particles } = nebulaRef.current;
