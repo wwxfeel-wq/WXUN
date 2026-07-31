@@ -119,7 +119,7 @@ export default function InkDrop() {
     });
 
   return (
-    <div ref={containerRef} className="fixed left-6 z-fixed hidden sm:block" style={{ bottom: 'calc(var(--home-dock-clearance) + var(--space-2xl))' }}>
+    <div ref={containerRef} className="fixed left-6 z-fixed hidden sm:block" style={{ bottom: 'calc(var(--home-dock-clearance) + var(--space-sm))' }}>
       {/* Ink Drop Button */}
       <motion.button
         onClick={() => setExpanded(!expanded)}
@@ -170,12 +170,11 @@ export default function InkDrop() {
         )}
       </AnimatePresence>
 
-      {/* Expanded Family AI Core Panel */}
+      {/* Expanded Family AI Core Panel — 使用 .glass-card 直接渲染，避免 GlassLayer 的 overflow-hidden 阻止滚动 */}
       <AnimatePresence>
         {expanded && (
-          <GlassLayer
-            intensity="strong"
-            className="absolute bottom-16 left-0 p-5 max-w-sm max-h-80vh overflow-y-auto"
+          <div
+            className="glass-card absolute bottom-14 left-0 p-4 w-80 max-h-70vh overflow-y-auto rounded-2xl"
             style={{ scrollbarWidth: 'thin' }}
           >
             <motion.div
@@ -185,253 +184,253 @@ export default function InkDrop() {
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             >
               {/* Header */}
-            <div className="mb-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                <Zap size={18} className="text-accent" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-text">时墨</div>
-                <div className="text-2xs text-text-subtle">
-                  正在慢慢理解这个家的点点滴滴
+              <div className="mb-3 flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                  <Zap size={16} className="text-accent" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-text">时墨</div>
+                  <div className="text-3xs text-text-subtle truncate">
+                    正在慢慢理解这个家的点点滴滴
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Core Stats */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              <div className="p-2.5 rounded-xl bg-glass border border-glass-border text-center">
-                <div className="text-sm font-medium text-text">{displayAgents.length}</div>
-                <div className="text-3xs text-text-subtle">守护者</div>
+              {/* Core Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-glass border border-glass-border text-center">
+                  <div className="text-sm font-medium text-text">{displayAgents.length}</div>
+                  <div className="text-4xs text-text-subtle">守护者</div>
+                </div>
+                <div className="p-2 rounded-lg bg-glass border border-glass-border text-center">
+                  <div className="text-sm font-medium text-success">{masteredCount}</div>
+                  <div className="text-4xs text-text-subtle">能力</div>
+                </div>
+                <div className="p-2 rounded-lg bg-glass border border-glass-border text-center">
+                  <div className="text-sm font-medium text-accent">{activeAgents}</div>
+                  <div className="text-4xs text-text-subtle">陪伴中</div>
+                </div>
               </div>
-              <div className="p-2.5 rounded-xl bg-glass border border-glass-border text-center">
-                <div className="text-sm font-medium text-success">{masteredCount}</div>
-                <div className="text-3xs text-text-subtle">能力</div>
-              </div>
-              <div className="p-2.5 rounded-xl bg-glass border border-glass-border text-center">
-                <div className="text-sm font-medium text-accent">{activeAgents}</div>
-                <div className="text-3xs text-text-subtle">陪伴中</div>
-              </div>
-            </div>
 
-            {/* Tabs */}
-            <div className="flex gap-1 mb-4 p-1 rounded-xl bg-glass">
-              {(['overview', 'agents', 'skills'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-1.5 rounded-lg text-2xs transition-colors focus-ring ${
-                    activeTab === tab
-                      ? 'bg-glass-strong text-text'
-                      : 'text-text-subtle hover:text-text-secondary'
-                  }`}
-                >
-                  {tab === 'overview' ? '概览' : tab === 'agents' ? '守护者' : '能力'}
-                </button>
-              ))}
-            </div>
+              {/* Tabs */}
+              <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-glass">
+                {(['overview', 'agents', 'skills'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`flex-1 py-1.5 rounded-lg text-2xs transition-colors focus-ring ${
+                      activeTab === tab
+                        ? 'bg-glass-strong text-text'
+                        : 'text-text-subtle hover:text-text-secondary'
+                    }`}
+                  >
+                    {tab === 'overview' ? '概览' : tab === 'agents' ? '守护者' : '能力'}
+                  </button>
+                ))}
+              </div>
 
-            {/* Tab Content */}
-            {activeTab === 'overview' && (
-              <div className="space-y-4">
-                {/* Recently learned */}
-                <GlassLayer intensity="default" className="p-3 rounded-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <motion.div
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="w-1.5 h-1.5 rounded-full bg-success"
-                    />
-                    <span className="text-2xs text-text-subtle">最近学习内容</span>
+              {/* Tab Content */}
+              {activeTab === 'overview' && (
+                <div className="space-y-3">
+                  {/* Recently learned — 移除嵌套 GlassLayer，使用普通 div */}
+                  <div className="p-2.5 rounded-lg bg-glass border border-glass-border">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <motion.div
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="w-1.5 h-1.5 rounded-full bg-success shrink-0"
+                      />
+                      <span className="text-3xs text-text-subtle">最近学习内容</span>
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {shimoCore.recentLearning.length > 0 ? (
+                        shimoCore.recentLearning.map((item, i) => (
+                          <span
+                            key={i}
+                            className={`px-2 py-0.5 text-4xs rounded-md ${i === 0 ? 'bg-accent/10 text-accent' : 'bg-glass text-text-subtle'}`}
+                          >
+                            {item}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="px-2 py-0.5 text-4xs text-text-subtle">暂无学习内容</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {shimoCore.recentLearning.length > 0 ? (
-                      shimoCore.recentLearning.map((item, i) => (
-                        <span
-                          key={i}
-                          className={`skill-capsule ${i === 0 ? 'active' : ''} px-2.5 py-1 text-3xs ${i === 0 ? 'text-accent' : 'text-text-subtle'}`}
-                        >
-                          {item}
-                        </span>
+
+                  {/* Skill Incubator */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-3xs text-text-subtle">正在长大的能力</span>
+                      <button
+                        onClick={() => { setExpanded(false); router.push('/evolution'); }}
+                        className="text-4xs text-accent flex items-center gap-0.5 hover:underline focus-ring rounded px-1"
+                      >
+                        查看全部 <ChevronRight size={10} />
+                      </button>
+                    </div>
+                    {incubatingSkills.length > 0 ? (
+                      incubatingSkills.map((skill) => (
+                        <div key={skill.name} className="mb-1.5 last:mb-0 p-2.5 rounded-lg bg-glass border border-glass-border">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-3xs text-text truncate">{skill.name}</span>
+                            <span className="text-4xs text-text-subtle shrink-0 ml-2">{skill.progress}%</span>
+                          </div>
+                          <div className="w-full bg-[var(--color-gray-900)] rounded-full h-1 mb-1">
+                            <motion.div
+                              className="h-full rounded-full gradient-primary"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${skill.progress}%` }}
+                              transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+                            />
+                          </div>
+                          <div className="text-4xs text-text-subtle/60 truncate">
+                            来自 {skill.agent} · {skill.eta}
+                          </div>
+                        </div>
                       ))
                     ) : (
-                      <span className="px-2.5 py-1 text-3xs text-text-subtle">暂无学习内容</span>
+                      <div className="p-2.5 rounded-lg bg-glass border border-glass-border text-center">
+                        <span className="text-4xs text-text-subtle">暂无孵化中的技能</span>
+                      </div>
                     )}
                   </div>
-                </GlassLayer>
+                </div>
+              )}
 
-                {/* Skill Incubator */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-2xs text-text-subtle">正在长大的能力</span>
-                    <button
-                      onClick={() => { setExpanded(false); router.push('/evolution'); }}
-                      className="text-3xs text-accent flex items-center gap-0.5 hover:underline focus-ring rounded px-1"
-                    >
-                      查看全部 <ChevronRight size={10} />
-                    </button>
-                  </div>
-                  {incubatingSkills.length > 0 ? (
-                    incubatingSkills.map((skill) => (
-                      <div key={skill.name} className="mb-2 last:mb-0 p-3 rounded-xl bg-glass border border-glass-border">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-text">{skill.name}</span>
-                          <span className="text-3xs text-text-subtle">{skill.progress}%</span>
-                        </div>
-                        <div className="w-full bg-[var(--color-gray-900)] rounded-full h-1.5 mb-1.5">
-                          <motion.div
-                            className="h-full rounded-full gradient-primary"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${skill.progress}%` }}
-                            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-                          />
-                        </div>
-                        <div className="text-3xs text-text-subtle/60">
-                          来自 {skill.agent} · {skill.eta}
-                        </div>
-                      </div>
-                    ))
+              {activeTab === 'agents' && (
+                <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                  {displayAgents.length > 0 ? (
+                    displayAgents.map((agent, index) => {
+                      const Icon = agent.icon;
+                      return (
+                        <motion.div
+                          key={agent.id}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: index * 0.02 }}
+                          className="p-2.5 rounded-xl bg-glass border border-glass-border hover:bg-glass-hover transition-colors cursor-default group"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Icon size={14} className="text-text-muted shrink-0" />
+                            <span className="text-2xs text-text truncate min-w-0">{agent.label}</span>
+                            {agent.status === 'active' && (
+                              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+                            )}
+                            {agent.status === 'learning' && (
+                              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-highlight animate-pulse shrink-0" />
+                            )}
+                          </div>
+                          <div className="text-3xs text-text-subtle truncate">{agent.role}</div>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <div className="flex-1 bg-[var(--color-gray-900)] rounded-full h-1 min-w-0">
+                              <div
+                                className="h-full rounded-full bg-accent/40"
+                                style={{ width: `${(agent.level / 10) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-4xs text-text-subtle shrink-0">阶段 {agent.level}</span>
+                          </div>
+                          <motion.button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const original = agents.find((a) => a.id === agent.id);
+                              if (original) {
+                                setExpanded(false);
+                                setChatAgent(original);
+                              }
+                            }}
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="mt-2 w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/15 text-3xs text-accent transition-colors focus-ring"
+                            aria-label={`和 ${agent.label} 对话`}
+                          >
+                            <MessageCircle size={11} />
+                            对话
+                          </motion.button>
+                        </motion.div>
+                      );
+                    })
                   ) : (
-                    <div className="p-3 rounded-xl bg-glass border border-glass-border text-center">
-                      <span className="text-3xs text-text-subtle">暂无孵化中的技能</span>
+                    <div className="col-span-2 p-4 text-center">
+                      <span className="text-2xs text-text-subtle">加载中...</span>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {activeTab === 'agents' && (
-              <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-                {displayAgents.length > 0 ? (
-                  displayAgents.map((agent, index) => {
-                    const Icon = agent.icon;
-                    return (
-                      <motion.div
-                        key={agent.id}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: index * 0.02 }}
-                        className="p-2.5 rounded-xl bg-glass border border-glass-border hover:bg-glass-hover transition-colors cursor-default group"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Icon size={14} className="text-text-muted" />
-                          <span className="text-2xs text-text truncate">{agent.label}</span>
-                          {agent.status === 'active' && (
-                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                          )}
-                          {agent.status === 'learning' && (
-                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-highlight animate-pulse" />
-                          )}
-                        </div>
-                        <div className="text-3xs text-text-subtle">{agent.role}</div>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <div className="flex-1 bg-[var(--color-gray-900)] rounded-full h-1">
-                            <div
-                              className="h-full rounded-full bg-accent/40"
-                              style={{ width: `${(agent.level / 10) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-4xs text-text-subtle">阶段 {agent.level}</span>
-                        </div>
+              {activeTab === 'skills' && (
+                <div className="grid grid-cols-3 gap-2">
+                  {displaySkills.length > 0 ? (
+                    displaySkills.map((skill, index) => {
+                      const Icon = skill.icon;
+                      const isHovered = hoveredSkill === skill.id;
+
+                      return (
                         <motion.button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const original = agents.find((a) => a.id === agent.id);
-                            if (original) {
-                              setExpanded(false);
-                              setChatAgent(original);
-                            }
-                          }}
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
-                          className="mt-2 w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/15 text-3xs text-accent transition-colors focus-ring"
-                          aria-label={`和 ${agent.label} 对话`}
+                          key={skill.id}
+                          type="button"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: index * 0.03, type: 'spring', stiffness: 400, damping: 25 }}
+                          onHoverStart={() => setHoveredSkill(skill.id)}
+                          onHoverEnd={() => setHoveredSkill(null)}
+                          className="relative flex flex-col items-center gap-1 p-2.5 rounded-2xl cursor-pointer transition-colors duration-300 hover:bg-glass-hover focus-ring"
+                          aria-label={`${skill.label}，${skill.status}，阶段 ${skill.level}`}
                         >
-                          <MessageCircle size={11} />
-                          对话
-                        </motion.button>
-                      </motion.div>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-2 p-4 text-center">
-                    <span className="text-2xs text-text-subtle">加载中...</span>
-                  </div>
-                )}
-              </div>
-            )}
+                          <div style={{ color: skill.color }}>
+                            <Icon size={18} strokeWidth={1.5} />
+                          </div>
+                          <span className="text-3xs text-text-muted text-center leading-tight">{skill.label}</span>
 
-            {activeTab === 'skills' && (
-              <div className="grid grid-cols-4 gap-2">
-                {displaySkills.length > 0 ? (
-                  displaySkills.map((skill, index) => {
-                    const Icon = skill.icon;
-                    const isHovered = hoveredSkill === skill.id;
-
-                    return (
-                      <motion.button
-                        key={skill.id}
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: index * 0.03, type: 'spring', stiffness: 400, damping: 25 }}
-                        onHoverStart={() => setHoveredSkill(skill.id)}
-                        onHoverEnd={() => setHoveredSkill(null)}
-                        className="relative flex flex-col items-center gap-1 p-2.5 rounded-2xl cursor-pointer transition-colors duration-300 hover:bg-glass-hover focus-ring"
-                        aria-label={`${skill.label}，${skill.status}，阶段 ${skill.level}`}
-                      >
-                        <div style={{ color: skill.color }}>
-                          <Icon size={18} strokeWidth={1.5} />
-                        </div>
-                        <span className="text-3xs text-text-muted">{skill.label}</span>
-
-                        {skill.status === '学习中' && (
-                          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-highlight animate-pulse" />
-                        )}
-
-                        <AnimatePresence>
-                          {isHovered && (
-                            <motion.span
-                              initial={{ opacity: 0, y: 4 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 4 }}
-                              className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-background-elevated text-3xs text-text-subtle whitespace-nowrap z-tooltip pointer-events-none"
-                            >
-                              {skill.status} · 阶段 {skill.level}
-                            </motion.span>
+                          {skill.status === '学习中' && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-highlight animate-pulse" />
                           )}
-                        </AnimatePresence>
-                      </motion.button>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-4 p-4 text-center">
-                    <span className="text-2xs text-text-subtle">加载中...</span>
-                  </div>
-                )}
-              </div>
-            )}
 
-            {/* Footer Actions */}
-            <div className="mt-4 pt-3 border-t border-border flex gap-2">
-              <motion.button
-                onClick={() => { setExpanded(false); router.push('/skills'); }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex-1 py-2 rounded-xl bg-glass hover:bg-glass-hover border border-glass-border text-xs text-text-muted hover:text-text transition-colors focus-ring"
-              >
-                查看全部能力
-              </motion.button>
-              <motion.button
-                onClick={() => { setExpanded(false); router.push('/evolution'); }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex-1 py-2 rounded-xl bg-accent/10 hover:bg-accent/15 border border-accent/15 text-xs text-accent transition-colors focus-ring"
-              >
-                成长工坊
-              </motion.button>
-            </div>
+                          <AnimatePresence>
+                            {isHovered && (
+                              <motion.span
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-background-elevated text-3xs text-text-subtle whitespace-nowrap z-tooltip pointer-events-none"
+                              >
+                                {skill.status} · 阶段 {skill.level}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </motion.button>
+                      );
+                    })
+                  ) : (
+                    <div className="col-span-3 p-4 text-center">
+                      <span className="text-2xs text-text-subtle">加载中...</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Footer Actions */}
+              <div className="mt-3 pt-2 border-t border-border flex gap-1.5">
+                <motion.button
+                  onClick={() => { setExpanded(false); router.push('/skills'); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 py-1.5 rounded-lg bg-glass hover:bg-glass-hover border border-glass-border text-3xs text-text-muted hover:text-text transition-colors focus-ring"
+                >
+                  查看全部能力
+                </motion.button>
+                <motion.button
+                  onClick={() => { setExpanded(false); router.push('/evolution'); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/15 text-3xs text-accent transition-colors focus-ring"
+                >
+                  成长工坊
+                </motion.button>
+              </div>
             </motion.div>
-          </GlassLayer>
+          </div>
         )}
       </AnimatePresence>
 
