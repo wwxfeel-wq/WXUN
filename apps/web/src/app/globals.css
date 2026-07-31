@@ -971,6 +971,7 @@
   align-items: start;
   max-width: 100rem;
   margin: 0 auto;
+  z-index: 1;
 }
 
 @media (min-width: 64rem) {
@@ -1018,6 +1019,32 @@
     radial-gradient(ellipse 60% 40% at 20% 70%, color-mix(in srgb, var(--color-life-purple) 3%, transparent), transparent),
     radial-gradient(ellipse 65% 42% at 80% 65%, color-mix(in srgb, var(--color-highlight) 3%, transparent), transparent);
   opacity: 0.6;
+}
+
+/* 全屏粒子星系背景层 — 固定定位填满视口，所有 UI 浮于其上 */
+.spatial-home__bg-particles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+
+.spatial-home__life-core--fullscreen {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0;
+}
+
+/* 所有 UI 面板浮在粒子背景之上 */
+.spatial-home > .spatial-home__top-cards,
+.spatial-home > .spatial-home__left,
+.spatial-home > .spatial-home__core,
+.spatial-home > .spatial-home__right,
+.spatial-home > .spatial-home__input {
+  position: relative;
+  z-index: 2;
 }
 
 /* 顶部四个状态卡片 — 参考图 3D 透视风格 */

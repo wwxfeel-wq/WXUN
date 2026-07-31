@@ -125,8 +125,8 @@ function buildGalaxy(counts: LifeCoreCounts, level: number): {
   bgStars: BgStar[];
 } {
   const rand = mulberry32(42 + level * 7);
-  // 粒子数量：320 个，增加少量以补偿深度雾化
-  const total = Math.min(320, 140 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 5 + level * 8);
+  // 粒子数量：800 个，全屏模式下需要更多粒子才能填满视口
+  const total = Math.min(800, 450 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 8 + level * 12);
 
   // 按比例分配粒子类型
   const kindPool: NodeKind[] = [];
@@ -225,14 +225,14 @@ function buildGalaxy(counts: LifeCoreCounts, level: number): {
   // 背景星场：远景星星，视差旋转（更慢）
   const bgStars: BgStar[] = [];
   const starRand = mulberry32(99);
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 200; i++) {
     bgStars.push({
-      x: (starRand() - 0.5) * 2.6,
-      y: (starRand() - 0.5) * 2.6,
-      z: (starRand() - 0.5) * 0.4,
-      size: 0.3 + starRand() * 0.5,
-      brightness: 0.08 + starRand() * 0.18,
-      twinkleSpeed: 0.3 + starRand() * 0.8,
+      x: (starRand() - 0.5) * 3.2,
+      y: (starRand() - 0.5) * 3.2,
+      z: (starRand() - 0.5) * 0.5,
+      size: 0.3 + starRand() * 0.6,
+      brightness: 0.06 + starRand() * 0.2,
+      twinkleSpeed: 0.3 + starRand() * 0.9,
       twinklePhase: starRand() * Math.PI * 2,
     });
   }
@@ -365,8 +365,9 @@ export function LifeCoreCanvas({
 
     const frame = performance.now() / 1000;
     const cx = width / 2;
-    const cy = height * 0.44;
-    const galaxyScale = Math.min(width, height) * 0.78;
+    const cy = height * 0.42;
+    // 全屏模式：星系缩放占满较短边的 1.1 倍，让粒子铺满视口
+    const galaxyScale = Math.min(width, height) * 1.1;
 
     // 星系整体呼吸
     const breath = state === 'companion'
@@ -666,8 +667,8 @@ export function LifeCoreCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const cx = rect.width / 2;
-      const cy = rect.height * 0.44;
-      const scale = Math.min(rect.width, rect.height) * 0.78;
+      const cy = rect.height * 0.42;
+      const scale = Math.min(rect.width, rect.height) * 1.1;
       const view = viewRef.current;
       const frame = performance.now() / 1000;
       const baseRotation = reducedMotion ? 0 : frame * 0.04;

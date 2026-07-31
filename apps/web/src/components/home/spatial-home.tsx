@@ -80,8 +80,15 @@ export function SpatialHome() {
 
   return (
     <section className="spatial-home" aria-label="SuiYan 生命空间">
-      {/* 深蓝黑空间背景 */}
-      <div className="spatial-home__canvas" aria-hidden="true" />
+      {/* 全屏粒子星系背景层 — 固定定位填满整个视口 */}
+      <div className="spatial-home__bg-particles" aria-hidden="true">
+        <LifeCoreCanvas
+          state={lifeCoreState}
+          counts={lifeCounts}
+          level={metrics.aiLevel}
+          className="spatial-home__life-core spatial-home__life-core--fullscreen"
+        />
+      </div>
 
       {/* 顶部状态卡片：四个横排悬浮卡片
           使用轻量 div 替代 GlassLayer — 小卡片不需要 backdrop-filter，
@@ -176,21 +183,8 @@ export function SpatialHome() {
         </GlassLayer>
       </motion.nav>
 
-      {/* 中心：粒子神经生命云 */}
-      <motion.div
-        className="spatial-home__core"
-        initial={reduceMotion ? false : { opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        aria-label="SuiYan Life Core 神经生命云"
-      >
-        <LifeCoreCanvas
-          state={lifeCoreState}
-          counts={lifeCounts}
-          level={metrics.aiLevel}
-          className="spatial-home__life-core"
-        />
-      </motion.div>
+      {/* 中心区域：保留空间用于视觉留白，粒子已在全屏背景层渲染 */}
+      <div className="spatial-home__core" aria-hidden="true" />
 
       {/* 右侧信息面板 */}
       <aside className="spatial-home__right" aria-label="时墨状态与家庭动态">
