@@ -1197,7 +1197,6 @@
   height: 100%;
   display: block;
   touch-action: none;
-  cursor: crosshair;
 }
 
 /* 悬停时浮出的粒子类别标签 */
@@ -1213,6 +1212,17 @@
   color: var(--color-text-secondary);
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* 拖拽旋转提示 — 呼吸淡入淡出 */
+.life-core__drag-hint {
+  animation: life-core-hint-fade 3s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+@keyframes life-core-hint-fade {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.85; }
 }
 
 /* 右侧信息面板 */
