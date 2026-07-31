@@ -20,6 +20,7 @@ import {
 import { GlassLayer } from '@/components/glass';
 import LifeCoreCanvas, { type LifeCoreState, type LifeCoreCounts } from '@/components/life-core/life-core-canvas';
 import ConsciousnessPanel from '@/components/life-core/consciousness-panel';
+import HomeChatOverlay from './home-chat-overlay';
 import { useFamilyHubStore } from '@/stores/family-hub-store';
 
 /** 左侧家庭入口：进入家庭空间的六个核心方向
@@ -45,9 +46,10 @@ export function SpatialHome() {
   const metrics = useFamilyHubStore((state) => state.metrics);
   const shimoCore = useFamilyHubStore((state) => state.shimoCore);
   const skills = useFamilyHubStore((state) => state.skills);
-  const invokeAgent = useFamilyHubStore((state) => state.invokeAgent);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
   const reduceMotion = useReducedMotion();
 
   // 将 ShimoStatus 映射为 LifeCoreState
@@ -71,12 +73,11 @@ export function SpatialHome() {
     const value = message.trim();
     if (!value || sending) return;
     setSending(true);
-    try {
-      await invokeAgent('life', value);
-      setMessage('');
-    } finally {
-      setSending(false);
-    }
+    // 打开浮动聊天面板，由 HomeChatOverlay 通过 SSE 发送消息并展示流式回复
+    setChatMessage(value);
+    setChatOpen(true);
+    setMessage('');
+    setSending(false);
   };
 
   return (
@@ -249,6 +250,13 @@ export function SpatialHome() {
           </button>
         </div>
       </motion.form>
+
+      {/* 时墨浮动聊天面板 — 用户发送消息后弹出，展示流式回复 */}
+      <HomeChatOverlay
+        open={chatOpen}
+        initialMessage={chatMessage}
+        onClose={() => setChatOpen(false)}
+      />
     </section>
   );
 }
