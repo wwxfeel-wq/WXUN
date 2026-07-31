@@ -310,9 +310,15 @@ export default function WeChatBotPage() {
   /**
    * 未连接时自动拉取二维码：连接微信是本页的主动作，
    * 不该让用户先点一次「获取二维码」才看到内容。
+   *
+   * 当 phase 变为 'error' 时重置 autoQrRequested，允许自动重试。
    */
   const autoQrRequested = useRef(false);
   useEffect(() => {
+    // 错误状态下重置 ref，允许后续重新请求
+    if (wechatPhase === 'error' || wechatPhase === 'idle') {
+      autoQrRequested.current = false;
+    }
     if (autoQrRequested.current) return;
     if (!wechatStatus) return; // 等首次状态返回，避免与 checkStatus 竞态
     if (wechatStatus.loggedIn) return;
@@ -773,7 +779,7 @@ function WechatConnectStage({
       case 'waiting_confirm':
         return '已扫描，请在手机上点击确认登录';
       case 'error':
-        return '登录失败，账号可能被限制网页版登录';
+        return '登录失败，可能是二维码过期或账号被限制网页版登录';
       default:
         return '连接后，时墨可以在家庭微信群里陪伴家人';
     }
@@ -828,11 +834,19 @@ function WechatConnectStage({
 
         {/* 错误提示 */}
         {(qrError || isBlocked) && (
-          <div className="flex w-full items-start gap-2 rounded-xl border border-error/20 bg-error/10 p-3 text-left">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-error" aria-hidden="true" />
-            <p className="text-xs leading-relaxed text-text-muted">
-              {qrError || '该微信账号被限制网页版登录，请换一个注册满半年且常用的账号试试。'}
-            </p>
+          <div className="flex w-full flex-col items-start gap-2 rounded-xl border border-error/20 bg-error/10 p-3 text-left">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-error" aria-hidden="true" />
+              <p className="text-xs leading-relaxed text-text-muted">
+                {qrError || '该微信账号被限制网页版登录，请换一个注册满半年且常用的账号试试。'}
+              </p>
+            </div>
+            {isBlocked && (
+              <p className="text-3xs leading-relaxed text-text-subtle pl-6">
+                微信自 2017 年起逐步限制了网页版登录权限。如果扫码后手机提示"不能登录网页微信"，
+                说明当前账号被限制。可以尝试使用注册时间较早的账号，或继续使用 AI 管家直连。
+              </p>
+            )}
           </div>
         )}
 

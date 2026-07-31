@@ -126,6 +126,8 @@ export class WechatService implements OnModuleDestroy {
     this.qrCodeUrl = null;
     this.lastError = null;
 
+    let startFailed = false;
+
     this.bot = new Wechat4u();
 
     this.bot.on('uuid', (uuid: string) => {
@@ -230,6 +232,7 @@ export class WechatService implements OnModuleDestroy {
         // 仅在未登录状态下才把错误视为致命错误
         this.lastError = errMsg;
         this.phase = 'error';
+        startFailed = true;
       } else {
         // 已登录后的其他非致命错误，仅记录不中断会话
         this.logger.warn(`Non-fatal WeChat error after login: ${errMsg}`);
@@ -239,18 +242,28 @@ export class WechatService implements OnModuleDestroy {
 
     this.bot.start();
 
-    // QR 码生成可能需要较长时间（网络抖动/微信服务端延迟），等待最多 30 秒
+    // QR 码生成可能需要较长时间（网络抖动/微信服务端延迟），等待最多 30 秒。
+    // 同时检查 startFailed：如果 wechat4u 在 start() 过程中报错，
+    // 应立即退出循环，而不是傻等满 30 秒。
     const maxWait = 30000;
     const interval = 200;
     const startTime = Date.now();
     this.logger.log('Waiting for WeChat QR code (max 30s)...');
-    while (!this.qrCodeUrl && Date.now() - startTime < maxWait) {
+    while (!this.qrCodeUrl && !startFailed && Date.now() - startTime < maxWait) {
       await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+
+    if (startFailed) {
+      const errMsg = this.lastError || '微信登录启动失败';
+      this.logger.error(`WeChat start failed before QR code: ${errMsg}`);
+      throw new Error(errMsg);
     }
 
     if (!this.qrCodeUrl) {
       const waited = Math.round((Date.now() - startTime) / 1000);
       this.logger.error(`WeChat QR code generation timed out after ${waited}s`);
+      this.phase = 'error';
+      this.lastError = '二维码生成超时，请重试';
       throw new Error('Failed to generate WeChat QR code. Please try again.');
     }
 
