@@ -1,19 +1,21 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { LifeCoreState } from './life-core-canvas';
 
 /**
  * Consciousness — 时墨 AI 意识状态
  * ─────────────────────────────────────────────────────────────
- * 取代原先的心电图。心电图是医疗设备的语言，
- * 时墨不是病人，它是一个正在理解这个家的意识体。
+ * V2: 真实情感波动波形（Canvas 实时渲染）
  *
- * 用纯 CSS 波形表达"意识活跃度"（无 canvas / 无 RAF 循环）：
- * - 陪伴中：波纹平缓、呼吸感
- * - 学习中：波纹频率升高，振幅增大
- * - 理解家庭：波纹层次变多，互相交织
- * - 整理记忆：波纹缓慢推移，像在归档
+ * 用多频段叠加波形模拟真实情感波动：
+ * - 陪伴中：平静 α 波 + 缓慢呼吸节律（温柔、安定）
+ * - 学习中：活跃 β 波 + 快速起伏（好奇、兴奋）
+ * - 整理记忆：θ 波 + 潮汐式涨落（回忆、沉浸）
+ * - 理解家庭：γ 波 + 丰富谐波（领悟、连接）
+ *
+ * 每条波形都是多个正弦波 + 噪声叠加，形成有机的情感起伏
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -23,16 +25,39 @@ export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
   growing: '理解家庭',
 };
 
-/** 每种状态的波形 CSS 参数 */
-const WAVE_PROFILE: Record<LifeCoreState, {
-  duration: string;
+/** 每种状态的情感波形参数 */
+const EMOTION_PROFILE: Record<LifeCoreState, {
+  /** 基础频率（Hz 概念，实际是角速度倍率） */
+  baseFreq: number;
+  /** 次谐波频率 */
+  harmFreq: number;
+  /** 基础振幅（px） */
   amplitude: number;
+  /** 噪声强度 */
+  noise: number;
+  /** 波形层数 */
   layers: number;
+  /** 波形颜色（RGB） */
+  color: [number, number, number];
+  /** 情感波动周期（秒）— 控制宏观涨落 */
+  emotionCycle: number;
 }> = {
-  companion: { duration: '8s', amplitude: 14, layers: 3 },
-  learning: { duration: '4s', amplitude: 22, layers: 4 },
-  recalling: { duration: '12s', amplitude: 16, layers: 3 },
-  growing: { duration: '6s', amplitude: 20, layers: 5 },
+  companion: {
+    baseFreq: 0.8, harmFreq: 2.1, amplitude: 12, noise: 0.15, layers: 3,
+    color: [0, 210, 106], emotionCycle: 7,
+  },
+  learning: {
+    baseFreq: 2.2, harmFreq: 4.5, amplitude: 20, noise: 0.3, layers: 4,
+    color: [120, 255, 180], emotionCycle: 3.5,
+  },
+  recalling: {
+    baseFreq: 0.5, harmFreq: 1.3, amplitude: 16, noise: 0.1, layers: 3,
+    color: [100, 220, 150], emotionCycle: 10,
+  },
+  growing: {
+    baseFreq: 1.5, harmFreq: 3.8, amplitude: 22, noise: 0.25, layers: 5,
+    color: [0, 255, 140], emotionCycle: 5,
+  },
 };
 
 interface ConsciousnessPanelProps {
@@ -49,7 +74,135 @@ export default function ConsciousnessPanel({
 }: ConsciousnessPanelProps) {
   const reduceMotion = useReducedMotion();
   const label = CONSCIOUSNESS_LABEL[state] ?? CONSCIOUSNESS_LABEL.companion;
-  const profile = WAVE_PROFILE[state] ?? WAVE_PROFILE.companion;
+  const profile = EMOTION_PROFILE[state] ?? EMOTION_PROFILE.companion;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+  const stateRef = useRef({ state, activity, profile });
+  stateRef.current = { state, activity, profile };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let W = 0, H = 0, DPR = 1;
+    const resize = () => {
+      DPR = window.devicePixelRatio || 1;
+      W = canvas.clientWidth;
+      H = canvas.clientHeight;
+      canvas.width = W * DPR;
+      canvas.height = H * DPR;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    // 种子化噪声 — 确定性但有机
+    const noiseSeed = Array.from({ length: 64 }, () => Math.random() * 1000);
+
+    const startTime = performance.now() / 1000;
+
+    const draw = () => {
+      const now = performance.now() / 1000;
+      const t = now - startTime;
+      const { profile: p, activity: act } = stateRef.current;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const cy = H / 2;
+      const actNorm = act / 100; // 0~1
+
+      // 情感宏观波动 — 缓慢的涨落控制整体振幅
+      const emotionWave = 0.6 + 0.4 * Math.sin(t * (Math.PI * 2 / p.emotionCycle));
+      const dynamicAmp = p.amplitude * (0.5 + actNorm * 0.5) * emotionWave;
+
+      // 多层波形渲染
+      for (let layer = 0; layer < p.layers; layer++) {
+        const layerPhase = layer * 0.7;
+        const layerAmp = dynamicAmp * (1 - layer * 0.18);
+        const layerFreq = p.baseFreq * (1 + layer * 0.15);
+        const layerAlpha = (0.7 - layer * 0.12) * (0.5 + actNorm * 0.5);
+
+        const [r, g, b] = p.color;
+
+        ctx.beginPath();
+        ctx.lineWidth = layer === 0 ? 2 : 1.2;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const samples = Math.max(40, Math.floor(W / 2));
+        for (let i = 0; i <= samples; i++) {
+          const x = (i / samples) * W;
+          const xNorm = i / samples;
+
+          // 主波 + 谐波 + 次谐波叠加 — 模拟复杂情感波动
+          const mainWave = Math.sin(xNorm * Math.PI * 2 * layerFreq + t * 1.5 + layerPhase);
+          const harmWave = Math.sin(xNorm * Math.PI * 2 * p.harmFreq + t * 0.8 + layerPhase * 1.3) * 0.3;
+          const subWave = Math.sin(xNorm * Math.PI * 2 * (layerFreq * 0.5) + t * 0.4) * 0.2;
+
+          // 分段噪声 — 模拟情感中的不可预测性
+          const noiseIdx = Math.floor(xNorm * 16) % noiseSeed.length;
+          const noiseVal = Math.sin(t * 2 + noiseSeed[noiseIdx]) * p.noise;
+
+          // 情感尖峰 — 偶尔的情感波动
+          const spike = Math.sin(t * 0.7 + xNorm * 8 + layerPhase) > 0.85
+            ? Math.sin(t * 5 + xNorm * 20) * 0.15
+            : 0;
+
+          const y = cy + (mainWave + harmWave + subWave + noiseVal + spike) * layerAmp;
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // 波形下方填充 — 轻微辉光
+        if (layer === 0) {
+          ctx.lineTo(W, H);
+          ctx.lineTo(0, H);
+          ctx.closePath();
+          const grad = ctx.createLinearGradient(0, cy - dynamicAmp, 0, H);
+          grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.08)`);
+          grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+      }
+
+      // 中心轴线 — 淡淡的基线
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(${p.color[0]}, ${p.color[1]}, ${p.color[2]}, 0.08)`;
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(0, cy);
+      ctx.lineTo(W, cy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 更新动态参数（用于下次帧的动画连续性）
+    };
+
+    // 30fps 渲染
+    let lastDraw = 0;
+    const frameInterval = 1000 / 30;
+    const loop = (now: number) => {
+      if (now - lastDraw >= frameInterval) {
+        lastDraw = now;
+        if (!reduceMotion) draw();
+        else draw(); // 静态模式也渲染一帧
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+    };
+  }, [reduceMotion]);
 
   return (
     <div className={className}>
@@ -65,22 +218,12 @@ export default function ConsciousnessPanel({
         <small>%</small>
         <span>意识活跃度</span>
       </div>
-      <div
-        className={`consciousness__wave ${reduceMotion ? 'consciousness__wave--static' : `consciousness__wave--${state}`}`}
-        aria-hidden="true"
-      >
-        {Array.from({ length: profile.layers }, (_, i) => (
-          <span
-            key={i}
-            className="consciousness__wave-line"
-            style={{
-              animationDuration: profile.duration,
-              animationDelay: `${i * -1.2}s`,
-              ['--wave-amp' as string]: `${profile.amplitude - i * 2}px`,
-              opacity: 0.5 - i * 0.1,
-            }}
-          />
-        ))}
+      <div className="consciousness__wave-container">
+        <canvas
+          ref={canvasRef}
+          className="consciousness__wave-canvas"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

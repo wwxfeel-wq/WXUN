@@ -4,16 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 粒子云树 V11 (Particle Cloud Tree · Zero Lines)
+ * SuiYan Life Core — 粒子云树 V12 (3D Particle Cloud · Emerald Pulse)
  * ─────────────────────────────────────────────────────────────
  * 复刻 Bilibili BV1ow4m1Y7qu 粒子神经元效果
  *
- * V11 核心变化：树状结构完全由粒子云组成，零线条渲染
- * - 所有分支形态通过粒子密度和亮度勾勒，不使用任何 ctx.stroke()
- * - 粒子拖尾从线段改为发光点序列
- * - 核心脉冲射线从线条改为粒子点序列
- * - 高密度粒子云（5000+）沿分支路径分布，根部密终端疏
- * - 暖色调温度梯度：白热胞体 → 琥珀中段 → 暗红终端
+ * V12 核心变化：3D 深度 + 脉冲运动 + 翡翠绿配色
+ * - 增强Z轴深度变化，分支在三维空间中弯曲，非平面
+ * - 粒子云脉冲运动：沿径向呼吸式扩张/收缩
+ * - 配色统一为项目翡翠绿：白绿胞体 → 翠绿中段 → 深绿终端
+ * - 零线条渲染，纯粒子云勾勒树状形态
  * - 3D 透视 + 拖拽旋转 + 惯性 + 双击重置
  */
 
@@ -74,10 +73,11 @@ interface SignalPulse {
   life: number;
 }
 
-/** 粒子云粒子 — 静态分布在分支路径上，通过密度和亮度勾勒出树状形态 */
+/** 粒子云粒子 — 沿分支流动分布，通过密度和亮度勾勒出树状形态 */
 interface CloudParticle {
   branchId: number;
   progress: number;       // 沿分支的位置 0~1
+  flowSpeed: number;      // 沿分支流动速度
   offsetX: number;        // 垂直于分支的横向偏移（云团散射）
   offsetY: number;        // 纵向微小偏移
   offsetZ: number;        // 深度偏移
@@ -85,6 +85,9 @@ interface CloudParticle {
   phase: number;          // 闪烁相位
   twinkleSpeed: number;   // 闪烁速度
   brightness: number;     // 基础亮度倍率
+  pulsePhase: number;     // 脉冲运动相位
+  pulseSpeed: number;     // 脉冲运动速度
+  pulseAmp: number;       // 脉冲运动振幅（沿径向偏移）
   kind: NodeKind;
 }
 
@@ -134,39 +137,48 @@ function curlNoise2D(x: number, y: number, t: number): number {
 }
 
 // ═══════════════════════════════════════════
-// 色彩温度梯度 — 暖色调
+// 翡翠绿温度梯度 — 白绿→翠绿→深绿
+// 项目主色 #00D26A
 // ═══════════════════════════════════════════
 
 function tempColor(r: number): [number, number, number] {
+  // r=0 胞体端：白绿 #E0FFE8
+  // r=0.25 近端：亮翠绿 #00D26A
+  // r=0.5 中段：翠绿 #00B85A
+  // r=0.75 远端：深翠绿 #006B3C
+  // r=1 终端：暗绿 #003D22
   if (r < 0.08) {
     const t = r / 0.08;
-    return [255, Math.round(lerp(255, 245, t)), Math.round(lerp(255, 210, t))];
+    return [Math.round(lerp(224, 180, t)), Math.round(lerp(255, 250, t)), Math.round(lerp(232, 210, t))];
   }
   if (r < 0.25) {
     const t = (r - 0.08) / 0.17;
-    return [255, Math.round(lerp(245, 180, t)), Math.round(lerp(210, 90, t))];
+    return [Math.round(lerp(180, 0, t)), Math.round(lerp(250, 210, t)), Math.round(lerp(210, 106, t))];
   }
   if (r < 0.5) {
     const t = (r - 0.25) / 0.25;
-    return [Math.round(lerp(255, 220, t)), Math.round(lerp(180, 100, t)), Math.round(lerp(90, 40, t))];
+    return [Math.round(lerp(0, 0, t)), Math.round(lerp(210, 184, t)), Math.round(lerp(106, 90, t))];
   }
   if (r < 0.75) {
     const t = (r - 0.5) / 0.25;
-    return [Math.round(lerp(220, 160, t)), Math.round(lerp(100, 50, t)), Math.round(lerp(40, 20, t))];
+    return [Math.round(lerp(0, 0, t)), Math.round(lerp(184, 107, t)), Math.round(lerp(90, 60, t))];
   }
   const t = clamp((r - 0.75) / 0.25, 0, 1);
-  return [Math.round(lerp(160, 100, t)), Math.round(lerp(50, 25, t)), Math.round(lerp(20, 10, t))];
+  return [Math.round(lerp(0, 0, t)), Math.round(lerp(107, 61, t)), Math.round(lerp(60, 34, t))];
 }
 
 function kindColor(kind: NodeKind, r: number): [number, number, number] {
   const [cr, cg, cb] = tempColor(r);
   switch (kind) {
     case 'memory':
-      return [clamp(cr + 10, 0, 255), clamp(cg + 5, 0, 255), clamp(cb - 15, 0, 255)];
+      // 偏青绿
+      return [clamp(cr, 0, 255), clamp(cg + 15, 0, 255), clamp(cb + 20, 0, 255)];
     case 'event':
-      return [clamp(cr - 10, 0, 255), clamp(cg - 20, 0, 255), clamp(cb + 25, 0, 255)];
+      // 偏蓝绿
+      return [clamp(cr - 5, 0, 255), clamp(cg, 0, 255), clamp(cb + 30, 0, 255)];
     case 'knowledge':
-      return [clamp(cr - 15, 0, 255), clamp(cg, 0, 255), clamp(cb + 35, 0, 255)];
+      // 偏黄绿
+      return [clamp(cr + 30, 0, 255), clamp(cg + 10, 0, 255), clamp(cb - 10, 0, 255)];
     default:
       return [cr, cg, cb];
   }
@@ -211,10 +223,12 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
   let branchIdCounter = 0;
 
   // 递归构建分支 — 更有机的弯曲和更深的层级
+  // 3D 分支创建 — 使用球面坐标（方位角 + 仰角）实现真正的三维伸展
   function createBranch(
     parentId: number | null,
     startX: number, startY: number, startZ: number,
-    angle: number,
+    azimuth: number,   // 水平方位角
+    elevation: number, // 垂直仰角 (-π/2 ~ π/2)
     length: number,
     kind: NodeKind,
     depth: number,
@@ -222,23 +236,29 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     const id = branchIdCounter++;
     const thickness = depth === 0 ? 1.0 : depth === 1 ? 0.55 : depth === 2 ? 0.3 : 0.15;
 
-    // 更多段数 → 更平滑的曲线
     const segments = 12 + Math.floor(rand() * 6);
     const points: { x: number; y: number; z: number }[] = [];
     let cx = startX, cy = startY, cz = startZ;
-    let currentAngle = angle;
-    const zDrift = (rand() - 0.5) * 0.025;
+    let curAz = azimuth;
+    let curEl = elevation;
 
     points.push({ x: cx, y: cy, z: cz });
 
     for (let i = 1; i <= segments; i++) {
-      // 有机弯曲：角度逐步偏转，深处分支弯曲更多
-      const bendAmount = depth === 0 ? 0.15 : depth === 1 ? 0.22 : 0.3;
-      currentAngle += (rand() - 0.5) * bendAmount;
+      // 3D 有机弯曲：方位角和仰角同时逐步偏转
+      const bendAz = depth === 0 ? 0.12 : depth === 1 ? 0.20 : 0.28;
+      const bendEl = depth === 0 ? 0.10 : depth === 1 ? 0.16 : 0.22;
+      curAz += (rand() - 0.5) * bendAz;
+      curEl += (rand() - 0.5) * bendEl;
+      // 仰角钳制，避免分支折回
+      curEl = clamp(curEl, -1.2, 1.2);
+
       const segLen = length / segments;
-      cx += Math.cos(currentAngle) * segLen;
-      cy += Math.sin(currentAngle) * segLen;
-      cz += zDrift * (rand() - 0.3);
+      // 球面坐标 → 笛卡尔坐标
+      const cosEl = Math.cos(curEl);
+      cx += Math.cos(curAz) * cosEl * segLen;
+      cy += Math.sin(curAz) * cosEl * segLen;
+      cz += Math.sin(curEl) * segLen;
       points.push({ x: cx, y: cy, z: cz });
     }
 
@@ -260,7 +280,7 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
       parentId,
       level: depth,
       points,
-      angle,
+      angle: azimuth,
       length,
       thickness,
       children: [],
@@ -272,20 +292,23 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     // 递归创建子分支 — 4 级深度
     if (depth < 3) {
       const childCount = depth === 0
-        ? 3 + Math.floor(rand() * 2) // 初级：3-4 个子分支
+        ? 3 + Math.floor(rand() * 2)
         : depth === 1
-        ? 2 + Math.floor(rand() * 2) // 二级：2-3
-        : 1 + Math.floor(rand() * 2); // 三级：1-2
+        ? 2 + Math.floor(rand() * 2)
+        : 1 + Math.floor(rand() * 2);
 
       const endPoint = points[points.length - 1];
       for (let c = 0; c < childCount; c++) {
-        const angleOffset = (c - (childCount - 1) / 2) * (0.45 + rand() * 0.3);
-        const childAngle = currentAngle + angleOffset;
+        // 3D 子分支偏转：方位角和仰角同时偏移
+        const azOffset = (c - (childCount - 1) / 2) * (0.40 + rand() * 0.30);
+        const elOffset = (rand() - 0.5) * 0.50;
+        const childAz = curAz + azOffset;
+        const childEl = clamp(curEl + elOffset, -1.2, 1.2);
         const childLength = length * (0.5 + rand() * 0.25);
         const childKind = kinds[(id + c) % kinds.length] || 'agent';
         const childId = createBranch(
           id, endPoint.x, endPoint.y, endPoint.z,
-          childAngle, childLength, childKind, depth + 1,
+          childAz, childEl, childLength, childKind, depth + 1,
         );
         branch.children.push(childId);
       }
@@ -294,13 +317,15 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     return id;
   }
 
-  // 创建初级树突 — 10-14 条主分支从胞体辐射
+  // 创建初级树突 — 10-14 条主分支从胞体向三维空间辐射
   const primaryCount = 10 + Math.floor(rand() * 4);
   for (let i = 0; i < primaryCount; i++) {
-    const angle = (i / primaryCount) * Math.PI * 2 + (rand() - 0.5) * 0.25;
+    const azimuth = (i / primaryCount) * Math.PI * 2 + (rand() - 0.5) * 0.25;
+    // 随机仰角 — 让分支在Z轴方向充分展开，形成3D球状分布
+    const elevation = (rand() - 0.5) * 1.0; // -0.5 ~ 0.5 弧度
     const length = 0.38 + rand() * 0.22;
     const kind = kinds[i % kinds.length] || 'agent';
-    createBranch(null, 0, 0, 0, angle, length, kind, 0);
+    createBranch(null, 0, 0, 0, azimuth, elevation, length, kind, 0);
   }
 
   // 创建粒子 — 沿分支流动
@@ -355,7 +380,7 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
       const progress = Math.pow(rawT, 0.7); // 偏向根部
 
       // 散射宽度：根部宽、终端窄，模拟云团形态
-      const scatterWidth = branch.thickness * 0.018 * (1.0 - progress * 0.6);
+      const scatterWidth = branch.thickness * 0.020 * (1.0 - progress * 0.6);
       // 高斯散射（Box-Muller 近似）
       const gauss = (rand() + rand() + rand() - 1.5) * 0.67;
       const offsetX = gauss * scatterWidth;
@@ -369,6 +394,8 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
       cloudParticles.push({
         branchId: branch.id,
         progress,
+        // 流动速度 — 让粒子云沿分支缓慢流动
+        flowSpeed: 0.0008 + rand() * 0.002,
         offsetX,
         offsetY,
         offsetZ,
@@ -378,6 +405,10 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
         phase: rand() * Math.PI * 2,
         twinkleSpeed: 0.4 + rand() * 1.2,
         brightness,
+        // 脉冲运动参数 — 沿径向呼吸式扩张/收缩
+        pulsePhase: rand() * Math.PI * 2,
+        pulseSpeed: 0.3 + rand() * 0.8,
+        pulseAmp: 0.008 + rand() * 0.015,
         kind: branch.kind,
       });
     }
@@ -502,46 +533,46 @@ export function LifeCoreCanvas({
   const [glowSprite, setGlowSprite] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // 粒子光晕 — 暖色
+    // 粒子光晕 — 翡翠绿
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d')!;
     const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.15, 'rgba(255,240,200,0.7)');
-    grad.addColorStop(0.4, 'rgba(255,180,80,0.2)');
-    grad.addColorStop(1, 'rgba(255,100,40,0)');
+    grad.addColorStop(0.15, 'rgba(200,255,220,0.7)');
+    grad.addColorStop(0.4, 'rgba(0,210,106,0.2)');
+    grad.addColorStop(1, 'rgba(0,120,60,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     setParticleSprite(canvas);
 
-    // 核心 sprite — 白热
+    // 核心 sprite — 白绿
     const coreSize = 128;
     const coreCanvas = document.createElement('canvas');
     coreCanvas.width = coreSize; coreCanvas.height = coreSize;
     const cctx = coreCanvas.getContext('2d')!;
     const coreGrad = cctx.createRadialGradient(coreSize/2, coreSize/2, 0, coreSize/2, coreSize/2, coreSize/2);
     coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
-    coreGrad.addColorStop(0.1, 'rgba(255,250,220,0.85)');
-    coreGrad.addColorStop(0.25, 'rgba(255,200,100,0.4)');
-    coreGrad.addColorStop(0.5, 'rgba(255,140,50,0.15)');
-    coreGrad.addColorStop(1, 'rgba(200,80,30,0)');
+    coreGrad.addColorStop(0.1, 'rgba(224,255,232,0.85)');
+    coreGrad.addColorStop(0.25, 'rgba(0,210,106,0.4)');
+    coreGrad.addColorStop(0.5, 'rgba(0,160,80,0.15)');
+    coreGrad.addColorStop(1, 'rgba(0,100,50,0)');
     cctx.fillStyle = coreGrad;
     cctx.fillRect(0, 0, coreSize, coreSize);
     setCoreSprite(coreCanvas);
 
-    // 背景光晕
+    // 背景光晕 — 翡翠绿
     const glowSize = 512;
     const glowCanvas = document.createElement('canvas');
     glowCanvas.width = glowSize; glowCanvas.height = glowSize;
     const gctx = glowCanvas.getContext('2d')!;
     const glowGrad = gctx.createRadialGradient(glowSize/2, glowSize/2, 0, glowSize/2, glowSize/2, glowSize/2);
-    glowGrad.addColorStop(0, 'rgba(255,160,60,0.15)');
-    glowGrad.addColorStop(0.15, 'rgba(255,140,50,0.1)');
-    glowGrad.addColorStop(0.35, 'rgba(220,100,40,0.05)');
-    glowGrad.addColorStop(0.65, 'rgba(180,70,30,0.02)');
-    glowGrad.addColorStop(1, 'rgba(120,40,15,0)');
+    glowGrad.addColorStop(0, 'rgba(0,210,106,0.15)');
+    glowGrad.addColorStop(0.15, 'rgba(0,180,90,0.1)');
+    glowGrad.addColorStop(0.35, 'rgba(0,130,65,0.05)');
+    glowGrad.addColorStop(0.65, 'rgba(0,90,45,0.02)');
+    glowGrad.addColorStop(1, 'rgba(0,60,30,0)');
     gctx.fillStyle = glowGrad;
     gctx.fillRect(0, 0, glowSize, glowSize);
     setGlowSprite(glowCanvas);
@@ -655,7 +686,7 @@ export function LifeCoreCanvas({
       const alpha = star.brightness * twinkle * persp;
       if (alpha < 0.01) continue;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(255, 220, 180, 0.8)';
+      ctx.fillStyle = 'rgba(180, 255, 200, 0.8)';
       ctx.beginPath();
       ctx.arc(sx, sy, Math.max(0.3, star.size * persp), 0, Math.PI * 2);
       ctx.fill();
@@ -704,17 +735,28 @@ export function LifeCoreCanvas({
           sig.speed = 0.008 + Math.random() * 0.012;
         }
       }
+
+      // 更新粒子云流动 — 所有粒子沿分支缓慢流动，到终端后回到根部
+      for (const cp of cloudParticles) {
+        cp.progress += cp.flowSpeed * dtScaled;
+        if (cp.progress >= 1) cp.progress -= 1; // 循环
+      }
     }
 
-    // ═══ 4. 渲染粒子云树状结构 — 用粒子密度和亮度勾勒形态，不使用任何线条 ═══
+    // ═══ 4. 渲染粒子云树状结构 — 流动 + 脉冲运动，纯粒子零线条 ═══
     ctx.globalCompositeOperation = 'lighter';
 
     for (const cp of cloudParticles) {
       const branch = branches[cp.branchId];
       if (!branch) continue;
 
+      // 脉冲运动：沿径向（从胞体向外）呼吸式扩张/收缩
+      const pulseWave = Math.sin(frame * cp.pulseSpeed + cp.pulsePhase);
+      const pulseOffset = pulseWave * cp.pulseAmp;
+      const dynamicProgress = clamp(cp.progress + pulseOffset, 0, 1);
+
       // 沿分支获取基础位置，叠加云团散射偏移
-      const pos = getBranchPosition(branch, cp.progress, cp.offsetX);
+      const pos = getBranchPosition(branch, dynamicProgress, cp.offsetX);
       const px = pos.x + cp.offsetY;
       const py = pos.y;
       const pz = pos.z + cp.offsetZ;
@@ -727,13 +769,14 @@ export function LifeCoreCanvas({
 
       if (sx < -10 || sx > width + 10 || sy < -10 || sy > height + 10) continue;
 
-      const [r, g, b] = kindColor(cp.kind, cp.progress);
+      const [r, g, b] = kindColor(cp.kind, dynamicProgress);
 
-      // 闪烁 + 呼吸
+      // 闪烁 + 脉冲亮度
       const twinkle = reducedMotion ? 1.0 : (0.6 + 0.4 * Math.sin(frame * cp.twinkleSpeed + cp.phase));
+      const pulseBrightness = reducedMotion ? 1.0 : (0.7 + 0.3 * pulseWave);
       const breathFade = reducedMotion ? 1.0 : (0.85 + 0.15 * Math.sin(frame * 0.5 + cp.phase * 0.3));
 
-      const alpha = cp.brightness * twinkle * breathFade * persp * burstAlpha;
+      const alpha = cp.brightness * twinkle * pulseBrightness * breathFade * persp * burstAlpha;
       if (alpha < 0.01) continue;
 
       // 外层光晕（sprite）
@@ -776,7 +819,7 @@ export function LifeCoreCanvas({
 
       // 信号脉冲核心
       ctx.globalAlpha = Math.min(1, alpha);
-      ctx.fillStyle = `rgba(255,250,220,0.95)`;
+      ctx.fillStyle = `rgba(220,255,235,0.95)`;
       ctx.beginPath();
       ctx.arc(sx, sy, Math.max(1.5, 2.5 * sig.intensity * persp * burstScale), 0, Math.PI * 2);
       ctx.fill();
@@ -892,10 +935,10 @@ export function LifeCoreCanvas({
     // 外层弥散光晕
     ctx.globalAlpha = Math.min(0.7, corePulse * 0.8 * corePersp * burstAlpha);
     const og = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 2.5);
-    og.addColorStop(0, 'rgba(255,160,60,0.15)');
-    og.addColorStop(0.3, 'rgba(255,120,40,0.08)');
-    og.addColorStop(0.7, 'rgba(200,80,30,0.03)');
-    og.addColorStop(1, 'rgba(120,40,15,0)');
+    og.addColorStop(0, 'rgba(0,210,106,0.15)');
+    og.addColorStop(0.3, 'rgba(0,180,90,0.08)');
+    og.addColorStop(0.7, 'rgba(0,120,60,0.03)');
+    og.addColorStop(1, 'rgba(0,60,30,0)');
     ctx.fillStyle = og;
     ctx.beginPath();
     ctx.arc(coreX, coreY, coreR * 2.5, 0, Math.PI * 2);
@@ -904,11 +947,11 @@ export function LifeCoreCanvas({
     // 中层光晕
     ctx.globalAlpha = Math.min(0.8, corePulse * 1.1 * corePersp * burstAlpha);
     const mg = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 1.2);
-    mg.addColorStop(0, 'rgba(255,255,240,0.25)');
-    mg.addColorStop(0.15, 'rgba(255,220,150,0.18)');
-    mg.addColorStop(0.4, 'rgba(255,160,60,0.12)');
-    mg.addColorStop(0.75, 'rgba(200,100,40,0.04)');
-    mg.addColorStop(1, 'rgba(150,60,20,0)');
+    mg.addColorStop(0, 'rgba(240,255,245,0.25)');
+    mg.addColorStop(0.15, 'rgba(150,255,200,0.18)');
+    mg.addColorStop(0.4, 'rgba(0,210,106,0.12)');
+    mg.addColorStop(0.75, 'rgba(0,150,75,0.04)');
+    mg.addColorStop(1, 'rgba(0,80,40,0)');
     ctx.fillStyle = mg;
     ctx.beginPath();
     ctx.arc(coreX, coreY, coreR * 1.2, 0, Math.PI * 2);
@@ -923,8 +966,8 @@ export function LifeCoreCanvas({
     ctx.globalAlpha = Math.min(1, corePulse * 2.0 * burstAlpha);
     const ig = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 0.35);
     ig.addColorStop(0, 'rgba(255,255,255,0.5)');
-    ig.addColorStop(0.5, 'rgba(255,240,200,0.2)');
-    ig.addColorStop(1, 'rgba(255,200,100,0)');
+    ig.addColorStop(0.5, 'rgba(200,255,220,0.2)');
+    ig.addColorStop(1, 'rgba(0,210,106,0)');
     ctx.fillStyle = ig;
     ctx.beginPath();
     ctx.arc(coreX, coreY, coreR * 0.35, 0, Math.PI * 2);
@@ -947,7 +990,7 @@ export function LifeCoreCanvas({
           const dotAlpha = (1 - distRatio) * 0.12 * rayPulse * burstAlpha;
           if (dotAlpha < 0.008) continue;
           ctx.globalAlpha = dotAlpha;
-          ctx.fillStyle = `rgba(255,200,120,0.8)`;
+          ctx.fillStyle = `rgba(120,255,180,0.8)`;
           ctx.beginPath();
           ctx.arc(dx, dy, Math.max(0.5, 2.0 * (1 - distRatio * 0.7)), 0, Math.PI * 2);
           ctx.fill();

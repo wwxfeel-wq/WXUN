@@ -1575,7 +1575,8 @@
 }
 
 /* CSS 波形容器 */
-.consciousness__wave {
+/* V2: Canvas 情感波形容器 */
+.consciousness__wave-container {
   position: relative;
   height: 4.5rem;
   overflow: hidden;
@@ -1583,36 +1584,8 @@
   background: color-mix(in srgb, var(--color-primary) 4%, transparent);
 }
 
-/* 波形线 — 用 SVG 波浪 path 作为 background-image，通过 CSS animation 平移 */
-.consciousness__wave-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
+.consciousness__wave-canvas {
+  display: block;
+  width: 100%;
   height: 100%;
-  background-repeat: repeat-x;
-  background-position: 0 50%;
-  background-size: 200% 100%;
-  animation-name: consciousnessWaveDrift;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  /* SVG 波浪 path — 两端平齐确保无缝循环 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'%3E%3Cpath d='M0 20 Q 25 5, 50 20 T 100 20 T 150 20 T 200 20' fill='none' stroke='rgb(0,210,106)' stroke-width='1.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
-  transform: translateY(-50%);
-}
-
-/* 静态模式（reduced-motion）— 不动画 */
-.consciousness__wave--static .consciousness__wave-line {
-  animation: none;
-}
-
-@keyframes consciousnessWaveDrift {
-  0% { background-position-x: 0%; }
-  100% { background-position-x: -200%; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .consciousness__wave-line {
-    animation: none !important;
-  }
 }
