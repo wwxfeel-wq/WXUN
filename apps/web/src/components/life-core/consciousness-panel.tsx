@@ -5,27 +5,43 @@ import { useReducedMotion } from 'framer-motion';
 import type { LifeCoreState } from './life-core-canvas';
 
 /**
- * Consciousness — 时墨 AI 意识状态
+ * Mood Panel — 时墨心情波形
  * ─────────────────────────────────────────────────────────────
- * V2: 真实情感波动波形（Canvas 实时渲染）
+ * V3: 从「意识活跃度」改为「时墨心情」— 更人性化、更有温度
  *
- * 用多频段叠加波形模拟真实情感波动：
- * - 陪伴中：平静 α 波 + 缓慢呼吸节律（温柔、安定）
- * - 学习中：活跃 β 波 + 快速起伏（好奇、兴奋）
- * - 整理记忆：θ 波 + 潮汐式涨落（回忆、沉浸）
- * - 理解家庭：γ 波 + 丰富谐波（领悟、连接）
+ * 波形图整体代表时墨当前的心情波动：
+ * - 温柔陪伴：平静 α 波 + 缓慢呼吸节律（温柔、安定）💚
+ * - 好奇探索：活跃 β 波 + 快速起伏（好奇、兴奋）💙
+ * - 怀旧回忆：θ 波 + 潮汐式涨落（怀念、沉浸）🧡
+ * - 欣喜成长：γ 波 + 丰富谐波（欣喜、连接）💗
  *
  * 每条波形都是多个正弦波 + 噪声叠加，形成有机的情感起伏
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
-  companion: '陪伴中',
-  learning: '学习中',
-  recalling: '整理记忆',
-  growing: '理解家庭',
+  companion: '温柔陪伴',
+  learning: '好奇探索',
+  recalling: '怀旧回忆',
+  growing: '欣喜成长',
 };
 
-/** 每种状态的情感波形参数 */
+/** 心情表情符号 */
+const MOOD_EMOJI: Record<LifeCoreState, string> = {
+  companion: '🍃',
+  learning: '✨',
+  recalling: '🕯️',
+  growing: '🌸',
+};
+
+/** 每种心情的简短描述 */
+const MOOD_DESC: Record<LifeCoreState, string> = {
+  companion: '平静而温暖',
+  learning: '充满好奇',
+  recalling: '沉浸在回忆中',
+  growing: '满心欢喜',
+};
+
+/** 每种心情的波形参数 */
 const EMOTION_PROFILE: Record<LifeCoreState, {
   /** 基础频率（Hz 概念，实际是角速度倍率） */
   baseFreq: number;
@@ -39,30 +55,30 @@ const EMOTION_PROFILE: Record<LifeCoreState, {
   layers: number;
   /** 波形颜色（RGB） */
   color: [number, number, number];
-  /** 情感波动周期（秒）— 控制宏观涨落 */
+  /** 心情波动周期（秒）— 控制宏观涨落 */
   emotionCycle: number;
 }> = {
   companion: {
     baseFreq: 0.8, harmFreq: 2.1, amplitude: 12, noise: 0.15, layers: 3,
-    color: [0, 210, 106], emotionCycle: 7,
+    color: [82, 196, 128], emotionCycle: 7,
   },
   learning: {
     baseFreq: 2.2, harmFreq: 4.5, amplitude: 20, noise: 0.3, layers: 4,
-    color: [120, 255, 180], emotionCycle: 3.5,
+    color: [86, 180, 233], emotionCycle: 3.5,
   },
   recalling: {
     baseFreq: 0.5, harmFreq: 1.3, amplitude: 16, noise: 0.1, layers: 3,
-    color: [100, 220, 150], emotionCycle: 10,
+    color: [230, 162, 90], emotionCycle: 10,
   },
   growing: {
     baseFreq: 1.5, harmFreq: 3.8, amplitude: 22, noise: 0.25, layers: 5,
-    color: [0, 255, 140], emotionCycle: 5,
+    color: [232, 134, 174], emotionCycle: 5,
   },
 };
 
 interface ConsciousnessPanelProps {
   state: LifeCoreState;
-  /** 意识活跃度百分比 0-100 */
+  /** 心情指数百分比 0-100 */
   activity: number;
   className?: string;
 }
@@ -74,6 +90,8 @@ export default function ConsciousnessPanel({
 }: ConsciousnessPanelProps) {
   const reduceMotion = useReducedMotion();
   const label = CONSCIOUSNESS_LABEL[state] ?? CONSCIOUSNESS_LABEL.companion;
+  const emoji = MOOD_EMOJI[state] ?? MOOD_EMOJI.companion;
+  const desc = MOOD_DESC[state] ?? MOOD_DESC.companion;
   const profile = EMOTION_PROFILE[state] ?? EMOTION_PROFILE.companion;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -114,7 +132,7 @@ export default function ConsciousnessPanel({
       const cy = H / 2;
       const actNorm = act / 100; // 0~1
 
-      // 情感宏观波动 — 缓慢的涨落控制整体振幅
+      // 心情宏观波动 — 缓慢的涨落控制整体振幅
       const emotionWave = 0.6 + 0.4 * Math.sin(t * (Math.PI * 2 / p.emotionCycle));
       const dynamicAmp = p.amplitude * (0.5 + actNorm * 0.5) * emotionWave;
 
@@ -196,8 +214,6 @@ export default function ConsciousnessPanel({
       ctx.lineTo(W, cy);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // 更新动态参数（用于下次帧的动画连续性）
     };
 
     // 30fps 渲染
@@ -222,17 +238,19 @@ export default function ConsciousnessPanel({
   return (
     <div className={className}>
       <div className="consciousness__head">
-        <span className="consciousness__label">Consciousness</span>
+        <span className="consciousness__label">Mood</span>
         <span className="consciousness__state">
           <i aria-hidden="true" />
           {label}
         </span>
       </div>
       <div className="consciousness__value">
+        <span className="consciousness__emoji" aria-hidden="true">{emoji}</span>
         <strong>{Math.round(activity)}</strong>
         <small>%</small>
-        <span>意识活跃度</span>
+        <span>心情指数</span>
       </div>
+      <div className="consciousness__mood-desc">{desc}</div>
       <div className="consciousness__wave-container">
         <canvas
           ref={canvasRef}

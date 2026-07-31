@@ -1556,6 +1556,13 @@
   gap: var(--space-xs);
 }
 
+.consciousness__emoji {
+  font-size: var(--text-xl);
+  line-height: 1;
+  margin-right: var(--space-3xs);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 30%, transparent));
+}
+
 .consciousness__value strong {
   font-size: var(--text-3xl);
   font-weight: var(--weight-bold);
@@ -1574,14 +1581,22 @@
   color: var(--color-text-muted);
 }
 
+.consciousness__mood-desc {
+  font-size: var(--text-2xs);
+  color: var(--color-text-tertiary);
+  opacity: 0.7;
+  margin-top: calc(-1 * var(--space-3xs));
+  letter-spacing: 0.02em;
+}
+
 /* CSS 波形容器 */
-/* V2: Canvas 情感波形容器 */
+/* V3: 心情波形容器 — 背景透明，让心情颜色自由表达 */
 .consciousness__wave-container {
   position: relative;
   height: 4.5rem;
   overflow: hidden;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  background: transparent;
 }
 
 .consciousness__wave-canvas {

@@ -116,7 +116,7 @@ export function ImmersiveHome() {
         <GlassLayer intensity="strong" className="home-panel home-panel--monitor">
           <div className="home-panel__title"><span><Activity size={14} /> 时墨</span><span className="home-panel__online">在线</span></div>
           <div className="home-monitor">
-            <span>意识活跃度</span>
+            <span>心情指数</span>
             <strong>{shimoCore.understanding}</strong><small>%</small>
             <svg viewBox="0 0 300 48" preserveAspectRatio="none" aria-hidden="true">
               <ECGPath />
