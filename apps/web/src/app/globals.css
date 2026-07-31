@@ -610,7 +610,8 @@
   .floating-dock,
   .msg-user,
   .msg-ai,
-  .chat-input-shell {
+  .chat-input-shell,
+  .spatial-input-shell {
     backdrop-filter: blur(var(--glass-blur-radius-mobile)) saturate(1.1) !important;
     -webkit-backdrop-filter: blur(var(--glass-blur-radius-mobile)) saturate(1.1) !important;
   }
@@ -1309,12 +1310,56 @@
 }
 
 .spatial-input-shell {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
   border-radius: var(--radius-full);
   min-height: 3rem;
+  /* 液态玻璃效果 — 直接内嵌，不依赖 GlassLayer */
+  background: var(--color-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--border-width) solid var(--color-glass-border);
+  box-shadow:
+    var(--shadow-glass-medium),
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.06);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* 顶部高光线 — 模拟玻璃切面反光 */
+.spatial-input-shell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 15%;
+  right: 15%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.20) 50%, transparent);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* 聚焦时翡翠绿辉光 */
+.spatial-input-shell:focus-within {
+  border-color: var(--color-glass-border-hover);
+  box-shadow:
+    var(--shadow-glass-strong),
+    0 0 0 1px var(--color-primary-faint),
+    0 4px 24px var(--color-primary-soft),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.spatial-input-shell > svg {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  transition: color var(--transition-fast);
+}
+
+.spatial-input-shell:focus-within > svg {
+  color: var(--color-primary);
 }
 
 @media (min-width: 48rem) {
@@ -1359,6 +1404,7 @@
 .spatial-input-shell > button:hover:not(:disabled) {
   background: var(--color-primary-hover);
   transform: scale(1.08);
+  box-shadow: var(--shadow-glow-primary-sm);
 }
 
 .spatial-input-shell > button:disabled {

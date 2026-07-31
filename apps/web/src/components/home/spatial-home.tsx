@@ -231,7 +231,9 @@ export function SpatialHome() {
         </motion.div>
       </aside>
 
-      {/* 输入框 — 位于全局 dock 上方，留出清晰间隙 */}
+      {/* 输入框 — 位于全局 dock 上方，留出清晰间隙
+          不使用 GlassLayer 包裹（避免嵌套 glass 导致的 flex 布局和视觉割裂），
+          直接用 .spatial-input-shell 类承载液态玻璃效果 */}
       <motion.form
         className="spatial-home__input"
         onSubmit={submit}
@@ -239,7 +241,7 @@ export function SpatialHome() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.9, duration: 0.5 }}
       >
-        <GlassLayer intensity="default" className="spatial-input-shell">
+        <div className="spatial-input-shell">
           <MessagesSquare size={16} aria-hidden="true" />
           <input
             value={message}
@@ -250,7 +252,7 @@ export function SpatialHome() {
           <button type="submit" disabled={!message.trim() || sending} aria-label="发送消息">
             <ArrowUp size={17} />
           </button>
-        </GlassLayer>
+        </div>
       </motion.form>
     </section>
   );
