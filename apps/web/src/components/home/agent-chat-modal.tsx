@@ -312,16 +312,16 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
                 </motion.div>
               ))}
 
-              {/* Loading indicator */}
+              {/* Loading indicator — 使用 msg-ai 风格保持一致 */}
               {loading && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="flex justify-start"
                 >
-                  <div className="bg-glass rounded-2xl px-4 py-2.5 flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" />
-                    <span className="text-xs text-text-muted">
+                  <div className="msg-ai max-w-85p rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    <span className="text-xs text-text-secondary">
                       {executing ? `${agent.name} 正在调用工具并思考...` : `${agent.name} 正在思考...`}
                     </span>
                   </div>
@@ -338,9 +338,9 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
               )}
             </div>
 
-            {/* Input */}
+            {/* Input — 统一玻璃胶囊容器，融入整体设计语言 */}
             <div className="p-3 border-t border-border">
-              <div className="flex items-end gap-2">
+              <div className="chat-input-shell">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -349,26 +349,20 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
                   aria-label={`和 ${agent.role} 对话`}
                   rows={1}
                   disabled={loading}
-                  className="flex-1 bg-glass border border-glass-border rounded-xl px-4 py-2.5 text-sm text-text placeholder:text-text-subtle resize-none focus:outline-none focus:border-accent/40 transition-colors disabled:opacity-[var(--state-disabled-opacity)] focus-ring max-h-25"
+                  className="chat-input-shell__textarea"
                 />
-                <GlassLayer
-                  intensity="default"
-                  interactive
-                  asChild
-                  className="flex-shrink-0 w-10 h-10 rounded-xl text-accent flex items-center justify-center disabled:opacity-[var(--state-disabled-opacity)] hover:text-accent-hover transition-colors focus-ring"
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || loading}
+                  aria-label="发送"
+                  className="chat-input-shell__send"
                 >
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim() || loading}
-                    aria-label="发送"
-                  >
-                    {loading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                  </button>
-                </GlassLayer>
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
               </div>
               <div className="mt-1.5 flex items-center gap-1 text-3xs text-text-subtle">
                 <Zap className="w-3 h-3" />
@@ -402,7 +396,7 @@ function ExecutionDetails({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-glass border border-glass-border rounded-2xl overflow-hidden"
+      className="glass-card overflow-hidden"
     >
       <button
         onClick={onToggle}

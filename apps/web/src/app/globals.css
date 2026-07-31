@@ -212,6 +212,91 @@
     color: var(--color-text-primary);
   }
 
+  /* === Chat Input Shell — 统一玻璃胶囊输入容器 ===
+   * 融入整体液态玻璃设计语言，与首页 spatial-input-shell 风格一致。
+   * textarea 和发送按钮包裹在同一个玻璃容器中，消除"盒子套盒子"的视觉割裂。
+   */
+  .chat-input-shell {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-lg);
+    border-radius: var(--radius-xl);
+    min-height: 3rem;
+    background: var(--color-glass);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: var(--border-width) solid var(--color-glass-border);
+    box-shadow:
+      var(--shadow-glass-medium),
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      inset 0 -1px 0 rgba(0,0,0,0.06);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .chat-input-shell:focus-within {
+    border-color: var(--color-glass-border-hover);
+    box-shadow:
+      var(--shadow-glass-strong),
+      0 0 0 1px var(--color-primary-faint),
+      0 4px 20px var(--color-primary-soft),
+      inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+
+  .chat-input-shell__textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.25rem;
+    max-height: 6rem;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    padding: calc(var(--space-sm) + 1px) 0;
+  }
+
+  .chat-input-shell__textarea::placeholder {
+    color: var(--color-text-tertiary);
+  }
+
+  .chat-input-shell__textarea:disabled {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .chat-input-shell__send {
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--radius-lg);
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .chat-input-shell__send:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+    transform: scale(1.08);
+    box-shadow: var(--shadow-glow-primary-sm);
+  }
+
+  .chat-input-shell__send:active:not(:disabled) {
+    background: var(--color-primary-active);
+    transform: scale(0.95);
+  }
+
+  .chat-input-shell__send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   /* Skill capsule */
   .skill-capsule {
     background: var(--color-glass);
@@ -524,7 +609,8 @@
   .lg-topbar,
   .floating-dock,
   .msg-user,
-  .msg-ai {
+  .msg-ai,
+  .chat-input-shell {
     backdrop-filter: blur(var(--glass-blur-radius-mobile)) saturate(1.1) !important;
     -webkit-backdrop-filter: blur(var(--glass-blur-radius-mobile)) saturate(1.1) !important;
   }
