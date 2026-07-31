@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { LifeCoreState } from './life-core-canvas';
-import { useEmotionStore } from '@/stores/emotion-store';
 
 /**
  * Consciousness — 时墨 AI 意识状态
@@ -80,12 +79,6 @@ export default function ConsciousnessPanel({
   const rafRef = useRef<number>(0);
   const stateRef = useRef({ state, activity, profile });
   stateRef.current = { state, activity, profile };
-
-  // 同步到全局 emotion store — 让 EmotionWaveBar 实时联动
-  const setEmotionState = useEmotionStore((s) => s.setState);
-  const setActivityLevel = useEmotionStore((s) => s.setActivity);
-  useEffect(() => { setEmotionState(state); }, [state, setEmotionState]);
-  useEffect(() => { setActivityLevel(activity); }, [activity, setActivityLevel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
