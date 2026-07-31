@@ -7,7 +7,7 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情波形
  * ─────────────────────────────────────────────────────────────
- * V3: 从「意识活跃度」改为「时墨心情」— 更人性化、更有温度
+ * V4: 真实情感波动 + 两边羽化淡出
  *
  * 波形图整体代表时墨当前的心情波动：
  * - 温柔陪伴：平静 α 波 + 缓慢呼吸节律（温柔、安定）💚
@@ -15,7 +15,12 @@ import type { LifeCoreState } from './life-core-canvas';
  * - 怀旧回忆：θ 波 + 潮汐式涨落（怀念、沉浸）🧡
  * - 欣喜成长：γ 波 + 丰富谐波（欣喜、连接）💗
  *
- * 每条波形都是多个正弦波 + 噪声叠加，形成有机的情感起伏
+ * V4 改进：
+ * - 用多频段噪声(模拟Perlin)替代纯正弦波，有机感更强
+ * - 情绪事件系统：偶发的情感涟漪（突如其来的愉悦、沉思）
+ * - 基线漂移：心情不会完美居中，更真实
+ * - 两边羽化：振幅和透明度在左右边缘平滑淡出
+ * - 分段渲染：每段使用独立 alpha，实现精确的羽化控制
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -117,10 +122,55 @@ export default function ConsciousnessPanel({
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    // 种子化噪声 — 确定性但有机
-    const noiseSeed = Array.from({ length: 64 }, () => Math.random() * 1000);
+    // 多频段噪声种子 — 模拟 Perlin 噪声的有机感
+    const noiseSeed = Array.from({ length: 128 }, () => Math.random() * 1000);
+    // 情绪事件种子 — 随机的情感波动事件（突如其来的愉悦、沉思等）
+    const eventSeed = Array.from({ length: 12 }, () => ({
+      time: Math.random() * 20,
+      intensity: 0.3 + Math.random() * 0.7,
+      duration: 2 + Math.random() * 4,
+      freq: 0.5 + Math.random() * 2,
+    }));
 
     const startTime = performance.now() / 1000;
+
+    /** 多频段噪声 — 模拟 Perlin 噪声的有机起伏 */
+    const organicNoise = (x: number, t: number, seed: number): number => {
+      const n1 = Math.sin(x * 1.3 + t * 0.7 + seed) * 0.5;
+      const n2 = Math.sin(x * 2.7 + t * 1.1 + seed * 1.7) * 0.3;
+      const n3 = Math.sin(x * 5.1 + t * 1.9 + seed * 2.3) * 0.15;
+      const n4 = Math.sin(x * 9.3 + t * 2.3 + seed * 3.1) * 0.08;
+      return n1 + n2 + n3 + n4;
+    };
+
+    /** 边缘羽化函数 — 两边平滑淡出 */
+    const featherAlpha = (xNorm: number): number => {
+      // 左边羽化区间 0~0.12, 右边羽化区间 0.88~1.0
+      const leftEdge = 0.12;
+      const rightEdge = 0.88;
+      if (xNorm < leftEdge) {
+        return Math.sin((xNorm / leftEdge) * Math.PI * 0.5);
+      }
+      if (xNorm > rightEdge) {
+        return Math.sin(((1.0 - xNorm) / (1.0 - rightEdge)) * Math.PI * 0.5);
+      }
+      return 1;
+    };
+
+    /** 情绪事件 — 偶发的情感波动 */
+    const moodEvent = (t: number): number => {
+      let sum = 0;
+      for (const evt of eventSeed) {
+        const cycle = 15 + evt.duration * 3;
+        const phase = (t % cycle) - evt.time;
+        if (phase > 0 && phase < evt.duration) {
+          // 钟形包络 — 自然涌起又消退
+          const env = Math.sin((phase / evt.duration) * Math.PI);
+          sum += env * evt.intensity * Math.sin(t * evt.freq * Math.PI * 2);
+        }
+      }
+      return sum;
+    };
 
     const draw = () => {
       const now = performance.now() / 1000;
@@ -132,86 +182,123 @@ export default function ConsciousnessPanel({
       const cy = H / 2;
       const actNorm = act / 100; // 0~1
 
-      // 心情宏观波动 — 缓慢的涨落控制整体振幅
-      const emotionWave = 0.6 + 0.4 * Math.sin(t * (Math.PI * 2 / p.emotionCycle));
-      const dynamicAmp = p.amplitude * (0.5 + actNorm * 0.5) * emotionWave;
+      // 真实心情宏观波动 — 多频段叠加 + 情绪事件
+      const slowMood = organicNoise(t * 0.15, t * 0.1, noiseSeed[0]);
+      const emotionWave = 0.55 + 0.3 * slowMood + 0.15 * Math.sin(t * (Math.PI * 2 / p.emotionCycle));
+      const eventBoost = moodEvent(t);
+      const dynamicAmp = p.amplitude * (0.4 + actNorm * 0.6) * Math.max(0.2, emotionWave + eventBoost * 0.3);
 
-      // 多层波形渲染 — Catmull-Rom 样条平滑曲线
+      // 基线漂移 — 心情不会完美居中
+      const baselineDrift = organicNoise(t * 0.08, t * 0.05, noiseSeed[1]) * 3;
+
+      // 多层波形渲染
       for (let layer = 0; layer < p.layers; layer++) {
-        const layerPhase = layer * 0.7;
+        const layerPhase = layer * 0.7 + noiseSeed[layer * 3] * 0.01;
         const layerAmp = dynamicAmp * (1 - layer * 0.18);
         const layerFreq = p.baseFreq * (1 + layer * 0.15);
-        const layerAlpha = (0.7 - layer * 0.12) * (0.5 + actNorm * 0.5);
 
         const [r, g, b] = p.color;
 
         // 采样点
-        const samples = Math.max(40, Math.floor(W / 3));
-        const points: { x: number; y: number }[] = [];
+        const samples = Math.max(60, Math.floor(W / 2));
+        const points: { x: number; y: number; alpha: number }[] = [];
         for (let i = 0; i <= samples; i++) {
           const x = (i / samples) * W;
           const xNorm = i / samples;
 
-          const mainWave = Math.sin(xNorm * Math.PI * 2 * layerFreq + t * 1.5 + layerPhase);
-          const harmWave = Math.sin(xNorm * Math.PI * 2 * p.harmFreq + t * 0.8 + layerPhase * 1.3) * 0.3;
-          const subWave = Math.sin(xNorm * Math.PI * 2 * (layerFreq * 0.5) + t * 0.4) * 0.2;
+          // 有机主波 — 多频段噪声替代纯正弦
+          const mainWave = organicNoise(xNorm * layerFreq * Math.PI, t * 1.2, layerPhase);
+          const harmWave = organicNoise(xNorm * p.harmFreq * Math.PI, t * 0.8, layerPhase * 1.3 + 10) * 0.35;
+          const subWave = Math.sin(xNorm * Math.PI * 2 * (layerFreq * 0.5) + t * 0.4) * 0.15;
 
-          const noiseIdx = Math.floor(xNorm * 16) % noiseSeed.length;
-          const noiseVal = Math.sin(t * 2 + noiseSeed[noiseIdx]) * p.noise;
+          // 高频细节噪声 — 增加真实感
+          const noiseIdx = Math.floor(xNorm * 32) % noiseSeed.length;
+          const noiseVal = organicNoise(t * 1.5 + noiseSeed[noiseIdx], t * 2, noiseSeed[noiseIdx + 1]) * p.noise;
 
-          const spike = Math.sin(t * 0.7 + xNorm * 8 + layerPhase) > 0.85
-            ? Math.sin(t * 5 + xNorm * 20) * 0.15
-            : 0;
+          // 情绪事件影响 — 偶发的涟漪
+          const eventRipple = eventBoost * Math.sin(xNorm * Math.PI * 3 + t * 2) * 0.2;
 
-          const y = cy + (mainWave + harmWave + subWave + noiseVal + spike) * layerAmp;
-          points.push({ x, y });
+          // 边缘羽化 — 振幅在两边衰减
+          const edgeFade = featherAlpha(xNorm);
+          const ampFade = 0.3 + 0.7 * edgeFade;
+
+          const y = cy + baselineDrift + (mainWave + harmWave + subWave + noiseVal + eventRipple) * layerAmp * ampFade;
+          points.push({ x, y, alpha: edgeFade });
         }
 
-        // Catmull-Rom 样条 → 贝塞尔曲线平滑渲染
-        ctx.beginPath();
-        ctx.lineWidth = layer === 0 ? 2.5 : 1.5;
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
+        // 用 quadraticCurveTo 中点法平滑连接 — 分段渲染以支持羽化 alpha
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.lineWidth = layer === 0 ? 2.5 : 1.5;
 
-        // 用 quadraticCurveTo 中点法平滑连接所有采样点
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length - 1; i++) {
-          const xc = (points[i].x + points[i + 1].x) / 2;
-          const yc = (points[i].y + points[i + 1].y) / 2;
-          ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+        const [lr, lg, lb] = p.color;
+        const baseAlpha = (0.7 - layer * 0.12) * (0.5 + actNorm * 0.5);
+
+        // 分段绘制 — 每段使用羽化后的 alpha
+        for (let i = 1; i < points.length; i++) {
+          const p0 = points[i - 1];
+          const p1 = points[i];
+          const segAlpha = (p0.alpha + p1.alpha) / 2 * baseAlpha;
+
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha})`;
+          ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha * 0.5})`;
+          ctx.shadowBlur = layer === 0 ? 6 : 3;
+
+          if (i < points.length - 1) {
+            const p2 = points[i + 1];
+            const xc = (p1.x + p2.x) / 2;
+            const yc = (p1.y + p2.y) / 2;
+            ctx.moveTo(p0.x, p0.y);
+            ctx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+          } else {
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+          }
+          ctx.stroke();
         }
-        // 最后一段
-        const last = points[points.length - 1];
-        ctx.lineTo(last.x, last.y);
-
-        // 先画一层模糊辉光（模拟抗锯齿+发光）
-        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
-        ctx.shadowBlur = layer === 0 ? 6 : 3;
-        ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.shadowColor = 'transparent';
 
-        // 波形下方填充 — 轻微辉光
+        // 波形下方填充 — 带羽化的渐变
         if (layer === 0) {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          for (let i = 1; i < points.length - 1; i++) {
+            const xc = (points[i].x + points[i + 1].x) / 2;
+            const yc = (points[i].y + points[i + 1].y) / 2;
+            ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+          }
+          const lastP = points[points.length - 1];
+          ctx.lineTo(lastP.x, lastP.y);
           ctx.lineTo(W, H);
           ctx.lineTo(0, H);
           ctx.closePath();
-          const grad = ctx.createLinearGradient(0, cy - dynamicAmp, 0, H);
-          grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.08)`);
-          grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+          // 水平羽化渐变 — 两边淡出
+          const grad = ctx.createLinearGradient(0, 0, W, 0);
+          grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, 0)`);
+          grad.addColorStop(0.12, `rgba(${lr}, ${lg}, ${lb}, 0.06)`);
+          grad.addColorStop(0.5, `rgba(${lr}, ${lg}, ${lb}, 0.08)`);
+          grad.addColorStop(0.88, `rgba(${lr}, ${lg}, ${lb}, 0.06)`);
+          grad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
           ctx.fillStyle = grad;
           ctx.fill();
         }
       }
 
-      // 中心轴线 — 淡淡的基线
+      // 中心轴线 — 带羽化的淡基线
+      const axisGrad = ctx.createLinearGradient(0, 0, W, 0);
+      const [ar, ag, ab] = p.color;
+      axisGrad.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, 0)`);
+      axisGrad.addColorStop(0.5, `rgba(${ar}, ${ag}, ${ab}, 0.08)`);
+      axisGrad.addColorStop(1, `rgba(${ar}, ${ag}, ${ab}, 0)`);
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(${p.color[0]}, ${p.color[1]}, ${p.color[2]}, 0.08)`;
+      ctx.strokeStyle = axisGrad;
       ctx.lineWidth = 0.5;
       ctx.setLineDash([4, 4]);
-      ctx.moveTo(0, cy);
-      ctx.lineTo(W, cy);
+      ctx.moveTo(0, cy + baselineDrift);
+      ctx.lineTo(W, cy + baselineDrift);
       ctx.stroke();
       ctx.setLineDash([]);
     };
