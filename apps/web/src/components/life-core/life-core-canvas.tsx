@@ -4,15 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 神经元形态粒子 V10 (Neuron Morphology · Visible Filaments)
+ * SuiYan Life Core — 粒子云树 V11 (Particle Cloud Tree · Zero Lines)
  * ─────────────────────────────────────────────────────────────
  * 复刻 Bilibili BV1ow4m1Y7qu 粒子神经元效果
  *
- * V10 核心变化：让神经元形态清晰可见
- * - 分支骨架用多层辉光渲染（外晕→中辉→亮芯），不再是几乎不可见的底线
- * - 更真实的神经元结构：10-14 条初级树突 + 4 级分支 + 有机弯曲
- * - 信号脉冲沿分支从胞体向终端传播，形成流动光迹
- * - 粒子紧贴可见分支路径流动，拖尾强化形态
+ * V11 核心变化：树状结构完全由粒子云组成，零线条渲染
+ * - 所有分支形态通过粒子密度和亮度勾勒，不使用任何 ctx.stroke()
+ * - 粒子拖尾从线段改为发光点序列
+ * - 核心脉冲射线从线条改为粒子点序列
+ * - 高密度粒子云（5000+）沿分支路径分布，根部密终端疏
  * - 暖色调温度梯度：白热胞体 → 琥珀中段 → 暗红终端
  * - 3D 透视 + 拖拽旋转 + 惯性 + 双击重置
  */
@@ -72,6 +72,20 @@ interface SignalPulse {
   speed: number;
   intensity: number;
   life: number;
+}
+
+/** 粒子云粒子 — 静态分布在分支路径上，通过密度和亮度勾勒出树状形态 */
+interface CloudParticle {
+  branchId: number;
+  progress: number;       // 沿分支的位置 0~1
+  offsetX: number;        // 垂直于分支的横向偏移（云团散射）
+  offsetY: number;        // 纵向微小偏移
+  offsetZ: number;        // 深度偏移
+  baseSize: number;       // 基础粒子大小
+  phase: number;          // 闪烁相位
+  twinkleSpeed: number;   // 闪烁速度
+  brightness: number;     // 基础亮度倍率
+  kind: NodeKind;
 }
 
 interface BgStar {
@@ -165,6 +179,7 @@ function kindColor(kind: NodeKind, r: number): [number, number, number] {
 function buildNeuronTree(counts: LifeCoreCounts, level: number): {
   branches: NeuronBranch[];
   particles: NeuronParticle[];
+  cloudParticles: CloudParticle[];
   signals: SignalPulse[];
   bgStars: BgStar[];
 } {
@@ -325,6 +340,59 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     particles.length = maxParticles;
   }
 
+  // ═══ 生成粒子云 — 密集分布在分支路径上，通过密度勾勒出树状形态 ═══
+  const cloudParticles: CloudParticle[] = [];
+  for (const branch of branches) {
+    // 粒子密度：初级分支最多，深层递减 — 高密度确保树状形态清晰可见
+    const cloudCount = branch.level === 0 ? 75 + Math.floor(rand() * 30)
+      : branch.level === 1 ? 48 + Math.floor(rand() * 20)
+      : branch.level === 2 ? 28 + Math.floor(rand() * 14)
+      : 14 + Math.floor(rand() * 8);
+
+    for (let i = 0; i < cloudCount; i++) {
+      // 沿分支进度分布，根部更密集（偏置分布）
+      const rawT = rand();
+      const progress = Math.pow(rawT, 0.7); // 偏向根部
+
+      // 散射宽度：根部宽、终端窄，模拟云团形态
+      const scatterWidth = branch.thickness * 0.018 * (1.0 - progress * 0.6);
+      // 高斯散射（Box-Muller 近似）
+      const gauss = (rand() + rand() + rand() - 1.5) * 0.67;
+      const offsetX = gauss * scatterWidth;
+      const offsetY = (rand() - 0.5) * scatterWidth * 0.5;
+      const offsetZ = (rand() - 0.5) * scatterWidth * 0.4;
+
+      // 亮度：根部更亮，终端更暗
+      const distRatio = progress;
+      const brightness = (1.0 - distRatio * 0.55) * (0.6 + rand() * 0.4);
+
+      cloudParticles.push({
+        branchId: branch.id,
+        progress,
+        offsetX,
+        offsetY,
+        offsetZ,
+        baseSize: branch.level === 0 ? 1.0 + rand() * 0.8
+          : branch.level === 1 ? 0.7 + rand() * 0.6
+          : 0.5 + rand() * 0.5,
+        phase: rand() * Math.PI * 2,
+        twinkleSpeed: 0.4 + rand() * 1.2,
+        brightness,
+        kind: branch.kind,
+      });
+    }
+  }
+
+  // 限制总粒子云数量 — 提高上限以支持更高密度的树状形态
+  const maxCloud = 5200;
+  if (cloudParticles.length > maxCloud) {
+    for (let i = cloudParticles.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [cloudParticles[i], cloudParticles[j]] = [cloudParticles[j], cloudParticles[i]];
+    }
+    cloudParticles.length = maxCloud;
+  }
+
   // 创建信号脉冲 — 沿分支从胞体向终端传播
   const signals: SignalPulse[] = [];
   const signalCount = Math.min(30, 15 + Math.floor(totalCount / 10));
@@ -353,7 +421,7 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     });
   }
 
-  return { branches, particles, signals, bgStars };
+  return { branches, particles, cloudParticles, signals, bgStars };
 }
 
 // ═══════════════════════════════════════════
@@ -500,7 +568,7 @@ export function LifeCoreCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const { branches, particles, signals, bgStars } = neuronRef.current;
+    const { branches, particles, cloudParticles, signals, bgStars } = neuronRef.current;
     if (!branches.length || !particleSprite || !coreSprite || !glowSprite) return;
 
     const now = performance.now() / 1000;
@@ -638,71 +706,47 @@ export function LifeCoreCanvas({
       }
     }
 
-    // ═══ 4. 渲染分支骨架 — 多层辉光（核心改进：让神经元形态清晰可见） ═══
+    // ═══ 4. 渲染粒子云树状结构 — 用粒子密度和亮度勾勒形态，不使用任何线条 ═══
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
 
-    for (let bi = 0; bi < branches.length; bi++) {
-      const branch = branches[bi];
-      const screenPts = branchScreenCache[bi];
-      if (!screenPts || screenPts.length < 2) continue;
+    for (const cp of cloudParticles) {
+      const branch = branches[cp.branchId];
+      if (!branch) continue;
 
-      const [r, g, b] = kindColor(branch.kind, 0.5); // 用中段色调
+      // 沿分支获取基础位置，叠加云团散射偏移
+      const pos = getBranchPosition(branch, cp.progress, cp.offsetX);
+      const px = pos.x + cp.offsetY;
+      const py = pos.y;
+      const pz = pos.z + cp.offsetZ;
 
-      // --- Pass 1: 外层宽辉光（大半径低透明度） ---
-      const outerAlpha = branch.thickness * 0.08 * burstAlpha;
-      if (outerAlpha > 0.003) {
-        ctx.globalAlpha = outerAlpha;
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.6)`;
-        ctx.lineWidth = branch.thickness * 8 * burstScale;
-        ctx.beginPath();
-        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
-        for (let i = 1; i < screenPts.length; i++) {
-          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
-        }
-        ctx.stroke();
-      }
+      const [x1, y1, z1] = rotY(px, py, pz, rotYaw);
+      const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
+      const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
+      const sx = cx + x2 * scale * persp;
+      const sy = cy + y2 * scale * persp;
 
-      // --- Pass 2: 中层辉光 ---
-      const midAlpha = branch.thickness * 0.15 * burstAlpha;
-      if (midAlpha > 0.005) {
-        ctx.globalAlpha = midAlpha;
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.8)`;
-        ctx.lineWidth = branch.thickness * 3.5 * burstScale;
-        ctx.beginPath();
-        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
-        for (let i = 1; i < screenPts.length; i++) {
-          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
-        }
-        ctx.stroke();
-      }
+      if (sx < -10 || sx > width + 10 || sy < -10 || sy > height + 10) continue;
 
-      // --- Pass 3: 亮芯线（细而亮） ---
-      const coreAlpha = branch.thickness * 0.3 * burstAlpha;
-      if (coreAlpha > 0.008) {
-        ctx.globalAlpha = coreAlpha;
-        ctx.strokeStyle = `rgba(255,230,180,0.9)`;
-        ctx.lineWidth = branch.thickness * 1.2 * burstScale;
-        ctx.beginPath();
-        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
-        for (let i = 1; i < screenPts.length; i++) {
-          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
-        }
-        ctx.stroke();
-      }
+      const [r, g, b] = kindColor(cp.kind, cp.progress);
 
-      // --- Pass 4: 初级树突根部增亮（连接胞体处更亮） ---
-      if (branch.level === 0 && screenPts.length >= 3) {
-        const rootAlpha = 0.25 * burstAlpha;
-        ctx.globalAlpha = rootAlpha;
-        ctx.strokeStyle = `rgba(255,250,220,0.9)`;
-        ctx.lineWidth = branch.thickness * 2.0 * burstScale;
-        ctx.beginPath();
-        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
-        ctx.lineTo(screenPts[2].sx, screenPts[2].sy);
-        ctx.stroke();
-      }
+      // 闪烁 + 呼吸
+      const twinkle = reducedMotion ? 1.0 : (0.6 + 0.4 * Math.sin(frame * cp.twinkleSpeed + cp.phase));
+      const breathFade = reducedMotion ? 1.0 : (0.85 + 0.15 * Math.sin(frame * 0.5 + cp.phase * 0.3));
+
+      const alpha = cp.brightness * twinkle * breathFade * persp * burstAlpha;
+      if (alpha < 0.01) continue;
+
+      // 外层光晕（sprite）
+      const spriteSize = cp.baseSize * 8 * persp * burstScale;
+      ctx.globalAlpha = Math.min(0.5, alpha * 0.4);
+      ctx.drawImage(particleSprite, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
+
+      // 核心亮点
+      ctx.globalAlpha = Math.min(0.9, alpha);
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(0.4, cp.baseSize * 0.7 * persp * burstScale), 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // ═══ 5. 渲染信号脉冲 — 沿分支传播的明亮光点 ═══
@@ -757,9 +801,8 @@ export function LifeCoreCanvas({
       }
     }
 
-    // ═══ 6. 渲染粒子拖尾（强化分支形态） ═══
+    // ═══ 6. 渲染粒子拖尾 — 以发光点形式渲染，绝不使用线条 ═══
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
 
     for (const p of particles) {
       const branch = branches[p.branchId];
@@ -767,34 +810,35 @@ export function LifeCoreCanvas({
 
       const distFromCenter = p.progress;
       const [r, g, b] = kindColor(p.kind, distFromCenter);
+      const lifeFade = Math.min(1, p.life / 15) * Math.min(1, (p.maxLife - p.life) / 25);
 
-      for (let i = 1; i < p.trail.length; i++) {
-        const t0 = p.trail[i - 1];
-        const t1 = p.trail[i];
-        const [tx1, ty1, tz1] = rotY(t0.x, t0.y, t0.z, rotYaw);
+      for (let i = 0; i < p.trail.length; i++) {
+        const t = p.trail[i];
+        const [tx1, ty1, tz1] = rotY(t.x, t.y, t.z, rotYaw);
         const [tx2, ty2, tz2] = rotX(tx1, ty1, tz1, viewPitch);
         const tp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + tz2));
-        const [ux1, uy1, uz1] = rotY(t1.x, t1.y, t1.z, rotYaw);
-        const [ux2, uy2, uz2] = rotX(ux1, uy1, uz1, viewPitch);
-        const up = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + uz2));
 
-        const x0 = cx + tx2 * scale * tp;
-        const y0 = cy + ty2 * scale * tp;
-        const x1s = cx + ux2 * scale * up;
-        const y1s = cy + uy2 * scale * up;
+        const sx = cx + tx2 * scale * tp;
+        const sy = cy + ty2 * scale * tp;
 
         const trailT = i / p.trail.length;
-        const lifeFade = Math.min(1, p.life / 15) * Math.min(1, (p.maxLife - p.life) / 25);
-        const trailAlpha = trailT * 0.4 * branch.thickness * tp * lifeFade * burstAlpha;
+        const trailAlpha = trailT * 0.5 * branch.thickness * tp * lifeFade * burstAlpha;
         if (trailAlpha < 0.01) continue;
 
+        // 发光点大小 — 沿拖尾递减
+        const dotSize = Math.max(0.5, trailT * p.size * branch.thickness * tp * 1.0);
+
+        // 外层光晕（sprite）
+        const haloSize = dotSize * 6;
+        ctx.globalAlpha = Math.min(0.35, trailAlpha * 0.5);
+        ctx.drawImage(particleSprite, sx - haloSize / 2, sy - haloSize / 2, haloSize, haloSize);
+
+        // 核心亮点
         ctx.globalAlpha = trailAlpha;
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.9)`;
-        ctx.lineWidth = trailT * p.size * branch.thickness * tp * 1.5;
+        ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
         ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1s, y1s);
-        ctx.stroke();
+        ctx.arc(sx, sy, dotSize, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -886,27 +930,28 @@ export function LifeCoreCanvas({
     ctx.arc(coreX, coreY, coreR * 0.35, 0, Math.PI * 2);
     ctx.fill();
 
-    // 脉冲光射线
+    // 脉冲光射线 — 以粒子点形式渲染，不使用线条
     if (!reducedMotion && burstProgress > 0.3) {
       const rayCount = 8;
       const rayRot = frame * 0.12;
       const rayLen = coreR * 3.5;
       const rayPulse = 0.5 + 0.5 * Math.sin(frame * 0.8);
-      ctx.globalAlpha = 0.06 * rayPulse * burstAlpha;
-      ctx.lineWidth = 1.5;
+      const rayDots = 14;
       for (let r = 0; r < rayCount; r++) {
         const angle = rayRot + (r / rayCount) * Math.PI * 2;
-        const ex = coreX + Math.cos(angle) * rayLen;
-        const ey = coreY + Math.sin(angle) * rayLen;
-        const rg = ctx.createLinearGradient(coreX, coreY, ex, ey);
-        rg.addColorStop(0, 'rgba(255,220,150,0.3)');
-        rg.addColorStop(0.5, 'rgba(255,140,50,0.1)');
-        rg.addColorStop(1, 'rgba(200,80,30,0)');
-        ctx.strokeStyle = rg;
-        ctx.beginPath();
-        ctx.moveTo(coreX, coreY);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
+        for (let d = 1; d <= rayDots; d++) {
+          const distRatio = d / rayDots;
+          const dist = distRatio * rayLen;
+          const dx = coreX + Math.cos(angle) * dist;
+          const dy = coreY + Math.sin(angle) * dist;
+          const dotAlpha = (1 - distRatio) * 0.12 * rayPulse * burstAlpha;
+          if (dotAlpha < 0.008) continue;
+          ctx.globalAlpha = dotAlpha;
+          ctx.fillStyle = `rgba(255,200,120,0.8)`;
+          ctx.beginPath();
+          ctx.arc(dx, dy, Math.max(0.5, 2.0 * (1 - distRatio * 0.7)), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 
