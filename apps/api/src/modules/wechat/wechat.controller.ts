@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { WechatService } from './wechat.service';
+import { WechatService, AgentActivityEvent } from './wechat.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { BindFamilyMemberDto } from './dto/bind-family-member.dto';
 import { Observable } from 'rxjs';
@@ -89,6 +89,30 @@ export class WechatController {
       });
 
       // Keep connection alive with heartbeat
+      const heartbeat = setInterval(() => {
+        subscriber.next({ data: 'ping', type: 'heartbeat' });
+      }, 30000);
+
+      // Cleanup on unsubscribe
+      return () => {
+        unsubscribe();
+        clearInterval(heartbeat);
+      };
+    });
+  }
+
+  @Sse('agent-stream')
+  @ApiOperation({ summary: 'SSE 推送 Agent 实时活动事件（思考/工具调用/输出过程）' })
+  streamAgentActivity(): Observable<MessageEvent> {
+    return new Observable<MessageEvent>((subscriber) => {
+      const unsubscribe = this.wechatService.onAgentActivity((event: AgentActivityEvent) => {
+        subscriber.next({
+          data: JSON.stringify(event),
+          type: event.type,
+        });
+      });
+
+      // Keep connection alive with heartbeat (30s)
       const heartbeat = setInterval(() => {
         subscriber.next({ data: 'ping', type: 'heartbeat' });
       }, 30000);

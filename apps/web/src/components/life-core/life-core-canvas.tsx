@@ -4,20 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 螺旋星系粒子云 V6 (3D Interactive)
+ * SuiYan Life Core — 螺旋星系粒子云 V7 (3D Interactive · Nebula Edition)
  * ─────────────────────────────────────────────────────────────
- * 参考风格：BLUE YARD 粒子星系 + 3D 交互旋转
+ * 参考风格：BLUE YARD 粒子星系 + Hubble 星云摄影 + 神经网络突触
  *
- * 核心升级：
- * - 真 3D 坐标空间：粒子分布在薄盘状星系中，带 Z 轴深度
- * - 透视投影：近大远小，近亮远暗（深度雾化）
- * - 拖拽旋转：水平拖拽 → yaw（偏航），垂直拖拽 → pitch（俯仰）
- * - 惯性衰减：松手后旋转继续滑动，逐渐减速
- * - 双击重置：恢复默认视角
- * - 闪烁效果：每个粒子有独立的闪烁频率和相位
- * - 能量脉冲波：亮度波从中心向外传播，模拟能量流动
- * - 核心脉动：中心光晕周期性脉动
- * - 背景星场：远景星星视差旋转，增加深度感
+ * V7 视觉升级：
+ * - 星云尘埃云层：8~12 个大型彩色尘埃云，柔光混合，营造体积感
+ * - 能量神经丝线：近邻亮粒子间的曲线连接 + 流动信号光点
+ * - 色彩温度梯度：核心白热 → 中段翡翠 → 外缘琥珀/紫罗兰
+ * - 核心光晕重构：多层径向渐变 + 脉冲光射线
+ * - 环境尘埃粒子：100 个微弱填充粒子，增加空间纵深
+ * - 螺旋臂粒子流：臂上粒子沿轨道留有微弱拖尾
+ * - 真 3D 坐标空间 + 透视投影 + 拖拽旋转 + 惯性 + 双击重置
+ * - 闪烁 / 能量脉冲波 / 核心脉动 / 背景星场视差
  *
  * 节点绑定四类数据（用颜色区分）：
  * - memory    长期记忆   记忆金
@@ -86,6 +85,29 @@ interface BgStar {
   twinklePhase: number;
 }
 
+/** 星云尘埃云 — 大型半透明彩色云团，营造体积感和氛围 */
+interface DustCloud {
+  x: number;
+  y: number;
+  z: number;
+  rx: number;       // 云团半径（X 方向）
+  ry: number;       // 云团半径（Y 方向）
+  rotation: number;  // 云团旋转角
+  color: [number, number, number];
+  opacity: number;
+  driftPhase: number;
+  driftSpeed: number;
+}
+
+/** 能量丝线节点 — 用于构建近邻亮粒子间的曲线连接 */
+interface Filament {
+  startIdx: number;
+  endIdx: number;
+  ctrlOffset: number; // 贝塞尔控制点偏移
+  phase: number;
+  signalSpeed: number;
+}
+
 // 伪随机数生成器（seeded）
 function mulberry32(seed: number) {
   return function () {
@@ -113,16 +135,63 @@ function rotX(x: number, y: number, z: number, a: number): [number, number, numb
 }
 
 /**
+ * 色彩温度梯度：根据粒子距核心的归一化距离调整颜色。
+ * - r < 0.15：核心区白热化（向白色混合）
+ * - 0.15 ~ 0.55：保持种类基色（翡翠/金/紫/蓝）
+ * - r > 0.55：外缘冷却（向琥珀/紫罗兰偏移）
+ */
+function tempColor(base: [number, number, number], r: number): [number, number, number] {
+  if (r < 0.15) {
+    const t = 1 - r / 0.15;
+    const w = t * 0.65;
+    return [
+      Math.round(base[0] + (255 - base[0]) * w),
+      Math.round(base[1] + (255 - base[1]) * w),
+      Math.round(base[2] + (255 - base[2]) * w),
+    ];
+  }
+  if (r > 0.55) {
+    const t = Math.min(1, (r - 0.55) / 0.45);
+    const target: [number, number, number] = base[2] > base[1] ? [130, 100, 210] : [255, 170, 80];
+    const w = t * 0.35;
+    return [
+      Math.round(base[0] + (target[0] - base[0]) * w),
+      Math.round(base[1] + (target[1] - base[1]) * w),
+      Math.round(base[2] + (target[2] - base[2]) * w),
+    ];
+  }
+  return base;
+}
+
+/** 星云尘埃云配色方案 — 模拟 Hubble 星云摄影的彩色云团 */
+const NEBULA_PALETTE: [number, number, number][] = [
+  [80, 40, 120],    // 深紫
+  [20, 80, 100],    // 深青
+  [120, 60, 40],    // 暗琥珀
+  [60, 30, 90],     // 靛紫
+  [30, 90, 70],     // 暗翡翠
+  [100, 50, 80],    // 玫瑰
+  [40, 60, 110],    // 深蓝
+  [90, 70, 30],     // 暗金
+];
+
+/**
  * 构建螺旋星系粒子云（3D 版）
  * - 超密核心：极端集中的中心区域，Z 厚度稍大
  * - 密集内环：环形高密度区
  * - 螺旋臂：3 条不对称旋臂向外延伸
  * - 稀疏光晕：边缘逐渐稀疏的粒子
+ * - 星云尘埃云：8~12 个大型彩色云团
+ * - 能量丝线：近邻亮粒子间的曲线连接
+ * - 环境尘埃：100 个微弱填充粒子
  */
 function buildGalaxy(counts: LifeCoreCounts, level: number): {
   particles: Particle[];
   stemPoints: { x: number; y: number; z: number }[];
   bgStars: BgStar[];
+  dustClouds: DustCloud[];
+  filaments: Filament[];
+  ambientDust: Particle[];
 } {
   const rand = mulberry32(42 + level * 7);
   // 粒子数量：1200 个，全屏沉浸式星系
@@ -237,7 +306,92 @@ function buildGalaxy(counts: LifeCoreCounts, level: number): {
     });
   }
 
-  return { particles, stemPoints, bgStars };
+  // === 星云尘埃云：8~12 个大型半透明彩色云团 ===
+  const dustClouds: DustCloud[] = [];
+  const cloudCount = 8 + Math.floor(rand() * 5); // 8~12
+  for (let i = 0; i < cloudCount; i++) {
+    // 云团分布在螺旋臂区域，距核心 0.2~0.8
+    const cloudR = 0.2 + rand() * 0.6;
+    const cloudTheta = rand() * Math.PI * 2;
+    const cloudZ = (rand() - 0.5) * 0.06;
+    dustClouds.push({
+      x: Math.cos(cloudTheta) * cloudR,
+      y: Math.sin(cloudTheta) * cloudR,
+      z: cloudZ,
+      rx: 0.08 + rand() * 0.12,   // 云团 X 半径
+      ry: 0.06 + rand() * 0.10,   // 云团 Y 半径
+      rotation: rand() * Math.PI,
+      color: NEBULA_PALETTE[Math.floor(rand() * NEBULA_PALETTE.length)],
+      opacity: 0.025 + rand() * 0.035,
+      driftPhase: rand() * Math.PI * 2,
+      driftSpeed: 0.05 + rand() * 0.08,
+    });
+  }
+
+  // === 能量丝线：近邻亮粒子间的曲线连接 ===
+  const filaments: Filament[] = [];
+  // 收集亮粒子索引（核心粒子 + 内环高激活粒子）
+  const brightIdx: number[] = [];
+  for (let i = 0; i < particles.length; i++) {
+    if (particles[i].isCore || (particles[i].r < 0.5 && particles[i].activation > 0.4)) {
+      brightIdx.push(i);
+    }
+  }
+  // 为每个亮粒子找 1~2 个最近邻亮粒子建立连接
+  const maxFilaments = 180;
+  for (let i = 0; i < brightIdx.length && filaments.length < maxFilaments; i++) {
+    const a = brightIdx[i];
+    const pa = particles[a];
+    // 局部搜索：只检查附近的亮粒子
+    let neighbors: { idx: number; dist: number }[] = [];
+    for (let j = 0; j < brightIdx.length; j++) {
+      if (j === i) continue;
+      const b = brightIdx[j];
+      const pb = particles[b];
+      const dr = pa.r - pb.r;
+      const dtheta = Math.abs(((pa.theta - pb.theta + Math.PI) % (Math.PI * 2)) - Math.PI);
+      const dist = Math.hypot(dr, dtheta * Math.max(pa.r, pb.r));
+      if (dist < 0.25) {
+        neighbors.push({ idx: b, dist });
+      }
+    }
+    neighbors.sort((x, y) => x.dist - y.dist);
+    // 取最近 1~2 个
+    const connectCount = Math.min(2, neighbors.length);
+    for (let k = 0; k < connectCount; k++) {
+      filaments.push({
+        startIdx: a,
+        endIdx: neighbors[k].idx,
+        ctrlOffset: (rand() - 0.5) * 0.08,
+        phase: rand() * Math.PI * 2,
+        signalSpeed: 0.3 + rand() * 0.5,
+      });
+    }
+  }
+
+  // === 环境尘埃：100 个微弱填充粒子，增加空间纵深 ===
+  const ambientDust: Particle[] = [];
+  for (let i = 0; i < 100; i++) {
+    const ar = 0.3 + rand() * 0.9;
+    const atheta = rand() * Math.PI * 2;
+    ambientDust.push({
+      kind: 'agent',
+      r: ar,
+      theta: atheta,
+      z: (rand() - 0.5) * 0.15,
+      size: 0.3 + rand() * 0.3,
+      phase: rand() * Math.PI * 2,
+      pulseSpeed: 0.1 + rand() * 0.2,
+      twinkleSpeed: 0.3 + rand() * 0.6,
+      twinklePhase: rand() * Math.PI * 2,
+      driftAmp: 0.001 + rand() * 0.002,
+      driftPhase: rand() * Math.PI * 2,
+      activation: 0.1 + rand() * 0.15,
+      isCore: false,
+    });
+  }
+
+  return { particles, stemPoints, bgStars, dustClouds, filaments, ambientDust };
 }
 
 // 默认视角俯仰角（产生椭圆星系外观）
@@ -364,7 +518,7 @@ export function LifeCoreCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const { particles, stemPoints, bgStars } = galaxyRef.current;
+    const { particles, stemPoints, bgStars, dustClouds, filaments, ambientDust } = galaxyRef.current;
     if (!particles.length || !particleSprite || !coreSprite || !nebulaGlowSprite) return;
 
     // 初始化爆发动画起始时间
@@ -463,6 +617,45 @@ export function LifeCoreCanvas({
     const glowH = scale * 1.9;
     ctx.drawImage(nebulaGlowSprite, cx - glowW / 2, cy - glowH / 2, glowW, glowH);
 
+    // === 2.5 星云尘埃云（大型彩色云团，柔光混合营造体积感） ===
+    ctx.globalCompositeOperation = 'lighter';
+    for (const cloud of dustClouds) {
+      // 云团缓慢漂移
+      const drift = Math.sin(frame * cloud.driftSpeed + cloud.driftPhase) * 0.015;
+      const cx0 = cloud.x + drift * Math.cos(cloud.rotation);
+      const cy0 = cloud.y + drift * Math.sin(cloud.rotation);
+      // 3D 投影
+      const [dx1, dy1, dz1] = rotY(cx0, cy0, cloud.z, viewYaw);
+      const [dx2, dy2, dz2] = rotX(dx1, dy1, dz1, viewPitch);
+      const cpersp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + dz2));
+      const sx = cx + dx2 * scale * cpersp;
+      const sy = cy + dy2 * scale * cpersp;
+      // 椭圆云团尺寸（随透视缩放）
+      const wRadius = cloud.rx * scale * cpersp;
+      const hRadius = cloud.ry * scale * cpersp;
+      if (wRadius < 2 || hRadius < 2) continue;
+      // 跳过画面外的云团
+      if (sx + wRadius < 0 || sx - wRadius > width || sy + hRadius < 0 || sy - hRadius > height) continue;
+
+      const [r, g, b] = cloud.color;
+      const cloudAlpha = cloud.opacity * cpersp * burstAlpha;
+      // 径向渐变椭圆 — 柔和的体积感
+      const cloudGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, Math.max(wRadius, hRadius));
+      cloudGrad.addColorStop(0, `rgba(${r},${g},${b},${cloudAlpha * 1.8})`);
+      cloudGrad.addColorStop(0.4, `rgba(${r},${g},${b},${cloudAlpha * 0.8})`);
+      cloudGrad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = cloudGrad;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(cloud.rotation + viewYaw * 0.3);
+      ctx.scale(wRadius / Math.max(wRadius, hRadius), hRadius / Math.max(wRadius, hRadius));
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(wRadius, hRadius), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // === 3. 轴突茎（3D 投影） ===
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 0.25;
@@ -505,6 +698,31 @@ export function LifeCoreCanvas({
     // === 4. 粒子（3D 透视渲染） ===
     // 全部使用 lighter（加法混合），重叠区域产生连续光晕
     ctx.globalCompositeOperation = 'lighter';
+
+    // === 4a. 环境尘埃（微弱填充粒子，先画增加纵深） ===
+    for (const p of ambientDust) {
+      const angularVel = baseRotation * (1.0 / (0.3 + p.r * 0.7));
+      const currentTheta = p.theta + angularVel;
+      const lx = Math.cos(currentTheta) * p.r;
+      const ly = Math.sin(currentTheta) * p.r;
+      const lz = p.z;
+      const [x1, y1, z1] = rotY(lx, ly, lz, viewYaw);
+      const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
+      const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
+      const finalX = cx + x2 * scale * persp;
+      const finalY = cy + y2 * scale * persp;
+      if (finalX < -5 || finalX > width + 5 || finalY < -5 || finalY > height + 5) continue;
+
+      const depthFactor = clamp((z2 + 1.0) * 0.5, 0.15, 1.0);
+      const twinkle = reducedMotion ? 0.5 : (0.3 + 0.4 * Math.sin(frame * p.twinkleSpeed + p.twinklePhase));
+      const alpha = p.activation * twinkle * depthFactor * burstAlpha * 0.4;
+      if (alpha < 0.01) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(180, 210, 230, 0.6)';
+      ctx.beginPath();
+      ctx.arc(finalX, finalY, Math.max(0.3, p.size * persp * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
@@ -550,7 +768,7 @@ export function LifeCoreCanvas({
       }
 
       const brightness = depthFactor * twinkle * sparkBoost;
-      const [cr, cg, cb] = NODE_COLOR[p.kind];
+      const [cr, cg, cb] = tempColor(NODE_COLOR[p.kind], p.r);
 
       if (p.isCore) {
         // 核心粒子：白热光晕 + 大 sprite
@@ -582,7 +800,69 @@ export function LifeCoreCanvas({
       }
     }
 
-    // === 5. 中心胞体核心光晕（3D 投影到屏幕） ===
+    // === 4b. 能量丝线（近邻亮粒子间的曲线连接 + 流动信号光点） ===
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const fil of filaments) {
+      const pa = particles[fil.startIdx];
+      const pb = particles[fil.endIdx];
+      if (!pa || !pb) continue;
+
+      // 计算两端粒子的屏幕坐标
+      const aAng = baseRotation * (1.0 / (0.3 + pa.r * 0.7));
+      const aTheta = pa.theta + aAng;
+      const aOrgR = pa.r * (1 + Math.sin(aTheta * 3 + pa.phase) * 0.03);
+      const [ax1, ay1, az1] = rotY(Math.cos(aTheta) * aOrgR, Math.sin(aTheta) * aOrgR, pa.z, viewYaw);
+      const [ax2, ay2, az2] = rotX(ax1, ay1, az1, viewPitch);
+      const aPersp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + az2));
+      const aSx = cx + ax2 * scale * aPersp;
+      const aSy = cy + ay2 * scale * aPersp;
+
+      const bAng = baseRotation * (1.0 / (0.3 + pb.r * 0.7));
+      const bTheta = pb.theta + bAng;
+      const bOrgR = pb.r * (1 + Math.sin(bTheta * 3 + pb.phase) * 0.03);
+      const [bx1, by1, bz1] = rotY(Math.cos(bTheta) * bOrgR, Math.sin(bTheta) * bOrgR, pb.z, viewYaw);
+      const [bx2, by2, bz2] = rotX(bx1, by1, bz1, viewPitch);
+      const bPersp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + bz2));
+      const bSx = cx + bx2 * scale * bPersp;
+      const bSy = cy + by2 * scale * bPersp;
+
+      // 跳过过长的连接（透视后距离过大）
+      const screenDist = Math.hypot(bSx - aSx, bSy - aSy);
+      if (screenDist > 120 || screenDist < 2) continue;
+
+      // 贝塞尔控制点（中点 + 偏移）
+      const midX = (aSx + bSx) / 2;
+      const midY = (aSy + bSy) / 2;
+      const perpX = -(bSy - aSy) / screenDist;
+      const perpY = (bSx - aSx) / screenDist;
+      const ctrlX = midX + perpX * fil.ctrlOffset * scale;
+      const ctrlY = midY + perpY * fil.ctrlOffset * scale;
+
+      // 丝线底色（微弱）
+      const filAlpha = 0.06 * aPersp * burstAlpha;
+      ctx.globalAlpha = filAlpha;
+      ctx.strokeStyle = 'rgba(0, 210, 140, 0.5)';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(aSx, aSy);
+      ctx.quadraticCurveTo(ctrlX, ctrlY, bSx, bSy);
+      ctx.stroke();
+
+      // 流动信号光点（沿曲线移动）
+      const signalT = (Math.sin(frame * fil.signalSpeed + fil.phase) + 1) / 2;
+      // 二次贝塞尔曲线上的点
+      const sX = (1 - signalT) * (1 - signalT) * aSx + 2 * (1 - signalT) * signalT * ctrlX + signalT * signalT * bSx;
+      const sY = (1 - signalT) * (1 - signalT) * aSy + 2 * (1 - signalT) * signalT * ctrlY + signalT * signalT * bSy;
+      const signalAlpha = (0.3 + 0.3 * Math.sin(frame * fil.signalSpeed * 2 + fil.phase)) * aPersp * burstAlpha;
+      ctx.globalAlpha = Math.min(0.8, signalAlpha);
+      ctx.fillStyle = 'rgba(150, 255, 210, 0.9)';
+      ctx.beginPath();
+      ctx.arc(sX, sY, Math.max(0.8, 1.5 * aPersp), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === 5. 中心胞体核心光晕（多层径向渐变 + 脉冲光射线） ===
     // 核心位于星系原点 (0,0,0)
     const [cx1, cy1, cz1] = rotY(0, 0, 0, viewYaw);
     const [cx2, cy2, cz2] = rotX(cx1, cy1, cz1, viewPitch);
@@ -594,17 +874,69 @@ export function LifeCoreCanvas({
     // 核心脉动：周期性亮度变化，爆发期间额外增强
     const coreBurstBoost = burstProgress < 0.3 ? (1 + (0.3 - burstProgress) * 3) : 1;
     const corePulse = (0.22 + Math.sin(frame * 0.8) * 0.1) * coreBurstBoost;
-    ctx.globalAlpha = Math.min(0.8, corePulse * corePersp * burstAlpha);
-    const coreRadius = scale * 0.15 * corePersp;
-    const coreGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius);
-    coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-    coreGrad.addColorStop(0.2, 'rgba(0, 210, 106, 0.18)');
-    coreGrad.addColorStop(0.6, 'rgba(0, 180, 90, 0.06)');
-    coreGrad.addColorStop(1, 'rgba(0, 140, 70, 0)');
-    ctx.fillStyle = coreGrad;
+    const coreRadius = scale * 0.18 * corePersp;
+
+    // 第一层：大范围外光晕（翡翠绿弥散）
+    ctx.globalAlpha = Math.min(0.6, corePulse * 0.7 * corePersp * burstAlpha);
+    const outerGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius * 1.8);
+    outerGrad.addColorStop(0, 'rgba(0, 210, 106, 0.12)');
+    outerGrad.addColorStop(0.3, 'rgba(0, 180, 90, 0.06)');
+    outerGrad.addColorStop(0.7, 'rgba(0, 140, 70, 0.02)');
+    outerGrad.addColorStop(1, 'rgba(0, 100, 50, 0)');
+    ctx.fillStyle = outerGrad;
+    ctx.beginPath();
+    ctx.arc(coreScreenX, coreScreenY, coreRadius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 第二层：中圈翡翠光晕
+    ctx.globalAlpha = Math.min(0.7, corePulse * corePersp * burstAlpha);
+    const midGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius);
+    midGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+    midGrad.addColorStop(0.15, 'rgba(180, 255, 220, 0.14)');
+    midGrad.addColorStop(0.4, 'rgba(0, 210, 106, 0.16)');
+    midGrad.addColorStop(0.75, 'rgba(0, 160, 80, 0.05)');
+    midGrad.addColorStop(1, 'rgba(0, 120, 60, 0)');
+    ctx.fillStyle = midGrad;
     ctx.beginPath();
     ctx.arc(coreScreenX, coreScreenY, coreRadius, 0, Math.PI * 2);
     ctx.fill();
+
+    // 第三层：核心白热点（最小最亮）
+    const innerRadius = coreRadius * 0.35;
+    ctx.globalAlpha = Math.min(0.9, corePulse * 1.5 * corePersp * burstAlpha);
+    const innerGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, innerRadius);
+    innerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+    innerGrad.addColorStop(0.3, 'rgba(220, 255, 240, 0.2)');
+    innerGrad.addColorStop(1, 'rgba(150, 255, 200, 0)');
+    ctx.fillStyle = innerGrad;
+    ctx.beginPath();
+    ctx.arc(coreScreenX, coreScreenY, innerRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 脉冲光射线（从核心向外辐射的旋转光线）
+    if (!reducedMotion && burstProgress > 0.3) {
+      const rayCount = 6;
+      const rayRotation = frame * 0.15;
+      const rayLength = coreRadius * 2.5;
+      const rayPulse = 0.5 + 0.5 * Math.sin(frame * 0.8);
+      ctx.globalAlpha = 0.04 * rayPulse * corePersp * burstAlpha;
+      ctx.strokeStyle = 'rgba(150, 255, 210, 0.6)';
+      ctx.lineWidth = 1.5;
+      for (let r = 0; r < rayCount; r++) {
+        const angle = rayRotation + (r / rayCount) * Math.PI * 2;
+        const ex = coreScreenX + Math.cos(angle) * rayLength;
+        const ey = coreScreenY + Math.sin(angle) * rayLength;
+        const rayGrad = ctx.createLinearGradient(coreScreenX, coreScreenY, ex, ey);
+        rayGrad.addColorStop(0, 'rgba(150, 255, 210, 0.3)');
+        rayGrad.addColorStop(0.5, 'rgba(0, 210, 106, 0.1)');
+        rayGrad.addColorStop(1, 'rgba(0, 210, 106, 0)');
+        ctx.strokeStyle = rayGrad;
+        ctx.beginPath();
+        ctx.moveTo(coreScreenX, coreScreenY);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+    }
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;

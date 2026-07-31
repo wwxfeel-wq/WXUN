@@ -394,3 +394,99 @@ function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
 
 /** SWR fetcher built on top of the api client. */
 export const swrFetcher = <T>(endpoint: string): Promise<T> => apiClient.get<T>(endpoint);
+
+/**
+ * 创建一个 GET-based SSE 连接（用于微信消息流和 agent 活动流等只读实时推送）。
+ *
+ * 与 createSSEStream 不同，这里使用 GET 方法 + fetch ReadableStream，
+ * 因为后端的 @Sse 端点只接受 GET 请求。
+ *
+ * 返回一个 abort handle，调用方在卸载时调用 abort() 断开连接。
+ */
+export function createGETSSEStream(
+  endpoint: string,
+  onEvent: (eventType: string, data: Record<string, unknown>) => void,
+  onError?: (msg: string) => void,
+): { abort: () => void } {
+  const controller = new AbortController();
+  const url = endpoint.startsWith('/')
+    ? `${SSE_ENDPOINT}${endpoint}`
+    : `${SSE_ENDPOINT}/${endpoint}`;
+
+  const token = getToken();
+  const headers: HeadersInit = {
+    Accept: 'text/event-stream',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  (async () => {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      onError?.('实时连接失败');
+      return;
+    }
+
+    if (!response.ok || !response.body) {
+      if (response.status === 401) {
+        handleUnauthorized();
+      }
+      onError?.(`连接错误: ${response.status}`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let separatorIndex: number;
+        while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+          const rawEvent = buffer.slice(0, separatorIndex);
+          buffer = buffer.slice(separatorIndex + 2);
+
+          // 解析 SSE 事件
+          let eventType = 'message';
+          let dataStr = '';
+          for (const line of rawEvent.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.startsWith('event:')) {
+              eventType = trimmed.slice(6).trim();
+            } else if (trimmed.startsWith('data:')) {
+              dataStr += trimmed.slice(5).trim();
+            }
+          }
+          if (!dataStr || dataStr === 'ping') continue;
+          try {
+            const data = JSON.parse(dataStr);
+            onEvent(eventType, data);
+          } catch {
+            // 非 JSON 数据，跳过
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        onError?.('数据流中断');
+      }
+    }
+  })();
+
+  return {
+    abort: () => controller.abort(),
+  };
+}

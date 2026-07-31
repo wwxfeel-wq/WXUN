@@ -22,7 +22,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useFamilyHubStore } from '@/stores/family-hub-store';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, createGETSSEStream } from '@/lib/api-client';
 import { PageTransition } from '@/components/page-transition';
 import { GlassLayer } from '@/components/glass';
 import { WechatOpsBar, type OpsTileTone } from '@/components/wechat/wechat-ops-bar';
@@ -68,6 +68,15 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'contact';
   content: string;
+  timestamp: number;
+}
+
+/** Agent 实时活动状态 — 显示 agent 的思考/工具调用/观察过程 */
+interface AgentActivity {
+  type: 'thinking' | 'tool_call' | 'observation' | 'token' | 'done' | 'error';
+  content?: string;
+  toolName?: string;
+  senderName?: string;
   timestamp: number;
 }
 
@@ -144,6 +153,11 @@ export default function WeChatBotPage() {
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showMobileChat, setShowMobileChat] = useState(false);
+
+  /** Agent 实时活动列表（最近的活动事件，用于在聊天中展示 agent 思考过程） */
+  const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
+  /** Agent 是否正在处理消息 */
+  const [agentProcessing, setAgentProcessing] = useState(false);
 
   const invokeAgent = useFamilyHubStore((s) => s.invokeAgent);
   const shimoCore = useFamilyHubStore((s) => s.shimoCore);
@@ -394,6 +408,69 @@ export default function WeChatBotPage() {
       // ignore
     }
   }, []);
+
+  /* ── Agent 活动流 SSE：实时展示 agent 的思考/工具调用/输出过程 ── */
+  useEffect(() => {
+    if (!wechatStatus?.loggedIn) return;
+
+    const handle = createGETSSEStream(
+      'wechat/agent-stream',
+      (eventType, data) => {
+        const activity: AgentActivity = {
+          type: eventType as AgentActivity['type'],
+          content: data.content as string | undefined,
+          toolName: data.toolName as string | undefined,
+          senderName: data.senderName as string | undefined,
+          timestamp: data.timestamp as number,
+        };
+
+        // thinking/tool_call/observation 表示 agent 正在工作
+        if (activity.type === 'thinking' || activity.type === 'tool_call' || activity.type === 'observation') {
+          setAgentProcessing(true);
+          setAgentActivities((prev) => [...prev.slice(-8), activity]);
+        } else if (activity.type === 'done' || activity.type === 'error') {
+          // agent 完成，延迟清除处理状态
+          setTimeout(() => setAgentProcessing(false), 800);
+          setAgentActivities((prev) => [...prev.slice(-8), activity]);
+          // 3 秒后清空活动列表
+          setTimeout(() => setAgentActivities([]), 3000);
+        }
+      },
+    );
+
+    return () => handle.abort();
+  }, [wechatStatus?.loggedIn]);
+
+  /* ── 微信消息流 SSE：实时接收新消息（替代轮询） ── */
+  useEffect(() => {
+    if (!wechatStatus?.loggedIn) return;
+
+    const handle = createGETSSEStream(
+      'wechat/stream',
+      (_eventType, data) => {
+        // 收到新消息时，刷新联系人列表和当前对话消息
+        const contactId = data.contactId as string;
+        if (contactId) {
+          // 如果是当前活跃对话，追加消息
+          setMessagesByContact((prev) => {
+            const existing = prev[contactId] ?? [];
+            // 避免重复
+            const msgId = data.id as string;
+            if (msgId && existing.some((m) => m.id === msgId)) return prev;
+            const newMsg: ChatMessage = {
+              id: msgId || genId(),
+              role: data.isSelf ? 'user' : 'contact',
+              content: data.content as string,
+              timestamp: data.timestamp as number,
+            };
+            return { ...prev, [contactId]: [...existing, newMsg] };
+          });
+        }
+      },
+    );
+
+    return () => handle.abort();
+  }, [wechatStatus?.loggedIn]);
 
   /* ── All contacts (AI first, then real) — MUST be before handleSend ── */
   const allContacts = useMemo(() => {
@@ -669,8 +746,13 @@ export default function WeChatBotPage() {
                 ))
               )}
 
+              {/* Agent 实时活动面板 — 展示 agent 的思考/工具调用过程 */}
+              {agentProcessing && agentActivities.length > 0 && (
+                <AgentActivityPanel activities={agentActivities} />
+              )}
+
               {/* Typing indicator */}
-              {sending && (
+              {sending && !agentProcessing && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1282,5 +1364,88 @@ function TypingDot({ delay }: { delay: number }) {
       transition={{ duration: 0.8, repeat: Infinity, delay, ease: 'easeInOut' }}
       className="h-1.5 w-1.5 rounded-full bg-text-muted"
     />
+  );
+}
+
+/* ── Agent 实时活动面板 — 展示 agent 思考/工具调用/观察过程 ── */
+function AgentActivityPanel({ activities }: { activities: AgentActivity[] }) {
+  const latest = activities[activities.length - 1];
+
+  if (!latest) return null;
+
+  const icon = (() => {
+    switch (latest.type) {
+      case 'thinking':
+        return <Sparkles className="h-3.5 w-3.5 text-secondary" />;
+      case 'tool_call':
+        return <Loader2 className="h-3.5 w-3.5 text-info animate-spin" />;
+      case 'observation':
+        return <Sparkles className="h-3.5 w-3.5 text-purple" />;
+      case 'done':
+        return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
+      case 'error':
+        return <AlertCircle className="h-3.5 w-3.5 text-error" />;
+      default:
+        return <Sparkles className="h-3.5 w-3.5 text-secondary" />;
+    }
+  })();
+
+  const label = (() => {
+    switch (latest.type) {
+      case 'thinking':
+        return latest.content
+          ? latest.content.length > 60
+            ? `思考中：${latest.content.slice(0, 57)}...`
+            : `思考中：${latest.content}`
+          : '正在思考...';
+      case 'tool_call':
+        return `调用工具：${latest.toolName || '未知'}`;
+      case 'observation':
+        return latest.content
+          ? latest.content.length > 60
+            ? `观察结果：${latest.content.slice(0, 57)}...`
+            : `观察结果：${latest.content}`
+          : '正在观察...';
+      case 'done':
+        return '处理完成';
+      case 'error':
+        return `出错了：${latest.content || '未知错误'}`;
+      default:
+        return '处理中...';
+    }
+  })();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      className="flex items-start gap-2"
+    >
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-secondary/15">
+        <span className="text-sm">✨</span>
+      </div>
+      <div className="flex flex-col gap-1 rounded-2xl rounded-tl-sm border border-secondary/15 bg-secondary/5 px-3.5 py-2">
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span className="text-xs font-medium text-text">{label}</span>
+        </div>
+        {/* 活动步骤指示器 */}
+        {activities.length > 1 && (
+          <div className="flex items-center gap-1">
+            {activities.slice(-5).map((_, i) => (
+              <span
+                key={i}
+                className={`h-1 rounded-full transition-all ${
+                  i === Math.min(4, activities.length - 1)
+                    ? 'w-4 bg-secondary'
+                    : 'w-1.5 bg-secondary/30'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }

@@ -61,6 +61,18 @@ export interface BindFamilyMemberPayload {
 }
 
 /**
+ * Agent 实时活动事件，用于向前端 SSE 推送 agent 的思考/工具调用/输出过程。
+ */
+export interface AgentActivityEvent {
+  type: 'thinking' | 'tool_call' | 'observation' | 'token' | 'done' | 'error';
+  contactId: string;
+  senderName: string;
+  content?: string;
+  toolName?: string;
+  timestamp: number;
+}
+
+/**
  * WechatService - Manages a real WeChat web connection via wechat4u.
  *
  * Phase 7 refactor:
@@ -94,6 +106,15 @@ export class WechatService implements OnModuleDestroy {
 
   /** Callbacks for incoming messages (used by controller for SSE push) */
   private messageListeners: Array<(msg: WechatMessageDto) => void> = [];
+
+  /** Callbacks for agent real-time activity events (thinking / tool_call / observation / token / done / error) */
+  private agentActivityListeners: Array<(event: AgentActivityEvent) => void> = [];
+
+  /** 当前正在处理的 agent 请求计数，用于 healthCheck 的 agentActive 字段 */
+  private activeAgentCount = 0;
+
+  /** 排队中（已接收但尚未完成处理）的消息数，用于 healthCheck 的 pendingMessages 字段 */
+  private pendingMessages = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -377,6 +398,30 @@ export class WechatService implements OnModuleDestroy {
   }
 
   /**
+   * Register a listener for agent real-time activity events (used for SSE push).
+   * Returns an unsubscribe function.
+   */
+  onAgentActivity(listener: (event: AgentActivityEvent) => void): () => void {
+    this.agentActivityListeners.push(listener);
+    return () => {
+      this.agentActivityListeners = this.agentActivityListeners.filter((l) => l !== listener);
+    };
+  }
+
+  /**
+   * Broadcast an agent activity event to all registered listeners.
+   */
+  private broadcastAgentActivity(event: AgentActivityEvent): void {
+    this.agentActivityListeners.forEach((listener) => {
+      try {
+        listener(event);
+      } catch {
+        // ignore listener errors
+      }
+    });
+  }
+
+  /**
    * Logout from WeChat.
    */
   async logout(): Promise<void> {
@@ -470,9 +515,19 @@ export class WechatService implements OnModuleDestroy {
 
   /**
    * Run a single message through the AgentRuntime pipeline and return the reply text.
+   *
+   * 除了收集最终回复文本，还会遍历 agent runtime 产生的所有 SSE 事件类型
+   * (reasoning/thinking、tool_call、observation、token、done、error)，
+   * 对每种事件通过 agentActivityListeners 向前端实时广播。
    */
-  private async runAgentPipeline(userId: string, message: string): Promise<string> {
+  private async runAgentPipeline(
+    userId: string,
+    message: string,
+    contactId: string,
+    senderName: string,
+  ): Promise<string> {
     let reply = '';
+    this.activeAgentCount++;
 
     try {
       for await (const event of this.agentRuntime.run({
@@ -480,13 +535,80 @@ export class WechatService implements OnModuleDestroy {
         message,
         mode: 'chat',
       })) {
-        if (event.type === SSEEventType.TOKEN) {
-          reply += event.data.content;
+        switch (event.type) {
+          case SSEEventType.TOKEN:
+            reply += event.data.content;
+            this.broadcastAgentActivity({
+              type: 'token',
+              contactId,
+              senderName,
+              content: event.data.content,
+              timestamp: Date.now(),
+            });
+            break;
+          case SSEEventType.REASONING:
+            this.broadcastAgentActivity({
+              type: 'thinking',
+              contactId,
+              senderName,
+              content: event.data.content,
+              timestamp: Date.now(),
+            });
+            break;
+          case SSEEventType.TOOL_CALL:
+            this.broadcastAgentActivity({
+              type: 'tool_call',
+              contactId,
+              senderName,
+              toolName: event.data.tool,
+              content: JSON.stringify(event.data.args),
+              timestamp: Date.now(),
+            });
+            break;
+          case SSEEventType.OBSERVATION:
+            this.broadcastAgentActivity({
+              type: 'observation',
+              contactId,
+              senderName,
+              content: event.data.summary,
+              timestamp: Date.now(),
+            });
+            break;
+          case SSEEventType.DONE:
+            this.broadcastAgentActivity({
+              type: 'done',
+              contactId,
+              senderName,
+              content: event.data.summary,
+              timestamp: Date.now(),
+            });
+            break;
+          case SSEEventType.ERROR:
+            this.broadcastAgentActivity({
+              type: 'error',
+              contactId,
+              senderName,
+              content: event.data.message,
+              timestamp: Date.now(),
+            });
+            break;
+          default:
+            // 忽略其他事件类型 (action / workflow_step / emotion / entities / skill_*)
+            break;
         }
       }
     } catch (error) {
       this.logger.error(`Agent pipeline failed: ${(error as Error).message}`);
       reply = '抱歉，我刚才走神了，能再说一遍吗？';
+      this.broadcastAgentActivity({
+        type: 'error',
+        contactId,
+        senderName,
+        content: (error as Error).message,
+        timestamp: Date.now(),
+      });
+    } finally {
+      this.activeAgentCount--;
     }
 
     return reply.trim();
@@ -803,18 +925,47 @@ export class WechatService implements OnModuleDestroy {
     );
 
     // Run the message through the AgentRuntime pipeline
-    const reply = await this.runAgentPipeline(member.userId, displayContent);
+    this.pendingMessages++;
 
-    if (reply) {
-      try {
-        await this.sendMessage(otherId, reply);
-      } catch (err) {
-        this.logger.error(`Failed to send WeChat reply: ${(err as Error).message}`);
+    // 广播 thinking 事件，通知前端 agent 已开始处理
+    this.broadcastAgentActivity({
+      type: 'thinking',
+      contactId: otherId,
+      senderName,
+      content: '正在思考你的消息...',
+      timestamp: Date.now(),
+    });
+
+    try {
+      const reply = await this.runAgentPipeline(
+        member.userId,
+        displayContent,
+        otherId,
+        senderName,
+      );
+
+      // 广播 done 事件，通知前端 agent 处理完成
+      this.broadcastAgentActivity({
+        type: 'done',
+        contactId: otherId,
+        senderName,
+        content: reply,
+        timestamp: Date.now(),
+      });
+
+      if (reply) {
+        try {
+          await this.sendMessage(otherId, reply);
+        } catch (err) {
+          this.logger.error(`Failed to send WeChat reply: ${(err as Error).message}`);
+        }
       }
-    }
 
-    // Trigger proactive services based on message content
-    await this.handleProactiveActions(displayContent, reply, member.userId, otherId, senderName);
+      // Trigger proactive services based on message content
+      await this.handleProactiveActions(displayContent, reply, member.userId, otherId, senderName);
+    } finally {
+      this.pendingMessages--;
+    }
   }
 
   private async syncContactsToDb(): Promise<void> {
@@ -1005,6 +1156,8 @@ export class WechatService implements OnModuleDestroy {
     phase: string;
     canRetry: boolean;
     suggestion: string;
+    agentActive: boolean;
+    pendingMessages: number;
   }> {
     const phase = this.phase;
     const loggedIn = this.loggedIn;
@@ -1018,6 +1171,12 @@ export class WechatService implements OnModuleDestroy {
 
     // canRetry：当前未在重连且未进入不可恢复的 error 阶段
     const canRetry = !this.isReconnecting && phase !== 'error';
+
+    // agentActive：当前是否有 agent 正在处理消息
+    const agentActive = this.activeAgentCount > 0;
+
+    // pendingMessages：排队中（已接收但尚未完成处理）的消息数
+    const pendingMessages = this.pendingMessages;
 
     let suggestion: string;
     if (healthy) {
@@ -1034,6 +1193,10 @@ export class WechatService implements OnModuleDestroy {
       suggestion = '微信未连接，可扫码登录；AI 管家始终可用';
     }
 
-    return { healthy, phase, canRetry, suggestion };
+    if (agentActive) {
+      suggestion += `；当前有 agent 正在处理 ${pendingMessages} 条消息`;
+    }
+
+    return { healthy, phase, canRetry, suggestion, agentActive, pendingMessages };
   }
 }
