@@ -38,6 +38,8 @@ const PROVIDER_CONFIGS: Record<ApiKeyProvider, ProviderConfig> = {
     id: 'deepseek',
     label: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1',
+    // V4-Pro supports thinking mode (chain-of-thought reasoning).
+    // The reasoning_content is streamed separately before the final answer.
     chatModel: 'deepseek-v4-pro',
     testModel: 'deepseek-v4-flash',
     embeddingModel: null,

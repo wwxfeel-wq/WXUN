@@ -21,7 +21,7 @@ export default function HomeChatOverlay({
   initialMessage: string;
   onClose: () => void;
 }) {
-  const { messages, isStreaming, error, sendMessage } = useSSEChat();
+  const { messages, isStreaming, isThinking, error, sendMessage } = useSSEChat();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentRef = useRef(false);
@@ -123,7 +123,9 @@ export default function HomeChatOverlay({
                       ) : msg.streaming ? (
                         <span className="flex items-center gap-1.5 text-text-muted">
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span className="text-xs">时墨正在思考...</span>
+                          <span className="text-xs">
+                            {isThinking ? '时墨正在深度思考...' : '时墨正在思考...'}
+                          </span>
                         </span>
                       ) : null}
                     </div>

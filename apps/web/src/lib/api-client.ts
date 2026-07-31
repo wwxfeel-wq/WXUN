@@ -210,6 +210,7 @@ export const apiClient = {
 /** Callbacks invoked as SSE events are parsed from the stream. */
 export interface SSECallbacks {
   onToken?: (content: string) => void;
+  onReasoning?: (content: string) => void;
   onEntities?: (entities: string[]) => void;
   onEmotion?: (emotion: string, intensity: number) => void;
   onSkillExp?: (skillName: string, expGained: number, agentCode: string) => void;
@@ -359,6 +360,11 @@ function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
     case 'token': {
       const content = data.content as string;
       if (content) callbacks.onToken?.(content);
+      break;
+    }
+    case 'reasoning': {
+      const content = data.content as string;
+      if (content) callbacks.onReasoning?.(content);
       break;
     }
     case 'entities': {

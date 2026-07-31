@@ -34,7 +34,7 @@ const STARTERS: { text: string; icon: LucideIcon }[] = [
 
 export default function InterviewPage() {
   const user = useAuthStore((s) => s.user);
-  const { messages, isStreaming, error, skillNotice, sendMessage, stopStream } =
+  const { messages, isStreaming, isThinking, error, skillNotice, sendMessage, stopStream } =
     useSSEChat();
 
   const [input, setInput] = React.useState("");
@@ -106,6 +106,28 @@ export default function InterviewPage() {
               ))
             )}
           </div>
+
+          {/* Thinking indicator — DeepSeek V4 thinking mode */}
+          <AnimatePresence>
+            {isThinking && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                className="flex items-center gap-2.5 px-4 sm:px-8 py-2.5"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-pulse" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-pulse" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-pulse" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-xs text-text-secondary">
+                  时墨正在深度思考...
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Error banner */}
           <AnimatePresence>

@@ -445,8 +445,16 @@ ${agentList}
         temperature: state.userContext.aiTemperature,
         maxTokens: AI_CONFIG.MAX_TOKENS,
       })) {
-        state.fullResponse += chunk;
-        yield { type: SSEEventType.TOKEN, data: { content: chunk } };
+        // DeepSeek V4 thinking mode: reasoning chunks come first
+        if (chunk.type === 'reasoning') {
+          yield {
+            type: SSEEventType.REASONING,
+            data: { step: 0, content: chunk.content },
+          };
+        } else {
+          state.fullResponse += chunk.content;
+          yield { type: SSEEventType.TOKEN, data: { content: chunk.content } };
+        }
       }
     } catch (error) {
       this.logger.error(`Response streaming failed: ${(error as Error).message}`);

@@ -30,6 +30,7 @@ export interface SkillNotice {
 export interface UseSSEChatReturn {
   messages: ChatMessage[];
   isStreaming: boolean;
+  isThinking: boolean;
   error: string | null;
   skillNotice: SkillNotice | null;
   /** Send a user message and stream the AI reply. */
@@ -46,6 +47,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
   const { interviewId, initialMessages = [] } = options;
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [skillNotice, setSkillNotice] = useState<SkillNotice | null>(null);
 
@@ -117,7 +119,13 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
         message: trimmed,
         interviewId: interviewIdRef.current,
       }, {
+        onReasoning: () => {
+          // DeepSeek V4 thinking mode: model is reasoning before answering
+          setIsThinking(true);
+        },
         onToken: (token) => {
+          // First content token means thinking is done
+          setIsThinking(false);
           // Use setMessages with a callback to always append to the LATEST
           // state, avoiding stale messagesRef race conditions where tokens
           // arriving in quick succession would overwrite each other.
@@ -163,6 +171,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
           setSkillNotice({ type: 'levelup', skillName, level, agentCode });
         },
         onDone: (data) => {
+          setIsThinking(false);
           setMessages((prev) => {
             const idx = prev.findIndex((m) => m.id === aiMessageId);
             if (idx === -1) return prev;
@@ -179,6 +188,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
           setIsStreaming(false);
         },
         onError: (message) => {
+          setIsThinking(false);
           const current = messagesRef.current.find((m) => m.id === aiMessageId);
           if (current) {
             upsertMessage({
@@ -191,6 +201,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
           setIsStreaming(false);
         },
         onClose: () => {
+          setIsThinking(false);
           // If the stream closed without a done event, finalize the placeholder.
           const current = messagesRef.current.find((m) => m.id === aiMessageId);
           if (current?.streaming) {
@@ -210,6 +221,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
     streamRef.current?.abort();
     streamRef.current = null;
     setIsStreaming(false);
+    setIsThinking(false);
     // Mark any still-streaming message as finalized.
     setMessages((prev) =>
       prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
@@ -229,6 +241,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
   return {
     messages,
     isStreaming,
+    isThinking,
     error,
     skillNotice,
     sendMessage,

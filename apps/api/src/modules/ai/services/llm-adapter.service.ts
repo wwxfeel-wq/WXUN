@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AI_CONFIG,
-  ERROR_CODES,
 } from '@echolife/shared';
 import { retryWithBackoff } from '@echolife/shared';
 import { ApiKeyService } from './api-key.service';
@@ -21,19 +20,38 @@ export interface ChatOptions {
   topP?: number;
 }
 
+/**
+ * A single chunk from the streaming chat API.
+ * DeepSeek V4 thinking mode emits `reasoning` chunks first (chain-of-thought),
+ * followed by `content` chunks (the final answer).
+ */
+export interface ChatStreamChunk {
+  /** 'reasoning' = chain-of-thought (thinking mode), 'content' = final answer */
+  type: 'reasoning' | 'content';
+  /** The text content of this chunk */
+  content: string;
+}
+
 /** Result of a non-streaming chat completion */
 export interface ChatCompletionResult {
   content: string;
+  /** Chain-of-thought reasoning (if thinking mode is active) */
+  reasoning?: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
   model: string;
 }
 
-/** Shape of a single SSE chunk from the GLM streaming API */
+/** Shape of a single SSE chunk from the streaming API */
 interface StreamChunk {
   choices?: Array<{
-    delta?: { content?: string; role?: string };
+    delta?: {
+      content?: string;
+      role?: string;
+      /** DeepSeek V4 thinking mode: chain-of-thought reasoning content */
+      reasoning_content?: string;
+    };
     finish_reason?: string | null;
   }>;
   usage?: {
@@ -57,7 +75,7 @@ export class LlmAdapterService {
     const provider = await this.apiKeyService.getActiveProvider();
     const cfg = this.apiKeyService.getProviderConfig(provider);
     this.logger.log(`Active AI provider: ${provider} (${cfg.label}), API URL: ${cfg.apiUrl}, model: ${cfg.chatModel}`);
-    return cfg;
+    return { provider, cfg };
   }
 
   // ============================================================
@@ -65,20 +83,27 @@ export class LlmAdapterService {
   // ============================================================
 
   /**
-   * Streams a chat completion from the GLM API.
-   * Yields content tokens as they arrive.
+   * Streams a chat completion from the AI provider.
+   *
+   * For DeepSeek V4-Pro (thinking mode), yields two types of chunks:
+   *  1. `{ type: 'reasoning', content: '...' }` — chain-of-thought reasoning
+   *  2. `{ type: 'content', content: '...' }` — the final answer
+   *
+   * The caller (e.g. OpenClawProvider.streamResponse) can forward reasoning
+   * as a REASONING SSE event and content as TOKEN SSE events, so the
+   * frontend can show "时墨正在深度思考..." while the model reasons.
    *
    * @param messages - The conversation messages
    * @param options - Model parameters (temperature, maxTokens, etc.)
-   * @yields {string} Content chunks from the model
+   * @yields {ChatStreamChunk} Reasoning or content chunks from the model
    */
   async *chat(
     messages: ChatMessage[],
     options?: ChatOptions,
-  ): AsyncGenerator<string> {
-    const cfg = await this.resolveProvider();
+  ): AsyncGenerator<ChatStreamChunk> {
+    const { provider, cfg } = await this.resolveProvider();
     const url = `${cfg.apiUrl}/chat/completions`;
-    const body = {
+    const body: Record<string, unknown> = {
       model: options?.model ?? cfg.chatModel,
       messages,
       stream: true,
@@ -86,6 +111,10 @@ export class LlmAdapterService {
       max_tokens: options?.maxTokens ?? AI_CONFIG.MAX_TOKENS,
       ...(options?.topP !== undefined && { top_p: options.topP }),
     };
+
+    // Note: DeepSeek V4 thinking mode is enabled by default.
+    // We keep it enabled and handle reasoning_content in the stream.
+    // Thinking mode ignores temperature/top_p (no error, just no effect).
 
     const response = await fetch(url, {
       method: 'POST',
@@ -107,6 +136,7 @@ export class LlmAdapterService {
     const reader = (response.body as ReadableStream<Uint8Array>).getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let hasReasoning = false;
 
     try {
       while (true) {
@@ -130,9 +160,19 @@ export class LlmAdapterService {
 
           try {
             const chunk: StreamChunk = JSON.parse(data);
-            const content = chunk.choices?.[0]?.delta?.content;
+            const delta = chunk.choices?.[0]?.delta;
+
+            // DeepSeek V4 thinking mode: reasoning_content comes first
+            const reasoning = delta?.reasoning_content;
+            if (reasoning) {
+              hasReasoning = true;
+              yield { type: 'reasoning', content: reasoning };
+            }
+
+            // Final answer content
+            const content = delta?.content;
             if (content) {
-              yield content;
+              yield { type: 'content', content };
             }
           } catch {
             // Skip malformed JSON chunks
@@ -142,6 +182,10 @@ export class LlmAdapterService {
       }
     } finally {
       reader.releaseLock();
+    }
+
+    if (hasReasoning) {
+      this.logger.debug(`${cfg.label} thinking mode: reasoning streamed successfully`);
     }
   }
 
@@ -153,6 +197,9 @@ export class LlmAdapterService {
    * Performs a non-streaming chat completion.
    * Returns the full response with token usage information.
    *
+   * For DeepSeek V4 thinking mode, the response includes both
+   * `content` (final answer) and `reasoning` (chain-of-thought).
+   *
    * @param messages - The conversation messages
    * @param options - Model parameters
    * @returns The complete response with usage stats
@@ -161,9 +208,9 @@ export class LlmAdapterService {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): Promise<ChatCompletionResult> {
-    const cfg = await this.resolveProvider();
+    const { provider, cfg } = await this.resolveProvider();
     const url = `${cfg.apiUrl}/chat/completions`;
-    const body = {
+    const body: Record<string, unknown> = {
       model: options?.model ?? cfg.chatModel,
       messages,
       stream: false,
@@ -178,7 +225,7 @@ export class LlmAdapterService {
           method: 'POST',
           headers: await this.buildHeaders(),
           body: JSON.stringify(body),
-          signal: this.createTimeoutSignal(30000),
+          signal: this.createTimeoutSignal(60000),
         });
 
         if (!res.ok) {
@@ -193,17 +240,23 @@ export class LlmAdapterService {
     );
 
     const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
+          reasoning_content?: string;
+        };
+      }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       model?: string;
     };
 
     return {
       content: data.choices?.[0]?.message?.content ?? '',
+      reasoning: data.choices?.[0]?.message?.reasoning_content,
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
       totalTokens: data.usage?.total_tokens ?? 0,
-      model: data.model ?? body.model,
+      model: data.model ?? (body.model as string),
     };
   }
 
@@ -212,16 +265,39 @@ export class LlmAdapterService {
   // ============================================================
 
   /**
+   * Resolve a provider that supports embeddings.
+   * If the active chat provider supports embeddings, use it.
+   * Otherwise, scan all providers for one with a valid key + embedding support.
+   */
+  private async resolveEmbeddingProvider() {
+    const activeProvider = await this.apiKeyService.getActiveProvider();
+    const activeCfg = this.apiKeyService.getProviderConfig(activeProvider);
+    if (activeCfg.embeddingModel) {
+      const key = await this.apiKeyService.getApiKey(activeProvider);
+      if (key) return { provider: activeProvider, cfg: activeCfg, apiKey: key };
+    }
+    // Fallback: find any provider with embedding support + valid key
+    for (const p of ['glm', 'openai', 'qwen'] as const) {
+      const cfg = this.apiKeyService.getProviderConfig(p);
+      if (cfg.embeddingModel) {
+        const key = await this.apiKeyService.getApiKey(p);
+        if (key) {
+          this.logger.log(`Embedding fallback: using ${p} (${cfg.label}) instead of ${activeProvider}`);
+          return { provider: p, cfg, apiKey: key };
+        }
+      }
+    }
+    throw new Error('没有可用的嵌入模型 provider，请配置 GLM/OpenAI/Qwen 的 API Key');
+  }
+
+  /**
    * Generates an embedding vector for a single text.
    *
    * @param text - The text to embed
    * @returns An array of floats representing the embedding
    */
   async embed(text: string): Promise<number[]> {
-    const cfg = await this.resolveProvider();
-    if (!cfg.embeddingModel) {
-      throw new Error(`${cfg.label} 不支持向量嵌入功能`);
-    }
+    const { cfg, apiKey } = await this.resolveEmbeddingProvider();
     const url = `${cfg.apiUrl}/embeddings`;
     const body = {
       model: cfg.embeddingModel,
@@ -232,7 +308,10 @@ export class LlmAdapterService {
       async () => {
         const res = await fetch(url, {
           method: 'POST',
-          headers: await this.buildHeaders(),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify(body),
           signal: this.createTimeoutSignal(30000),
         });
@@ -271,10 +350,7 @@ export class LlmAdapterService {
   async embedBatch(texts: string[], batchSize: number = 16): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    const cfg = await this.resolveProvider();
-    if (!cfg.embeddingModel) {
-      throw new Error(`${cfg.label} 不支持批量向量嵌入`);
-    }
+    const { cfg, apiKey } = await this.resolveEmbeddingProvider();
 
     const results: number[][] = [];
 
@@ -290,7 +366,10 @@ export class LlmAdapterService {
         async () => {
           const res = await fetch(url, {
             method: 'POST',
-            headers: await this.buildHeaders(),
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
             body: JSON.stringify(body),
             signal: this.createTimeoutSignal(60000),
           });
@@ -309,12 +388,10 @@ export class LlmAdapterService {
       const data = (await response.json()) as {
         data?: Array<{ embedding: number[]; index?: number }>;
       };
-      const embeddings = (data.data ?? []) as Array<{ embedding: number[] }>;
+      const embeddings = (data.data ?? []) as Array<{ embedding: number[]; index?: number }>;
 
       // Sort by index to maintain order
-      const sorted = embeddings.sort((a, b) => {
-        return 0; // GLM returns in order; sort if index field exists
-      });
+      const sorted = embeddings.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
 
       for (const item of sorted) {
         if (item.embedding && Array.isArray(item.embedding)) {
