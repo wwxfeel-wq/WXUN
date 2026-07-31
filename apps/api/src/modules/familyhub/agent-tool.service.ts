@@ -44,20 +44,20 @@ interface ToolDefinition {
 
 /** Tools available to each dashboard agent */
 const AGENT_TOOLS: Record<string, string[]> = {
-  life: ['create_task', 'search_memories', 'get_weather', 'web_search'],
-  kitchen: ['search_recipes', 'nutrition_info'],
-  repair: ['search_knowledge', 'web_search'],
-  knowledge: ['search_knowledge', 'upsert_entity', 'web_search'],
-  health: ['track_health', 'search_health_memories', 'web_search'],
-  travel: ['plan_itinerary', 'get_weather', 'web_search'],
-  care: ['create_reminder', 'search_memories'],
-  growth: ['track_milestone', 'search_growth_memories'],
-  emotion: ['log_mood', 'search_emotion_memories', 'analyze_emotion'],
-  shopping: ['create_budget_note', 'web_search'],
-  pet: ['track_pet_health', 'web_search'],
-  finance: ['track_expense', 'search_finance_memories', 'web_search'],
-  life_coach: ['extract_memory', 'web_search'],
-  story_agent: ['extract_memory', 'gather_story_memories', 'web_search'],
+  life: ['create_task', 'search_memories', 'get_weather', 'web_search', 'deep_research'],
+  kitchen: ['search_recipes', 'nutrition_info', 'deep_research'],
+  repair: ['search_knowledge', 'web_search', 'deep_research'],
+  knowledge: ['search_knowledge', 'upsert_entity', 'web_search', 'deep_research'],
+  health: ['track_health', 'search_health_memories', 'web_search', 'deep_research'],
+  travel: ['plan_itinerary', 'get_weather', 'web_search', 'deep_research'],
+  care: ['create_reminder', 'search_memories', 'deep_research'],
+  growth: ['track_milestone', 'search_growth_memories', 'deep_research'],
+  emotion: ['log_mood', 'search_emotion_memories', 'analyze_emotion', 'deep_research'],
+  shopping: ['create_budget_note', 'web_search', 'deep_research'],
+  pet: ['track_pet_health', 'web_search', 'deep_research'],
+  finance: ['track_expense', 'search_finance_memories', 'web_search', 'deep_research'],
+  life_coach: ['extract_memory', 'web_search', 'deep_research'],
+  story_agent: ['extract_memory', 'gather_story_memories', 'web_search', 'deep_research'],
 };
 
 /** Health metrics that can be detected from free text */
@@ -1052,6 +1052,16 @@ export class AgentToolService {
         return String(content);
       case 'nutrition_info':
         return `营养：${content}`;
+      case 'browse_webpage':
+        return `浏览网页：${args.url ?? ''}`;
+      case 'deep_research':
+        return `深度研究：${args.query ?? content}`;
+      case 'extract_user_info':
+        return String(args.message ?? content);
+      case 'analyze_user_need':
+        return String(args.message ?? content);
+      case 'synthesize_response':
+        return String(args.userMessage ?? content);
       default:
         return content;
     }

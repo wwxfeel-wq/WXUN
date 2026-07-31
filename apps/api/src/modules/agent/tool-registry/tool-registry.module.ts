@@ -8,6 +8,8 @@ import { MemoryTools } from './tools/memory.tools';
 import { KnowledgeTools } from './tools/knowledge.tools';
 import { NotificationTools } from './tools/notification.tools';
 import { FamilyTools } from './tools/family.tools';
+import { WebBrowseTools } from './tools/web-browse.tools';
+import { ResearchTools } from './tools/research.tools';
 import { McpToolRegistry } from './mcp-tool-registry.service';
 
 /**
@@ -26,7 +28,7 @@ import { McpToolRegistry } from './mcp-tool-registry.service';
     NotificationModule,
     AiModule,
   ],
-  providers: [MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, McpToolRegistry],
-  exports: [McpToolRegistry, MemoryTools, KnowledgeTools, NotificationTools, FamilyTools],
+  providers: [MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools, McpToolRegistry],
+  exports: [McpToolRegistry, MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools],
 })
 export class ToolRegistryModule {}

@@ -87,6 +87,10 @@ export class WechatService implements OnModuleDestroy {
   private reconnectDelay = 5000;
   private isReconnecting = false;
   private botData: any = null;
+  /** 自动重连的时间窗口起点（毫秒时间戳），用于限制最大重连时长 */
+  private reconnectStartedAt: number | null = null;
+  /** 自动重连的最大时间窗口（5 分钟），超过即放弃并标记为 error */
+  private readonly maxReconnectWindowMs = 5 * 60 * 1000;
 
   /** Callbacks for incoming messages (used by controller for SSE push) */
   private messageListeners: Array<(msg: WechatMessageDto) => void> = [];
@@ -144,6 +148,9 @@ export class WechatService implements OnModuleDestroy {
       this.loggedIn = true;
       this.phase = 'logged_in';
       this.syncFailCount = 0;
+      // 登录成功（含重连后的重新登录）：重置自动重连状态
+      this.isReconnecting = false;
+      this.reconnectStartedAt = null;
       this.userNickName = this.bot?.user?.NickName || 'Unknown';
       this.logger.log(`WeChat logged in: ${this.userNickName}`);
 
@@ -193,18 +200,38 @@ export class WechatService implements OnModuleDestroy {
 
     this.bot.on('error', (err: Error) => {
       const errMsg = err.message || '';
-      this.logger.error(`WeChat error: ${errMsg}`);
+      const errTips = (err as any).tips || '';
+      this.logger.error(`WeChat error: ${errMsg}${errTips ? ` (tips: ${errTips})` : ''}`);
 
-      if (errMsg.includes('1102') || errMsg.includes('同步失败')) {
+      // 1102 / 同步失败 是 wechat4u 中常见的同步中断错误，属于非致命错误。
+      // 处理原则（降级模式）：保持 logged_in 状态，不立即设置 phase = 'error'，
+      // 让 AI 管家在前端继续可用，同时触发自动重连恢复消息通道。
+      const isSyncError =
+        errMsg.includes('1102') ||
+        errMsg.includes('同步失败') ||
+        errMsg.includes('同步') ||
+        errTips.includes('同步失败');
+
+      if (isSyncError) {
         this.syncFailCount++;
-        this.lastError = `同步中断 (${this.syncFailCount}/${this.maxSyncRetries})，正在自动重连...`;
-        if (this.syncFailCount >= this.maxSyncRetries && !this.isReconnecting) {
-          this.logger.warn(`Max sync retries (${this.maxSyncRetries}) reached`);
+        this.lastError = `微信消息同步异常（1102），已自动重连 ${this.syncFailCount}/${this.maxSyncRetries} 次，AI 管家不受影响`;
+        this.logger.warn(
+          `WeChat 同步失败 (1102)：第 ${this.syncFailCount}/${this.maxSyncRetries} 次，保持登录态并触发自动重连`,
+        );
+
+        // 未达重连上限且当前没有正在重连时，触发自动重连
+        if (this.syncFailCount < this.maxSyncRetries && !this.isReconnecting) {
+          this.scheduleReconnect();
+        } else if (this.syncFailCount >= this.maxSyncRetries) {
+          this.lastError = `微信同步持续失败（1102），已尝试 ${this.syncFailCount} 次，建议稍后手动重新登录；AI 管家可正常使用`;
+          this.logger.warn('WeChat 同步失败次数已达上限，交由 scheduleReconnect 的时间窗口处理');
         }
       } else if (!this.loggedIn) {
+        // 仅在未登录状态下才把错误视为致命错误
         this.lastError = errMsg;
         this.phase = 'error';
       } else {
+        // 已登录后的其他非致命错误，仅记录不中断会话
         this.logger.warn(`Non-fatal WeChat error after login: ${errMsg}`);
         this.lastError = errMsg;
       }
@@ -212,16 +239,23 @@ export class WechatService implements OnModuleDestroy {
 
     this.bot.start();
 
-    const maxWait = 15000;
+    // QR 码生成可能需要较长时间（网络抖动/微信服务端延迟），等待最多 30 秒
+    const maxWait = 30000;
     const interval = 200;
     const startTime = Date.now();
+    this.logger.log('Waiting for WeChat QR code (max 30s)...');
     while (!this.qrCodeUrl && Date.now() - startTime < maxWait) {
       await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     if (!this.qrCodeUrl) {
+      const waited = Math.round((Date.now() - startTime) / 1000);
+      this.logger.error(`WeChat QR code generation timed out after ${waited}s`);
       throw new Error('Failed to generate WeChat QR code. Please try again.');
     }
+
+    const waitedSec = Math.round((Date.now() - startTime) / 1000);
+    this.logger.log(`WeChat QR code ready after ${waitedSec}s`);
 
     return { qrCodeUrl: this.qrCodeUrl };
   }
@@ -348,6 +382,7 @@ export class WechatService implements OnModuleDestroy {
     this.qrCodeUrl = null;
     this.userNickName = null;
     this.syncFailCount = 0;
+    this.reconnectStartedAt = null;
     this.botData = null;
     this.isReconnecting = false;
     this.logger.log('WeChat logged out (manual)');
@@ -858,44 +893,134 @@ export class WechatService implements OnModuleDestroy {
     };
   }
 
+  /**
+   * 自动重连：wechat4u 没有可靠的 restart 方法，因此采用「完全销毁旧实例 + 重新创建」的策略。
+   * - 限制最大重连时间窗口（maxReconnectWindowMs），超过即放弃并标记 phase = 'error'。
+   * - 重连失败时正确设置 phase = 'error'，避免前端误以为仍在连接中。
+   * - 全程输出详细日志，便于排查。
+   */
   private async scheduleReconnect() {
     if (this.isReconnecting) return;
     this.isReconnecting = true;
 
+    // 最大重连时间限制：超过窗口则放弃自动重连
+    if (!this.reconnectStartedAt) {
+      this.reconnectStartedAt = Date.now();
+    }
+    const elapsed = Date.now() - this.reconnectStartedAt;
+    if (elapsed > this.maxReconnectWindowMs) {
+      this.isReconnecting = false;
+      this.phase = 'error';
+      this.lastError = '重连超时，已停止自动重连，请手动重新登录；AI 管家可正常使用';
+      this.reconnectStartedAt = null;
+      this.logger.error(
+        `WeChat 重连时间窗口（${this.maxReconnectWindowMs / 1000}s）已超，放弃自动重连。`,
+      );
+      return;
+    }
+
+    const attempt = this.syncFailCount + 1;
     const delay = Math.min(this.reconnectDelay * Math.pow(2, this.syncFailCount), 60000);
-    this.logger.log(`Scheduling WeChat reconnect in ${delay / 1000}s...`);
+    this.logger.log(
+      `WeChat 重连计划：第 ${attempt} 次尝试，${delay / 1000}s 后执行（累计耗时 ${Math.round(elapsed / 1000)}s）`,
+    );
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    this.isReconnecting = false;
     this.syncFailCount++;
 
     try {
+      // wechat4u 没有 restart 方法，必须完全销毁旧实例后重新创建，
+      // 否则旧实例的定时器/监听器会残留，导致状态混乱。
+      this.logger.log('WeChat 重连：销毁旧 bot 实例...');
       if (this.bot) {
         try {
-          this.bot.restart();
-          this.logger.log('WeChat restart initiated');
-          return;
+          // 移除所有事件监听器，避免旧实例回调污染新流程
+          (this.bot as any).removeAllListeners?.();
+          this.bot.logout();
         } catch (err) {
-          this.logger.warn(`WeChat restart failed: ${(err as Error).message}`);
+          this.logger.warn(
+            `销毁旧 bot 实例时出错（可忽略）：${(err as Error).message}`,
+          );
         }
+        this.bot = null;
       }
 
-      this.bot = null;
-      this.phase = 'idle';
-      this.lastError = null;
+      // 清理登录态，准备重新走扫码登录流程
+      this.loggedIn = false;
+      this.qrCodeUrl = null;
+      this.lastError = '正在重连微信，请稍候...';
+
+      this.logger.log('WeChat 重连：发起新的登录流程...');
       await this.startLogin();
-      this.logger.log('WeChat fresh login initiated after reconnect failure');
+      this.logger.log(`WeChat 重连流程已启动：第 ${attempt} 次尝试已生成新二维码，等待扫码`);
+      // 重连流程已发起（等待用户扫码），重置时间窗口；登录成功后由 login 事件重置计数
+      this.reconnectStartedAt = null;
+      // 释放锁：本次重连动作已完成，后续若再次失败可重新进入
+      this.isReconnecting = false;
     } catch (err) {
-      this.logger.error(`WeChat reconnect failed: ${(err as Error).message}`);
-      this.lastError = `重连失败: ${(err as Error).message}`;
+      const errMsg = (err as Error).message;
+      this.logger.error(`WeChat 重连失败：${errMsg}`);
+      this.lastError = `重连失败：${errMsg}`;
 
-      if (this.syncFailCount < this.maxSyncRetries + 3) {
-        this.scheduleReconnect();
-      } else {
-        this.phase = 'error';
-        this.logger.error('Max reconnect attempts reached. WeChat requires manual re-login.');
+      // 判断是否还能继续重试：未超时间窗口且未超次数上限
+      const stillWithinWindow =
+        Date.now() - (this.reconnectStartedAt ?? Date.now()) < this.maxReconnectWindowMs;
+      if (stillWithinWindow && this.syncFailCount < this.maxSyncRetries + 3) {
+        this.logger.log('WeChat 将继续尝试重连...');
+        // 递归前释放锁，让下一次 scheduleReconnect 能正常进入
+        this.isReconnecting = false;
+        void this.scheduleReconnect();
+        return;
       }
+
+      // 达到上限：标记为错误状态，前端可据此提示手动重新登录
+      this.isReconnecting = false;
+      this.phase = 'error';
+      this.reconnectStartedAt = null;
+      this.lastError = '重连次数/时间已达上限，请手动重新登录；AI 管家可正常使用';
+      this.logger.error('WeChat 重连次数/时间已达上限，需要手动重新登录。');
     }
+  }
+
+  /**
+   * 健康检查：返回当前微信连接的健康状态与可读建议。
+   * 用于前端/运维快速判断是否需要干预，以及降级模式是否生效。
+   */
+  async healthCheck(): Promise<{
+    healthy: boolean;
+    phase: string;
+    canRetry: boolean;
+    suggestion: string;
+  }> {
+    const phase = this.phase;
+    const loggedIn = this.loggedIn;
+    const hasSyncIssue =
+      loggedIn &&
+      !!this.lastError &&
+      (this.lastError.includes('同步') || this.lastError.includes('1102'));
+
+    // healthy：已登录、处于 logged_in 阶段、且无同步异常
+    const healthy = loggedIn && phase === 'logged_in' && !hasSyncIssue;
+
+    // canRetry：当前未在重连且未进入不可恢复的 error 阶段
+    const canRetry = !this.isReconnecting && phase !== 'error';
+
+    let suggestion: string;
+    if (healthy) {
+      suggestion = '微信连接正常';
+    } else if (hasSyncIssue) {
+      suggestion = '消息同步异常，后端正在自动重连，AI 管家可正常使用（降级模式）';
+    } else if (phase === 'error') {
+      suggestion = '微信连接异常，请手动重新扫码登录；AI 管家不受影响';
+    } else if (phase === 'waiting_scan' || phase === 'waiting_confirm') {
+      suggestion = '请使用手机微信扫码确认登录';
+    } else if (this.isReconnecting) {
+      suggestion = '正在自动重连中，请稍候';
+    } else {
+      suggestion = '微信未连接，可扫码登录；AI 管家始终可用';
+    }
+
+    return { healthy, phase, canRetry, suggestion };
   }
 }

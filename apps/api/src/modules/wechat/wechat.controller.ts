@@ -35,6 +35,12 @@ export class WechatController {
     return this.wechatService.getStatus();
   }
 
+  @Get('health')
+  @ApiOperation({ summary: '微信连接健康检查' })
+  healthCheck() {
+    return this.wechatService.healthCheck();
+  }
+
   @Post('logout')
   @ApiOperation({ summary: '退出微信登录' })
   async logout() {

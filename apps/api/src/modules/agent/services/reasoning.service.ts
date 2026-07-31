@@ -51,6 +51,8 @@ export class ReasoningService {
 
     const familyBlock = this.formatFamilyContext(ctx.familyContext);
 
+    const toolGuide = this.buildToolGuide(ctx.toolSchemas);
+
     const userPrompt = `用户消息：${ctx.message}
 
 当前计划步骤：
@@ -68,6 +70,8 @@ ${familyBlock}
 
 ${schemaBlock}
 
+${toolGuide}
+
 请输出 JSON：
 {
   "reasoning": "逐步思考过程：1) 当前步骤要达成什么；2) 已有信息是否足够；3) 是否需要调用工具以及调用哪个工具；4) 如何继续。控制在 3-5 句。",
@@ -79,6 +83,8 @@ ${schemaBlock}
 约束：
 -  tool_calls 最多 ${AGENT_RUNTIME.MAX_TOOL_CALLS_PER_TURN} 个。
 -  只有在确实需要外部数据或动作时才调用工具。
+-  优先使用 analyze_user_need 理解用户深层需求，再决定后续工具。
+-  复杂问题使用 deep_research 而非 web_search，获取更全面的信息。
 -  如果没有合适的工具，tool_calls 留空数组。`;
 
     try {
@@ -111,6 +117,44 @@ ${schemaBlock}
         toolCalls: [],
       };
     }
+  }
+
+  /**
+   * 根据可用工具 schema 生成工具使用指南，引导 LLM 选择最合适的工具。
+   */
+  private buildToolGuide(schemas: ToolSchema[]): string {
+    const toolNames = new Set(schemas.map((s) => s.name));
+    const guides: string[] = [];
+
+    if (toolNames.has('analyze_user_need')) {
+      guides.push('- analyze_user_need: 当用户消息含义模糊、情绪复杂、或需要理解深层意图时优先调用。');
+    }
+    if (toolNames.has('deep_research')) {
+      guides.push('- deep_research: 当用户提问涉及专业知识、需要多方面信息综合、或 web_search 不足以覆盖时使用。');
+    }
+    if (toolNames.has('browse_webpage')) {
+      guides.push('- browse_webpage: 当已知具体 URL 且需要获取网页详细内容时使用。');
+    }
+    if (toolNames.has('synthesize_response')) {
+      guides.push('- synthesize_response: 当已有多源数据（搜索+记忆）需要综合成人性化回应建议时使用。');
+    }
+    if (toolNames.has('web_search')) {
+      guides.push('- web_search: 当需要快速查询实时信息（天气、新闻、价格）时使用，简单问题优先于 deep_research。');
+    }
+    if (toolNames.has('search_memories')) {
+      guides.push('- search_memories: 当用户提到过去的事、回忆、或需要历史上下文时使用。');
+    }
+
+    if (guides.length === 0) return '';
+
+    return `工具选择指南：
+${guides.join('\n')}
+
+推荐策略：
+1) 用户消息模糊或情绪化 → 先 analyze_user_need，再根据结果选择后续工具
+2) 需要实时/外部信息 → 简单查询用 web_search，复杂调研用 deep_research
+3) 涉及过往经历 → search_memories 检索相关记忆
+4) 多源信息已就绪 → synthesize_response 综合生成回应`;
   }
 
   private formatFamilyContext(familyContext: ReasoningContext['familyContext']): string {

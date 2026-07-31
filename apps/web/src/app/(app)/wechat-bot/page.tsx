@@ -179,17 +179,27 @@ export default function WeChatBotPage() {
     contactCount?: number;
     lastError?: string | null;
     phase?: string;
+    hasSyncIssue?: boolean;
   } => {
     if (!wechatStatus) return { tone: 'idle', label: '未连接', phase: 'idle' };
     if (wechatStatus.loggedIn) {
-      const tone: OpsTileTone = wechatStatus.lastError ? 'warn' : 'ok';
+      const rawError = wechatStatus.lastError;
+      // 1102 / 同步异常属于非致命错误：后端会自动重连，AI 管家仍可用（降级模式）
+      const isSyncIssue =
+        !!rawError && (rawError.includes('1102') || rawError.includes('同步'));
+      const tone: OpsTileTone = rawError ? 'warn' : 'ok';
+      // 对前端更友好的错误文案，避免直接暴露原始错误码造成困惑
+      const friendlyError = isSyncIssue
+        ? '微信消息同步异常，正在自动重连，AI 管家不受影响'
+        : rawError;
       return {
         tone,
-        label: tone === 'warn' ? '同步中' : '已连接',
+        label: tone === 'warn' ? (isSyncIssue ? '同步中' : '已连接') : '已连接',
         nickName: wechatStatus.userNickName,
         contactCount: wechatStatus.contactCount,
-        lastError: wechatStatus.lastError,
+        lastError: friendlyError,
         phase: wechatStatus.phase,
+        hasSyncIssue: isSyncIssue,
       };
     }
     if (wechatStatus.phase === 'waiting_scan' || wechatStatus.phase === 'waiting_confirm') {

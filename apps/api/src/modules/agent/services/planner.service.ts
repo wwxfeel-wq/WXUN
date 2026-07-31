@@ -69,7 +69,10 @@ ${toolList}
 约束：
 - 步骤最多 ${AGENT_RUNTIME.MAX_PLAN_STEPS} 个。
 - 只有在确实需要时才指定 tool。
-- dependsOn 填写前置步骤的 id，无依赖留空数组。`;
+- dependsOn 填写前置步骤的 id，无依赖留空数组。
+- 用户需求模糊时，第一步可指定 analyze_user_need 分析深层意图。
+- 需要外部信息时，简单查询用 web_search，复杂调研用 deep_research。
+- 多源信息汇总后，可用 synthesize_response 综合回应。`;
 
     try {
       const result = await this.llmAdapter.chatComplete(

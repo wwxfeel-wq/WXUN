@@ -3,6 +3,8 @@ import { MemoryTools } from './tools/memory.tools';
 import { KnowledgeTools } from './tools/knowledge.tools';
 import { NotificationTools } from './tools/notification.tools';
 import { FamilyTools } from './tools/family.tools';
+import { WebBrowseTools } from './tools/web-browse.tools';
+import { ResearchTools } from './tools/research.tools';
 import type {
   McpToolContext,
   McpToolDefinition,
@@ -34,6 +36,8 @@ export class McpToolRegistry {
     private readonly knowledgeTools: KnowledgeTools,
     private readonly notificationTools: NotificationTools,
     private readonly familyTools: FamilyTools,
+    private readonly webBrowseTools: WebBrowseTools,
+    private readonly researchTools: ResearchTools,
   ) {
     this.registerBuiltInTools();
   }
@@ -150,6 +154,8 @@ export class McpToolRegistry {
     this.registerMany(this.knowledgeTools.getDefinitions());
     this.registerMany(this.notificationTools.getDefinitions());
     this.registerMany(this.familyTools.getDefinitions());
+    this.registerMany(this.webBrowseTools.getDefinitions());
+    this.registerMany(this.researchTools.getDefinitions());
   }
 
   private toSchema(tool: McpToolDefinition): McpToolSchema {

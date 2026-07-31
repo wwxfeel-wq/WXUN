@@ -95,21 +95,26 @@ export class ToolCallingService {
    * The list includes the new MCP tools alongside the original legacy tools.
    */
   private getToolNamesForAgent(agentCode: string): string[] {
+    // 所有 agent 共享的深度研究与需求分析能力
+    const commonResearchTools = ['deep_research', 'analyze_user_need'];
+    // 具备网页浏览与回应综合能力的 agent
+    const browseSynthTools = ['browse_webpage', 'synthesize_response'];
+
     const toolMap: Record<string, string[]> = {
-      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search'],
-      kitchen: ['create_memory', 'search_memories', 'search_knowledge', 'send_family_notification', 'search_recipes', 'nutrition_info', 'web_search'],
-      repair: ['create_memory', 'search_memories', 'send_family_notification', 'search_knowledge', 'web_search'],
-      knowledge: ['search_knowledge', 'upsert_entity', 'create_memory', 'search_memories', 'web_search'],
-      health: ['create_memory', 'create_reminder', 'search_memories', 'track_health', 'search_health_memories', 'send_family_notification', 'web_search'],
-      travel: ['create_memory', 'search_memories', 'send_family_notification', 'plan_itinerary', 'get_weather', 'web_search'],
-      care: ['create_memory', 'create_reminder', 'send_family_notification', 'search_memories'],
-      growth: ['create_memory', 'track_milestone', 'search_memories', 'search_growth_memories'],
-      emotion: ['create_memory', 'search_memories', 'send_family_notification', 'log_mood', 'search_emotion_memories', 'analyze_emotion'],
-      shopping: ['create_memory', 'search_memories', 'create_budget_note', 'web_search'],
-      pet: ['create_memory', 'search_memories', 'track_pet_health', 'web_search'],
-      finance: ['create_memory', 'search_memories', 'track_expense', 'search_finance_memories', 'web_search'],
-      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search'],
-      story_agent: ['create_memory', 'search_memories', 'send_family_notification', 'extract_memory', 'gather_story_memories', 'web_search'],
+      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search', ...commonResearchTools, ...browseSynthTools],
+      kitchen: ['create_memory', 'search_memories', 'search_knowledge', 'send_family_notification', 'search_recipes', 'nutrition_info', 'web_search', ...commonResearchTools],
+      repair: ['create_memory', 'search_memories', 'send_family_notification', 'search_knowledge', 'web_search', ...commonResearchTools, ...browseSynthTools],
+      knowledge: ['search_knowledge', 'upsert_entity', 'create_memory', 'search_memories', 'web_search', ...commonResearchTools, ...browseSynthTools],
+      health: ['create_memory', 'create_reminder', 'search_memories', 'track_health', 'search_health_memories', 'send_family_notification', 'web_search', ...commonResearchTools],
+      travel: ['create_memory', 'search_memories', 'send_family_notification', 'plan_itinerary', 'get_weather', 'web_search', ...commonResearchTools],
+      care: ['create_memory', 'create_reminder', 'send_family_notification', 'search_memories', ...commonResearchTools],
+      growth: ['create_memory', 'track_milestone', 'search_memories', 'search_growth_memories', ...commonResearchTools],
+      emotion: ['create_memory', 'search_memories', 'send_family_notification', 'log_mood', 'search_emotion_memories', 'analyze_emotion', ...commonResearchTools],
+      shopping: ['create_memory', 'search_memories', 'create_budget_note', 'web_search', ...commonResearchTools],
+      pet: ['create_memory', 'search_memories', 'track_pet_health', 'web_search', ...commonResearchTools],
+      finance: ['create_memory', 'search_memories', 'track_expense', 'search_finance_memories', 'web_search', ...commonResearchTools],
+      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search', ...commonResearchTools, ...browseSynthTools],
+      story_agent: ['create_memory', 'search_memories', 'send_family_notification', 'extract_memory', 'gather_story_memories', 'web_search', ...commonResearchTools],
     };
     return toolMap[agentCode] ?? [];
   }
@@ -133,7 +138,7 @@ export class ToolCallingService {
       description: this.getToolDescription(name),
       parameters: {
         type: 'object' as const,
-        properties: {} as Record<string, { type: string; description: string }>,
+        properties: {} as ToolSchema['parameters']['properties'],
         required: [] as string[],
       },
     };
@@ -202,6 +207,49 @@ export class ToolCallingService {
         base.parameters.required = ['query'];
         break;
       case 'nutrition_info':
+        base.parameters.properties = {
+          query: { type: 'string', description: '查询内容' },
+        };
+        break;
+      case 'browse_webpage':
+        base.parameters.properties = {
+          url: { type: 'string', description: '要浏览的网页 URL' },
+          selector: { type: 'string', description: '可选的关键词，用于定位正文区域' },
+        };
+        base.parameters.required = ['url'];
+        break;
+      case 'deep_research':
+        base.parameters.properties = {
+          query: { type: 'string', description: '要研究的问题或关键词' },
+          depth: {
+            type: 'string',
+            description: '研究深度：quick(快速) / standard(标准) / deep(深度)',
+            enum: ['quick', 'standard', 'deep'],
+          },
+        };
+        base.parameters.required = ['query'];
+        break;
+      case 'extract_user_info':
+        base.parameters.properties = {
+          message: { type: 'string', description: '用户发送的原始消息' },
+        };
+        base.parameters.required = ['message'];
+        break;
+      case 'analyze_user_need':
+        base.parameters.properties = {
+          message: { type: 'string', description: '用户发送的原始消息' },
+          context: { type: 'string', description: '可选的上下文信息，如历史对话或当前场景' },
+        };
+        base.parameters.required = ['message'];
+        break;
+      case 'synthesize_response':
+        base.parameters.properties = {
+          userMessage: { type: 'string', description: '用户的原始消息' },
+          researchData: { type: 'string', description: '通过深度研究或其他工具获取的研究数据' },
+          memoryContext: { type: 'string', description: '可选的记忆上下文' },
+        };
+        base.parameters.required = ['userMessage', 'researchData'];
+        break;
       default:
         base.parameters.properties = {
           query: { type: 'string', description: '查询内容' },
@@ -239,6 +287,11 @@ export class ToolCallingService {
       analyze_emotion: '分析用户情绪并记录情绪日记',
       create_memory: '将一段值得保存的家庭记忆写入长期记忆库',
       send_family_notification: '给家庭成员发送一条应用内通知',
+      browse_webpage: '浏览指定网页，提取标题与正文摘要，用于获取网页详细内容',
+      deep_research: '针对用户问题进行深度研究：搜索网络、浏览相关网页并综合生成研究摘要',
+      extract_user_info: '分析用户消息，提取隐含的需求、意图与情绪状态',
+      analyze_user_need: '使用 LLM 深度分析用户消息，挖掘表层需求之下的深层需求与建议工具链',
+      synthesize_response: '将研究数据与记忆上下文综合成人性化的回应建议',
     };
     return descriptions[name] ?? `执行 ${name}`;
   }
