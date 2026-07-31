@@ -332,7 +332,15 @@ export class LlmAdapterService {
     const provider = await this.apiKeyService.getActiveProvider();
     const apiKey = await this.apiKeyService.getApiKey(provider);
     if (!apiKey) {
-      this.logger.warn(`No API key configured for ${provider} - AI features will not work`);
+      const cfg = this.apiKeyService.getProviderConfig(provider);
+      this.logger.error(
+        `No API key configured for ${provider} (${cfg.label}). ` +
+        `Set ${cfg.envKey} in .env.production or configure it via the admin settings page.`,
+      );
+      throw new Error(
+        `AI 服务未正确配置：${cfg.label} 的 API Key 为空。` +
+        `请在 .env.production 中设置 ${cfg.envKey}，或在管理后台 → AI 设置中配置。`,
+      );
     }
     return {
       'Content-Type': 'application/json',

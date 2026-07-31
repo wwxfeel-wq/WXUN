@@ -73,6 +73,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AI_ACTIVE_PROVIDER: ${AI_ACTIVE_PROVIDER:-deepseek}
       GLM_API_KEY: ${GLM_API_KEY}
       GLM_API_URL: ${GLM_API_URL:-https://open.bigmodel.cn/api/paas/v4}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}

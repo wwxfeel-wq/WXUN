@@ -96,28 +96,47 @@ export class ApiKeyService {
     return ALL_PROVIDERS.map((p) => PROVIDER_CONFIGS[p]);
   }
 
-  /** Resolve the active provider: DB > first configured > 'glm' fallback. */
+  /** Resolve the active provider: env > DB > first configured > 'glm' fallback. */
   async getActiveProvider(): Promise<ApiKeyProvider> {
     const now = Date.now();
     if (this.activeProviderCache && now - this.activeProviderTs < this.cacheTtlMs) {
       return this.activeProviderCache;
     }
 
-    // 1. check DB
+    // 1. env override (highest priority — ensures .env.production takes effect)
+    const envProvider = this.configService.get<string>('AI_ACTIVE_PROVIDER');
+    if (envProvider && ALL_PROVIDERS.includes(envProvider as ApiKeyProvider)) {
+      const p = envProvider as ApiKeyProvider;
+      const key = await this.getApiKey(p);
+      if (key) {
+        this.activeProviderCache = p;
+        this.activeProviderTs = now;
+        return p;
+      }
+      this.logger.warn(`AI_ACTIVE_PROVIDER=${envProvider} but no API key found, falling through`);
+    }
+
+    // 2. check DB
     try {
       const row = await this.prisma.systemConfig.findUnique({
         where: { key: ACTIVE_PROVIDER_KEY },
       });
       if (row?.value && ALL_PROVIDERS.includes(row.value as ApiKeyProvider)) {
-        this.activeProviderCache = row.value as ApiKeyProvider;
-        this.activeProviderTs = now;
-        return this.activeProviderCache;
+        const p = row.value as ApiKeyProvider;
+        // Verify the DB-selected provider actually has a key
+        const key = await this.getApiKey(p);
+        if (key) {
+          this.activeProviderCache = p;
+          this.activeProviderTs = now;
+          return p;
+        }
+        this.logger.warn(`DB active provider '${p}' has no API key, falling through to first configured`);
       }
     } catch {
       // ignore
     }
 
-    // 2. fallback to first configured provider
+    // 3. fallback to first configured provider (has a valid key)
     for (const p of ALL_PROVIDERS) {
       const key = await this.getApiKey(p);
       if (key) {
@@ -127,7 +146,7 @@ export class ApiKeyService {
       }
     }
 
-    // 3. default
+    // 4. default
     return 'glm';
   }
 
