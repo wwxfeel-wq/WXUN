@@ -111,6 +111,12 @@ export class OpenClawProvider extends AgentRuntimeProvider {
 
   /**
    * Main OpenClaw runtime pipeline.
+   *
+   * For 'chat' mode, skips the LLM-based planning/reasoning steps and goes
+   * directly to streaming. This eliminates 2-3 non-streaming LLM calls
+   * (10-30s each) before the first token reaches the user.
+   *
+   * For 'digital-life' and 'story' modes, the full pipeline is used.
    */
   async *run(input: AgentRuntimeInput): AsyncGenerator<SSEEvent> {
     const state = await this.initializeState(input);
@@ -128,82 +134,79 @@ export class OpenClawProvider extends AgentRuntimeProvider {
         await this.action.storeInterviewMessage(input.interviewId, 'user', input.message),
       );
 
-      // Step 3: Plan with full user + family context
-      const availableTools = this.toolCalling.getToolSchemas(state.agentType).map((s) => s.name);
-      state.plan = await this.planner.plan({
-        message: input.message,
-        mode: state.mode,
-        availableTools,
-        userContext: state.userContext,
-        familyContext: state.familyContext,
-      });
+      // For simple chat mode, skip planning/reasoning and stream directly
+      const isSimpleChat = state.mode === 'chat';
 
-      if (state.plan.reasoning) {
-        state.reasoningTrace.push(state.plan.reasoning);
-        yield {
-          type: SSEEventType.REASONING,
-          data: { step: 1, content: state.plan.reasoning },
-        };
-      }
-
-      // Step 4: Schedule steps (topological sort) and reason per step
-      const scheduledSteps = this.scheduler.schedule(state.plan.steps);
-      const toolSchemas = this.toolCalling.getToolSchemas(state.agentType);
-
-      for (const step of scheduledSteps) {
-        const reasoningResult = await this.reasoning.reason({
+      if (!isSimpleChat) {
+        // Full pipeline for non-chat modes
+        // Step 3: Plan with full user + family context
+        const availableTools = this.toolCalling.getToolSchemas(state.agentType).map((s) => s.name);
+        state.plan = await this.planner.plan({
           message: input.message,
-          step,
-          planReasoning: state.plan.reasoning,
+          mode: state.mode,
+          availableTools,
           userContext: state.userContext,
           familyContext: state.familyContext,
-          memoryContext: state.userContext.formattedMemories,
-          toolSchemas,
         });
 
-        if (reasoningResult.reasoning) {
-          state.reasoningTrace.push(reasoningResult.reasoning);
+        if (state.plan.reasoning) {
+          state.reasoningTrace.push(state.plan.reasoning);
           yield {
             type: SSEEventType.REASONING,
-            data: { step: state.reasoningTrace.length, content: reasoningResult.reasoning },
+            data: { step: 1, content: state.plan.reasoning },
           };
         }
 
-        // Merge tool calls from each step, avoiding duplicates by tool+args key
-        for (const tc of reasoningResult.toolCalls) {
-          const key = `${tc.tool}:${JSON.stringify(tc.args)}`;
-          if (!state.toolCalls.some((existing) => `${existing.tool}:${JSON.stringify(existing.args)}` === key)) {
-            state.toolCalls.push(tc);
+        // Step 4: Schedule steps (topological sort) and reason per step
+        const scheduledSteps = this.scheduler.schedule(state.plan.steps);
+        const toolSchemas = this.toolCalling.getToolSchemas(state.agentType);
+
+        for (const step of scheduledSteps) {
+          const reasoningResult = await this.reasoning.reason({
+            message: input.message,
+            step,
+            planReasoning: state.plan.reasoning,
+            userContext: state.userContext,
+            familyContext: state.familyContext,
+            memoryContext: state.userContext.formattedMemories,
+            toolSchemas,
+          });
+
+          if (reasoningResult.reasoning) {
+            state.reasoningTrace.push(reasoningResult.reasoning);
+            yield {
+              type: SSEEventType.REASONING,
+              data: { step: state.reasoningTrace.length, content: reasoningResult.reasoning },
+            };
+          }
+
+          for (const tc of reasoningResult.toolCalls) {
+            const key = `${tc.tool}:${JSON.stringify(tc.args)}`;
+            if (!state.toolCalls.some((existing) => `${existing.tool}:${JSON.stringify(existing.args)}` === key)) {
+              state.toolCalls.push(tc);
+            }
           }
         }
-      }
 
-      // Enforce max tool calls per turn
-      state.toolCalls = state.toolCalls.slice(0, AGENT_RUNTIME.MAX_TOOL_CALLS_PER_TURN);
+        state.toolCalls = state.toolCalls.slice(0, AGENT_RUNTIME.MAX_TOOL_CALLS_PER_TURN);
 
-      // Step 5: Execute structured tool calls through ActionService
-      if (state.toolCalls.length > 0) {
-        yield* this.emitAction({ action: 'execute_tools', status: 'running' });
-        state.toolResults = await this.action.executeToolCalls(
-          state.agentType,
-          input.userId,
-          state.toolCalls,
-          input.message,
-        );
-        yield* this.emitAction({ action: 'execute_tools', status: 'success' });
+        // Step 5: Execute structured tool calls
+        if (state.toolCalls.length > 0) {
+          yield* this.emitAction({ action: 'execute_tools', status: 'running' });
+          state.toolResults = await this.action.executeToolCalls(
+            state.agentType,
+            input.userId,
+            state.toolCalls,
+            input.message,
+          );
+          yield* this.emitAction({ action: 'execute_tools', status: 'success' });
 
-        for (const call of state.toolCalls) {
-          yield {
-            type: SSEEventType.TOOL_CALL,
-            data: { tool: call.tool, args: call.args },
-          };
-        }
-
-        for (const result of state.toolResults) {
-          yield {
-            type: SSEEventType.OBSERVATION,
-            data: this.observation.observeToolResult(result),
-          };
+          for (const call of state.toolCalls) {
+            yield { type: SSEEventType.TOOL_CALL, data: { tool: call.tool, args: call.args } };
+          }
+          for (const result of state.toolResults) {
+            yield { type: SSEEventType.OBSERVATION, data: this.observation.observeToolResult(result) };
+          }
         }
       }
 
@@ -237,10 +240,12 @@ export class OpenClawProvider extends AgentRuntimeProvider {
         yield* this.emitSkillEvents(state.skillEvolution, state.agentType);
       }
 
-      // Step 12: Scheduler proactive triggers
-      const proactiveTasks = await this.scheduler.detectProactiveTasks(input, state);
-      for (const task of proactiveTasks) {
-        yield* this.emitAction(task);
+      // Step 12: Scheduler proactive triggers (only for non-simple chat)
+      if (!isSimpleChat) {
+        const proactiveTasks = await this.scheduler.detectProactiveTasks(input, state);
+        for (const task of proactiveTasks) {
+          yield* this.emitAction(task);
+        }
       }
 
       // Done
@@ -301,8 +306,8 @@ export class OpenClawProvider extends AgentRuntimeProvider {
   /**
    * Resolve the agent type for the current turn.
    *
-   * Uses a structured LLM router that considers all registered agents in
-   * AGENTS, not just a hard-coded binary decision. Falls back to life_coach.
+   * For 'chat' mode, always uses life_coach directly (skips LLM routing call).
+   * For other modes, uses a structured LLM router.
    */
   private async resolveAgentType(input: AgentRuntimeInput): Promise<string> {
     if (input.mode === 'digital-life') {
@@ -311,6 +316,11 @@ export class OpenClawProvider extends AgentRuntimeProvider {
 
     if (input.mode === 'story') {
       return AgentType.STORY_AGENT;
+    }
+
+    // For simple chat, skip the LLM routing call — always use life_coach
+    if (input.mode === 'chat') {
+      return AgentType.LIFE_COACH;
     }
 
     const agentList = Object.entries(AGENTS)

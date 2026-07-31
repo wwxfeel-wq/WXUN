@@ -286,10 +286,22 @@ export function createSSEStream(
     const decoder = new TextDecoder();
     let buffer = '';
 
+    // Timeout: if no data received within 60s, abort and show error
+    let hasReceivedData = false;
+    const timeoutId = setTimeout(() => {
+      if (!hasReceivedData) {
+        controller.abort();
+        callbacks.onError?.('AI响应超时，请稍后重试', -1);
+        callbacks.onClose?.();
+      }
+    }, 60_000);
+
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        hasReceivedData = true;
+        clearTimeout(timeoutId);
         buffer += decoder.decode(value, { stream: true });
 
         // SSE events are separated by a blank line (\n\n)
@@ -309,6 +321,7 @@ export function createSSEStream(
         callbacks.onError?.('数据流读取中断', -1);
       }
     } finally {
+      clearTimeout(timeoutId);
       callbacks.onClose?.();
     }
   })();
