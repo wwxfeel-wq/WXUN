@@ -1041,10 +1041,14 @@
 .spatial-home > .spatial-home__top-cards,
 .spatial-home > .spatial-home__left,
 .spatial-home > .spatial-home__core,
-.spatial-home > .spatial-home__right,
-.spatial-home > .spatial-home__input {
+.spatial-home > .spatial-home__right {
   position: relative;
   z-index: 2;
+}
+
+/* 输入框保持 fixed 定位，仅提升 z-index 确保在粒子层之上 */
+.spatial-home > .spatial-home__input {
+  z-index: 20;
 }
 
 /* 顶部四个状态卡片 — 参考图 3D 透视风格 */

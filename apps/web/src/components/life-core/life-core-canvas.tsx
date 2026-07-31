@@ -125,8 +125,8 @@ function buildGalaxy(counts: LifeCoreCounts, level: number): {
   bgStars: BgStar[];
 } {
   const rand = mulberry32(42 + level * 7);
-  // 粒子数量：800 个，全屏模式下需要更多粒子才能填满视口
-  const total = Math.min(800, 450 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 8 + level * 12);
+  // 粒子数量：1200 个，全屏沉浸式星系
+  const total = Math.min(1200, 700 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 10 + level * 15);
 
   // 按比例分配粒子类型
   const kindPool: NodeKind[] = [];
@@ -284,6 +284,10 @@ export function LifeCoreCanvas({
   // 是否已交互过（用于隐藏提示）
   const interactedRef = useRef(false);
 
+  // 初始爆发动画起始时间戳
+  const startTimeRef = useRef<number>(0);
+  const BURST_DURATION = 2.5; // 爆发动画持续 2.5 秒
+
   // 预渲染粒子 sprite
   const [particleSprite, setParticleSprite] = useState<HTMLCanvasElement | null>(null);
   const [coreSprite, setCoreSprite] = useState<HTMLCanvasElement | null>(null);
@@ -363,11 +367,26 @@ export function LifeCoreCanvas({
     const { particles, stemPoints, bgStars } = galaxyRef.current;
     if (!particles.length || !particleSprite || !coreSprite || !nebulaGlowSprite) return;
 
+    // 初始化爆发动画起始时间
+    if (startTimeRef.current === 0) {
+      startTimeRef.current = performance.now() / 1000;
+    }
+
     const frame = performance.now() / 1000;
     const cx = width / 2;
     const cy = height * 0.42;
     // 全屏模式：星系缩放占满较短边的 1.1 倍，让粒子铺满视口
     const galaxyScale = Math.min(width, height) * 1.1;
+
+    // 初始爆发动画进度 (0 → 1)
+    const elapsed = frame - startTimeRef.current;
+    const burstProgress = reducedMotion ? 1 : Math.min(1, elapsed / BURST_DURATION);
+    // easeOutExpo: 快速爆发后缓慢 settles
+    const burstEase = burstProgress === 1 ? 1 : 1 - Math.pow(2, -10 * burstProgress);
+    // 爆发缩放：从 0.05 (极小核心) → 1.0 (完整大小)
+    const burstScale = 0.05 + burstEase * 0.95;
+    // 爆发期间额外的旋转动量
+    const burstSpin = reducedMotion ? 0 : (1 - burstEase) * 3.0;
 
     // 星系整体呼吸
     const breath = state === 'companion'
@@ -378,7 +397,7 @@ export function LifeCoreCanvas({
       ? 0.93 + Math.sin(frame * 1.6) * 0.08
       : 1.04 + Math.sin(frame * 0.5) * 0.05;
 
-    const scale = galaxyScale * breath;
+    const scale = galaxyScale * breath * burstScale;
 
     // 更新视角旋转（惯性 + 插值）
     const drag = dragRef.current;
@@ -405,11 +424,14 @@ export function LifeCoreCanvas({
     const viewYaw = view.yaw;
     const viewPitch = view.pitch;
 
-    // 自动自转（星系自身旋转）
-    const baseRotation = reducedMotion ? 0 : frame * 0.04;
+    // 自动自转（星系自身旋转）+ 爆发期间额外旋转
+    const baseRotation = reducedMotion ? 0 : (frame * 0.04 + burstSpin);
 
     // 能量脉冲波相位（从中心向外传播的亮度波）
     const sparkPhase = reducedMotion ? 0 : frame * 0.5;
+
+    // 爆发期间整体透明度渐入
+    const burstAlpha = reducedMotion ? 1 : Math.min(1, burstProgress * 1.5);
 
     // === 1. 背景星场（视差旋转，更慢） ===
     ctx.globalCompositeOperation = 'lighter';
@@ -434,9 +456,9 @@ export function LifeCoreCanvas({
       ctx.fill();
     }
 
-    // === 2. 星云背景光晕（大范围柔和辉光） ===
+    // === 2. 星云背景光晕（大范围柔和辉光，爆发期间渐入） ===
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.5 * burstAlpha;
     const glowW = scale * 2.2;
     const glowH = scale * 1.9;
     ctx.drawImage(nebulaGlowSprite, cx - glowW / 2, cy - glowH / 2, glowW, glowH);
@@ -533,12 +555,12 @@ export function LifeCoreCanvas({
       if (p.isCore) {
         // 核心粒子：白热光晕 + 大 sprite
         const spriteSize = p.size * 14 * pulse * persp * sparkBoost;
-        ctx.globalAlpha = Math.min(0.9, (0.5 + p.activation * 0.3) * pulse * depthFactor);
+        ctx.globalAlpha = Math.min(0.9, (0.5 + p.activation * 0.3) * pulse * depthFactor * burstAlpha);
         ctx.drawImage(coreSprite, finalX - spriteSize / 2, finalY - spriteSize / 2, spriteSize, spriteSize);
 
         // 核心纯白点
-        ctx.globalAlpha = Math.min(1, pulse * 0.9 * depthFactor * twinkle);
-        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * twinkle})`;
+        ctx.globalAlpha = Math.min(1, pulse * 0.9 * depthFactor * twinkle * burstAlpha);
+        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * twinkle * burstAlpha})`;
         ctx.beginPath();
         ctx.arc(finalX, finalY, Math.max(0.8, p.size * 0.8 * persp), 0, Math.PI * 2);
         ctx.fill();
@@ -546,7 +568,7 @@ export function LifeCoreCanvas({
         // 普通粒子：彩色光晕
         const distFade = Math.max(0.5, 1 - p.r * 0.4); // 外围粒子稍暗
         const spriteSize = p.size * 8 * pulse * persp * distFade;
-        const alpha = (0.35 + p.activation * 0.35) * pulse * brightness;
+        const alpha = (0.35 + p.activation * 0.35) * pulse * brightness * burstAlpha;
 
         ctx.globalAlpha = Math.min(0.85, alpha);
         ctx.drawImage(particleSprite, finalX - spriteSize / 2, finalY - spriteSize / 2, spriteSize, spriteSize);
@@ -569,9 +591,10 @@ export function LifeCoreCanvas({
     const coreScreenY = cy + cy2 * scale * corePersp;
 
     ctx.globalCompositeOperation = 'lighter';
-    // 核心脉动：周期性亮度变化
-    const corePulse = 0.22 + Math.sin(frame * 0.8) * 0.1;
-    ctx.globalAlpha = corePulse * corePersp;
+    // 核心脉动：周期性亮度变化，爆发期间额外增强
+    const coreBurstBoost = burstProgress < 0.3 ? (1 + (0.3 - burstProgress) * 3) : 1;
+    const corePulse = (0.22 + Math.sin(frame * 0.8) * 0.1) * coreBurstBoost;
+    ctx.globalAlpha = Math.min(0.8, corePulse * corePersp * burstAlpha);
     const coreRadius = scale * 0.15 * corePersp;
     const coreGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius);
     coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
