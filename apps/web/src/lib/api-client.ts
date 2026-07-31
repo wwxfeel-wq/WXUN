@@ -19,12 +19,12 @@ export const API_BASE_URL = '';
 export const API_ENDPOINT = `${API_BASE_URL}${API_PREFIX}`;
 
 /**
- * Direct backend URL for SSE streaming.
- * Next.js rewrites buffer SSE responses, so we connect directly
- * to the backend for streaming endpoints.
+ * SSE streaming uses the same relative path as regular API calls.
+ * In production, Nginx handles SSE correctly (proxy_buffering off),
+ * so there's no need to bypass it. Using relative path avoids
+ * double-prefix issues when NEXT_PUBLIC_API_URL includes the API prefix.
  */
-const SSE_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const SSE_ENDPOINT = `${SSE_BASE_URL}${API_PREFIX}`;
+const SSE_ENDPOINT = API_ENDPOINT;
 
 /** Custom error thrown for non-successful API responses. */
 export class ApiError extends Error {
