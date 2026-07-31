@@ -76,11 +76,14 @@ jobs:
     steps:
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
+          envs: DEEPSEEK_KEY
           script: |
             set -e
             cd /www/wwwroot/echolife
@@ -96,11 +99,16 @@ jobs:
               sed -i '/Strict-Transport-Security/d' infra/nginx/nginx.conf
             fi
             echo "== 确保 DeepSeek API 配置 =="
-            # 更新或添加 DEEPSEEK_API_KEY
-            if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
-              sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}|" .env.production
+            # 仅在 secret 非空时更新 DEEPSEEK_API_KEY
+            if [ -n "$DEEPSEEK_KEY" ]; then
+              if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
+                sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=$DEEPSEEK_KEY|" .env.production
+              else
+                echo "DEEPSEEK_API_KEY=$DEEPSEEK_KEY" >> .env.production
+              fi
+              echo "DEEPSEEK_API_KEY 已更新"
             else
-              echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env.production
+              echo "WARNING: DEEPSEEK_API_KEY secret 未设置，跳过更新"
             fi
             # 更新或添加 AI_ACTIVE_PROVIDER
             if grep -q "^AI_ACTIVE_PROVIDER=" .env.production; then
