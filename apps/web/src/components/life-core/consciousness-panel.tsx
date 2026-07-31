@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { LifeCoreState } from './life-core-canvas';
+import { useEmotionStore } from '@/stores/emotion-store';
 
 /**
  * Consciousness — 时墨 AI 意识状态
@@ -80,6 +81,12 @@ export default function ConsciousnessPanel({
   const stateRef = useRef({ state, activity, profile });
   stateRef.current = { state, activity, profile };
 
+  // 同步到全局 emotion store — 让 EmotionWaveBar 实时联动
+  const setEmotionState = useEmotionStore((s) => s.setState);
+  const setActivityLevel = useEmotionStore((s) => s.setActivity);
+  useEffect(() => { setEmotionState(state); }, [state, setEmotionState]);
+  useEffect(() => { setActivityLevel(activity); }, [activity, setActivityLevel]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -118,7 +125,7 @@ export default function ConsciousnessPanel({
       const emotionWave = 0.6 + 0.4 * Math.sin(t * (Math.PI * 2 / p.emotionCycle));
       const dynamicAmp = p.amplitude * (0.5 + actNorm * 0.5) * emotionWave;
 
-      // 多层波形渲染
+      // 多层波形渲染 — Catmull-Rom 样条平滑曲线
       for (let layer = 0; layer < p.layers; layer++) {
         const layerPhase = layer * 0.7;
         const layerAmp = dynamicAmp * (1 - layer * 0.18);
@@ -127,37 +134,52 @@ export default function ConsciousnessPanel({
 
         const [r, g, b] = p.color;
 
-        ctx.beginPath();
-        ctx.lineWidth = layer === 0 ? 2 : 1.2;
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        const samples = Math.max(40, Math.floor(W / 2));
+        // 采样点
+        const samples = Math.max(40, Math.floor(W / 3));
+        const points: { x: number; y: number }[] = [];
         for (let i = 0; i <= samples; i++) {
           const x = (i / samples) * W;
           const xNorm = i / samples;
 
-          // 主波 + 谐波 + 次谐波叠加 — 模拟复杂情感波动
           const mainWave = Math.sin(xNorm * Math.PI * 2 * layerFreq + t * 1.5 + layerPhase);
           const harmWave = Math.sin(xNorm * Math.PI * 2 * p.harmFreq + t * 0.8 + layerPhase * 1.3) * 0.3;
           const subWave = Math.sin(xNorm * Math.PI * 2 * (layerFreq * 0.5) + t * 0.4) * 0.2;
 
-          // 分段噪声 — 模拟情感中的不可预测性
           const noiseIdx = Math.floor(xNorm * 16) % noiseSeed.length;
           const noiseVal = Math.sin(t * 2 + noiseSeed[noiseIdx]) * p.noise;
 
-          // 情感尖峰 — 偶尔的情感波动
           const spike = Math.sin(t * 0.7 + xNorm * 8 + layerPhase) > 0.85
             ? Math.sin(t * 5 + xNorm * 20) * 0.15
             : 0;
 
           const y = cy + (mainWave + harmWave + subWave + noiseVal + spike) * layerAmp;
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          points.push({ x, y });
         }
+
+        // Catmull-Rom 样条 → 贝塞尔曲线平滑渲染
+        ctx.beginPath();
+        ctx.lineWidth = layer === 0 ? 2.5 : 1.5;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layerAlpha})`;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 用 quadraticCurveTo 中点法平滑连接所有采样点
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length - 1; i++) {
+          const xc = (points[i].x + points[i + 1].x) / 2;
+          const yc = (points[i].y + points[i + 1].y) / 2;
+          ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+        }
+        // 最后一段
+        const last = points[points.length - 1];
+        ctx.lineTo(last.x, last.y);
+
+        // 先画一层模糊辉光（模拟抗锯齿+发光）
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
+        ctx.shadowBlur = layer === 0 ? 6 : 3;
         ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
 
         // 波形下方填充 — 轻微辉光
         if (layer === 0) {
