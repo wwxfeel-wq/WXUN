@@ -4,25 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 神经元粒子云 V8 (Neuron Cloud · TouchDesigner Inspired)
+ * SuiYan Life Core — 神经元形态粒子 V10 (Neuron Morphology · Visible Filaments)
  * ─────────────────────────────────────────────────────────────
- * 复刻 Bilibili BV1ow4m1Y7qu 粒子云神经元效果
+ * 复刻 Bilibili BV1ow4m1Y7qu 粒子神经元效果
  *
- * V8 视觉特征：
- * - 从中心向外辐射的粒子流，跟随 curl noise 有机路径流动
- * - 粒子运动拖尾，形成光迹 streaks
- * - 近邻粒子动态连线，形成树突/轴突状神经网络
- * - 信号光点沿连线流动，模拟神经信号传递
- * - 暖色调温度梯度：白热核心 → 翡翠 → 琥珀外缘
- * - 中心爆发式光晕 + 脉冲能量波 + 旋转光射线
- * - 真 3D 坐标空间 + 透视投影 + 拖拽旋转 + 惯性 + 双击重置
- * - 闪烁 / 能量脉冲波 / 核心脉动 / 背景星场视差
- *
- * 节点绑定四类数据（用颜色区分）：
- * - memory    长期记忆   记忆金
- * - event     家庭事件   生命紫
- * - knowledge 知识文档   天空蓝
- * - agent     Agent 活动 时墨绿
+ * V10 核心变化：让神经元形态清晰可见
+ * - 分支骨架用多层辉光渲染（外晕→中辉→亮芯），不再是几乎不可见的底线
+ * - 更真实的神经元结构：10-14 条初级树突 + 4 级分支 + 有机弯曲
+ * - 信号脉冲沿分支从胞体向终端传播，形成流动光迹
+ * - 粒子紧贴可见分支路径流动，拖尾强化形态
+ * - 暖色调温度梯度：白热胞体 → 琥珀中段 → 暗红终端
+ * - 3D 透视 + 拖拽旋转 + 惯性 + 双击重置
  */
 
 export type LifeCoreState = 'companion' | 'learning' | 'recalling' | 'growing';
@@ -43,44 +35,43 @@ interface LifeCoreCanvasProps {
   className?: string;
 }
 
-// 粒子颜色 — 翡翠绿主色
-const NODE_COLOR: Record<NodeKind, [number, number, number]> = {
-  agent: [0, 210, 106],      // 时墨翡翠绿（主色，最多）
-  memory: [245, 200, 91],    // 记忆金
-  event: [167, 139, 250],    // 生命紫
-  knowledge: [122, 184, 240], // 天空蓝
-};
+// ═══════════════════════════════════════════
+// 神经元分支树结构
+// ═══════════════════════════════════════════
 
-// ═══════════════════════════════════════════
-// 粒子结构 — 流动神经元粒子
-// ═══════════════════════════════════════════
+interface NeuronBranch {
+  id: number;
+  parentId: number | null;
+  level: number; // 0=初级树突, 1=二级, 2=三级, 3=终端细丝
+  points: { x: number; y: number; z: number }[];
+  angle: number;
+  length: number;
+  thickness: number;
+  children: number[];
+  kind: NodeKind;
+  // 预计算的距离比例（0=胞体端, 1=终端端）
+  distRatios: number[];
+}
 
 interface NeuronParticle {
-  kind: NodeKind;
-  // 3D 笛卡尔坐标（归一化空间 -1~1）
-  x: number;
-  y: number;
-  z: number;
-  // 速度
-  vx: number;
-  vy: number;
-  vz: number;
-  // 生命周期
+  branchId: number;
+  progress: number;
+  speed: number;
+  offset: number;
+  size: number;
   life: number;
   maxLife: number;
-  // 视觉属性
-  size: number;
-  phase: number;
-  pulseSpeed: number;
-  twinkleSpeed: number;
-  twinklePhase: number;
-  // 噪声偏移（让每个粒子的流动路径不同）
-  noiseOffset: number;
-  // 拖尾
   trail: { x: number; y: number; z: number }[];
   trailMax: number;
-  // 是否为核心粒子
-  isCore: boolean;
+  kind: NodeKind;
+}
+
+interface SignalPulse {
+  branchId: number;
+  progress: number;
+  speed: number;
+  intensity: number;
+  life: number;
 }
 
 interface BgStar {
@@ -114,170 +105,75 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
-// 3D 旋转：绕 Y 轴（yaw / 偏航）
 function rotY(x: number, y: number, z: number, a: number): [number, number, number] {
   const c = Math.cos(a), s = Math.sin(a);
   return [x * c + z * s, y, -x * s + z * c];
 }
-
-// 3D 旋转：绕 X 轴（pitch / 俯仰）
 function rotX(x: number, y: number, z: number, a: number): [number, number, number] {
   const c = Math.cos(a), s = Math.sin(a);
   return [x, y * c - z * s, y * s + z * c];
 }
 
-/**
- * Curl noise 近似 — 用正弦波叠加模拟流体噪声场
- * 让粒子产生有机的流动路径
- */
-function curlNoise(x: number, y: number, z: number, t: number): [number, number, number] {
-  const s = 0.8;
-  const nx = Math.sin(y * s + t * 0.3) * Math.cos(z * s * 0.7 + t * 0.2) +
-             Math.sin(y * s * 2.1 + t * 0.5) * 0.3;
-  const ny = Math.sin(z * s + t * 0.4) * Math.cos(x * s * 0.7 + t * 0.3) +
-             Math.sin(z * s * 1.8 + t * 0.6) * 0.3;
-  const nz = Math.sin(x * s + t * 0.2) * Math.cos(y * s * 0.7 + t * 0.4) +
-             Math.sin(x * s * 2.3 + t * 0.35) * 0.3;
-  return [nx, ny, nz];
-}
-
-/**
- * 色彩温度梯度：根据粒子距核心的距离调整颜色
- * - dist < 0.1：核心区白热化（向白色混合）
- * - 0.1 ~ 0.5：保持种类基色
- * - dist > 0.5：外缘冷却变暗（向深色偏移）
- */
-function tempColor(base: [number, number, number], dist: number): [number, number, number] {
-  if (dist < 0.1) {
-    const t = 1 - dist / 0.1;
-    const w = t * 0.7;
-    return [
-      Math.round(base[0] + (255 - base[0]) * w),
-      Math.round(base[1] + (255 - base[1]) * w),
-      Math.round(base[2] + (255 - base[2]) * w),
-    ];
-  }
-  if (dist > 0.5) {
-    const t = Math.min(1, (dist - 0.5) / 0.5);
-    const target: [number, number, number] = [
-      Math.round(base[0] * 0.45),
-      Math.round(base[1] * 0.35),
-      Math.round(base[2] * 0.3),
-    ];
-    const w = t * 0.5;
-    return [
-      Math.round(base[0] + (target[0] - base[0]) * w),
-      Math.round(base[1] + (target[1] - base[1]) * w),
-      Math.round(base[2] + (target[2] - base[2]) * w),
-    ];
-  }
-  return base;
+function curlNoise2D(x: number, y: number, t: number): number {
+  return Math.sin(y * 2.0 + t * 0.3) * Math.cos(x * 1.5 + t * 0.2) +
+         Math.sin(x * 3.1 + t * 0.5) * 0.3;
 }
 
 // ═══════════════════════════════════════════
-// 粒子重置 & 更新
+// 色彩温度梯度 — 暖色调
 // ═══════════════════════════════════════════
 
-function resetParticle(p: NeuronParticle, rand: () => number) {
-  // 从中心附近发射，带径向速度
-  const angle = rand() * Math.PI * 2;
-  const startR = rand() * 0.05;
-  p.x = Math.cos(angle) * startR;
-  p.y = Math.sin(angle) * startR;
-  p.z = (rand() - 0.5) * 0.02;
-
-  // 初始径向速度
-  const speed = 0.003 + rand() * 0.008;
-  p.vx = Math.cos(angle) * speed;
-  p.vy = Math.sin(angle) * speed;
-  p.vz = (rand() - 0.5) * 0.001;
-
-  // 生命周期
-  p.life = 0;
-  p.maxLife = 200 + rand() * 300;
-
-  // 视觉属性
-  p.size = 0.8 + rand() * 1.5;
-  p.phase = rand() * Math.PI * 2;
-  p.pulseSpeed = 0.5 + rand() * 1.0;
-  p.twinkleSpeed = 2 + rand() * 4;
-  p.twinklePhase = rand() * Math.PI * 2;
-  p.isCore = false;
-
-  // 拖尾
-  p.trail = [];
-  p.trailMax = 6 + Math.floor(rand() * 6);
-
-  // 噪声偏移
-  p.noiseOffset = rand() * 100;
+function tempColor(r: number): [number, number, number] {
+  if (r < 0.08) {
+    const t = r / 0.08;
+    return [255, Math.round(lerp(255, 245, t)), Math.round(lerp(255, 210, t))];
+  }
+  if (r < 0.25) {
+    const t = (r - 0.08) / 0.17;
+    return [255, Math.round(lerp(245, 180, t)), Math.round(lerp(210, 90, t))];
+  }
+  if (r < 0.5) {
+    const t = (r - 0.25) / 0.25;
+    return [Math.round(lerp(255, 220, t)), Math.round(lerp(180, 100, t)), Math.round(lerp(90, 40, t))];
+  }
+  if (r < 0.75) {
+    const t = (r - 0.5) / 0.25;
+    return [Math.round(lerp(220, 160, t)), Math.round(lerp(100, 50, t)), Math.round(lerp(40, 20, t))];
+  }
+  const t = clamp((r - 0.75) / 0.25, 0, 1);
+  return [Math.round(lerp(160, 100, t)), Math.round(lerp(50, 25, t)), Math.round(lerp(20, 10, t))];
 }
 
-function updateParticle(p: NeuronParticle, t: number, dt: number) {
-  p.life += dt;
-
-  // Curl noise 影响速度方向（有机流动）
-  const noise = curlNoise(
-    p.x * 3 + p.noiseOffset,
-    p.y * 3,
-    p.z * 3,
-    t + p.noiseOffset,
-  );
-
-  // 噪声力强度（随距离衰减，近核心更强）
-  const dist = Math.hypot(p.x, p.y, p.z);
-  const noiseStrength = 0.0008 * (1 + 1 / (0.1 + dist));
-
-  p.vx += noise[0] * noiseStrength;
-  p.vy += noise[1] * noiseStrength;
-  p.vz += noise[2] * noiseStrength;
-
-  // 轻微向心力（让粒子不会飞太远，形成球状云团）
-  if (dist > 0.6) {
-    const pull = (dist - 0.6) * 0.003;
-    p.vx -= (p.x / dist) * pull;
-    p.vy -= (p.y / dist) * pull;
-    p.vz -= (p.z / dist) * pull;
-  }
-
-  // 阻尼
-  p.vx *= 0.985;
-  p.vy *= 0.985;
-  p.vz *= 0.985;
-
-  // 更新位置
-  p.x += p.vx;
-  p.y += p.vy;
-  p.z += p.vz;
-
-  // 记录拖尾
-  p.trail.push({ x: p.x, y: p.y, z: p.z });
-  if (p.trail.length > p.trailMax) p.trail.shift();
-
-  // 重生
-  if (p.life > p.maxLife || dist > 1.2) {
-    const rand = mulberry32(Math.floor(p.life * 1000 + p.noiseOffset));
-    resetParticle(p, rand);
+function kindColor(kind: NodeKind, r: number): [number, number, number] {
+  const [cr, cg, cb] = tempColor(r);
+  switch (kind) {
+    case 'memory':
+      return [clamp(cr + 10, 0, 255), clamp(cg + 5, 0, 255), clamp(cb - 15, 0, 255)];
+    case 'event':
+      return [clamp(cr - 10, 0, 255), clamp(cg - 20, 0, 255), clamp(cb + 25, 0, 255)];
+    case 'knowledge':
+      return [clamp(cr - 15, 0, 255), clamp(cg, 0, 255), clamp(cb + 35, 0, 255)];
+    default:
+      return [cr, cg, cb];
   }
 }
 
 // ═══════════════════════════════════════════
-// 构建神经元粒子云
+// 构建神经元分支树 — 更真实的神经元形态
 // ═══════════════════════════════════════════
 
-function buildNeuronCloud(counts: LifeCoreCounts, level: number): {
+function buildNeuronTree(counts: LifeCoreCounts, level: number): {
+  branches: NeuronBranch[];
   particles: NeuronParticle[];
+  signals: SignalPulse[];
   bgStars: BgStar[];
-  stemPoints: { x: number; y: number; z: number }[];
 } {
   const rand = mulberry32(42 + level * 7);
-  // 粒子数量：800 个，沉浸式神经元云
-  const total = Math.min(800, 500 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 8 + level * 10);
 
-  // 按比例分配粒子类型
-  const kindPool: NodeKind[] = [];
   const totalCount = counts.memory + counts.event + counts.knowledge + counts.agent;
+  const kinds: NodeKind[] = [];
   if (totalCount === 0) {
-    for (let i = 0; i < total; i++) kindPool.push('agent');
+    for (let i = 0; i < 24; i++) kinds.push('agent');
   } else {
     const ratios = {
       agent: Math.max(0.3, counts.agent / Math.max(1, totalCount)),
@@ -286,81 +182,208 @@ function buildNeuronCloud(counts: LifeCoreCounts, level: number): {
       knowledge: Math.max(0.1, counts.knowledge / Math.max(1, totalCount)),
     };
     const sum = ratios.agent + ratios.memory + ratios.event + ratios.knowledge;
-    for (let i = 0; i < total; i++) {
+    for (let i = 0; i < 24; i++) {
       const r = rand() * sum;
       let acc = 0;
       for (const [k, v] of Object.entries(ratios) as [NodeKind, number][]) {
         acc += v;
-        if (r < acc) { kindPool.push(k); break; }
+        if (r < acc) { kinds.push(k); break; }
       }
     }
   }
 
-  // 创建粒子
-  const particles: NeuronParticle[] = [];
-  for (let i = 0; i < total; i++) {
-    const p: NeuronParticle = {
-      kind: kindPool[i] || 'agent',
-      x: 0, y: 0, z: 0,
-      vx: 0, vy: 0, vz: 0,
-      life: 0,
-      maxLife: 300,
-      size: 1,
-      phase: 0,
-      pulseSpeed: 0.5,
-      twinkleSpeed: 3,
-      twinklePhase: 0,
-      noiseOffset: 0,
-      trail: [],
-      trailMax: 8,
-      isCore: false,
+  const branches: NeuronBranch[] = [];
+  let branchIdCounter = 0;
+
+  // 递归构建分支 — 更有机的弯曲和更深的层级
+  function createBranch(
+    parentId: number | null,
+    startX: number, startY: number, startZ: number,
+    angle: number,
+    length: number,
+    kind: NodeKind,
+    depth: number,
+  ): number {
+    const id = branchIdCounter++;
+    const thickness = depth === 0 ? 1.0 : depth === 1 ? 0.55 : depth === 2 ? 0.3 : 0.15;
+
+    // 更多段数 → 更平滑的曲线
+    const segments = 12 + Math.floor(rand() * 6);
+    const points: { x: number; y: number; z: number }[] = [];
+    let cx = startX, cy = startY, cz = startZ;
+    let currentAngle = angle;
+    const zDrift = (rand() - 0.5) * 0.025;
+
+    points.push({ x: cx, y: cy, z: cz });
+
+    for (let i = 1; i <= segments; i++) {
+      // 有机弯曲：角度逐步偏转，深处分支弯曲更多
+      const bendAmount = depth === 0 ? 0.15 : depth === 1 ? 0.22 : 0.3;
+      currentAngle += (rand() - 0.5) * bendAmount;
+      const segLen = length / segments;
+      cx += Math.cos(currentAngle) * segLen;
+      cy += Math.sin(currentAngle) * segLen;
+      cz += zDrift * (rand() - 0.3);
+      points.push({ x: cx, y: cy, z: cz });
+    }
+
+    // 预计算每个点到起点的距离比例
+    let totalDist = 0;
+    const dists: number[] = [0];
+    for (let i = 1; i < points.length; i++) {
+      totalDist += Math.hypot(
+        points[i].x - points[i - 1].x,
+        points[i].y - points[i - 1].y,
+        points[i].z - points[i - 1].z,
+      );
+      dists.push(totalDist);
+    }
+    const distRatios = dists.map(d => totalDist > 0 ? d / totalDist : 0);
+
+    const branch: NeuronBranch = {
+      id,
+      parentId,
+      level: depth,
+      points,
+      angle,
+      length,
+      thickness,
+      children: [],
+      kind,
+      distRatios,
     };
-    resetParticle(p, rand);
-    // 错开初始生命，避免同时重生
-    p.life = rand() * 200;
-    // 随机分布一部分粒子到外围（初始已有结构）
-    if (i < total * 0.3) {
-      const angle = rand() * Math.PI * 2;
-      const r = 0.1 + rand() * 0.5;
-      p.x = Math.cos(angle) * r;
-      p.y = Math.sin(angle) * r;
-      p.z = (rand() - 0.5) * 0.1;
+    branches.push(branch);
+
+    // 递归创建子分支 — 4 级深度
+    if (depth < 3) {
+      const childCount = depth === 0
+        ? 3 + Math.floor(rand() * 2) // 初级：3-4 个子分支
+        : depth === 1
+        ? 2 + Math.floor(rand() * 2) // 二级：2-3
+        : 1 + Math.floor(rand() * 2); // 三级：1-2
+
+      const endPoint = points[points.length - 1];
+      for (let c = 0; c < childCount; c++) {
+        const angleOffset = (c - (childCount - 1) / 2) * (0.45 + rand() * 0.3);
+        const childAngle = currentAngle + angleOffset;
+        const childLength = length * (0.5 + rand() * 0.25);
+        const childKind = kinds[(id + c) % kinds.length] || 'agent';
+        const childId = createBranch(
+          id, endPoint.x, endPoint.y, endPoint.z,
+          childAngle, childLength, childKind, depth + 1,
+        );
+        branch.children.push(childId);
+      }
     }
-    // 核心粒子标记
-    if (i < total * 0.08) {
-      p.isCore = true;
-      p.size *= 1.5;
+
+    return id;
+  }
+
+  // 创建初级树突 — 10-14 条主分支从胞体辐射
+  const primaryCount = 10 + Math.floor(rand() * 4);
+  for (let i = 0; i < primaryCount; i++) {
+    const angle = (i / primaryCount) * Math.PI * 2 + (rand() - 0.5) * 0.25;
+    const length = 0.38 + rand() * 0.22;
+    const kind = kinds[i % kinds.length] || 'agent';
+    createBranch(null, 0, 0, 0, angle, length, kind, 0);
+  }
+
+  // 创建粒子 — 沿分支流动
+  const particles: NeuronParticle[] = [];
+  const particlesPerBranch = (branch: NeuronBranch): number => {
+    if (branch.level === 0) return 10;
+    if (branch.level === 1) return 6;
+    if (branch.level === 2) return 4;
+    return 2;
+  };
+
+  for (const branch of branches) {
+    const count = particlesPerBranch(branch);
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        branchId: branch.id,
+        progress: rand(),
+        speed: 0.0025 + rand() * 0.004,
+        offset: 0,
+        size: branch.level === 0 ? 1.3 + rand() * 0.5 : 0.9 + rand() * 0.4,
+        life: rand() * 200,
+        maxLife: 150 + rand() * 200,
+        trail: [],
+        trailMax: branch.level <= 1 ? 12 + Math.floor(rand() * 6) : 8 + Math.floor(rand() * 4),
+        kind: branch.kind,
+      });
     }
-    particles.push(p);
+  }
+
+  // 限制总粒子数
+  const maxParticles = Math.min(700, 450 + totalCount * 5 + level * 10);
+  if (particles.length > maxParticles) {
+    for (let i = particles.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [particles[i], particles[j]] = [particles[j], particles[i]];
+    }
+    particles.length = maxParticles;
+  }
+
+  // 创建信号脉冲 — 沿分支从胞体向终端传播
+  const signals: SignalPulse[] = [];
+  const signalCount = Math.min(30, 15 + Math.floor(totalCount / 10));
+  for (let i = 0; i < signalCount; i++) {
+    const branch = branches[Math.floor(rand() * branches.length)];
+    signals.push({
+      branchId: branch.id,
+      progress: rand(),
+      speed: 0.008 + rand() * 0.012,
+      intensity: 0.6 + rand() * 0.4,
+      life: rand() * 300,
+    });
   }
 
   // 背景星场
   const bgStars: BgStar[] = [];
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 100; i++) {
     bgStars.push({
       x: (rand() - 0.5) * 3,
       y: (rand() - 0.5) * 3,
       z: (rand() - 0.5) * 0.5,
       size: 0.3 + rand() * 0.5,
-      brightness: 0.04 + rand() * 0.12,
+      brightness: 0.03 + rand() * 0.08,
       twinkleSpeed: 0.3 + rand() * 0.9,
       twinklePhase: rand() * Math.PI * 2,
     });
   }
 
-  // 轴突茎：从中心向下延伸
-  const stemPoints: { x: number; y: number; z: number }[] = [];
-  const stemSegments = 10;
-  for (let i = 0; i <= stemSegments; i++) {
-    const t = i / stemSegments;
-    stemPoints.push({
-      x: Math.sin(t * 1.5) * 0.015 * (1 - t * 0.5),
-      y: 0.15 + t * 0.35,
-      z: 0,
-    });
-  }
+  return { branches, particles, signals, bgStars };
+}
 
-  return { particles, bgStars, stemPoints };
+// ═══════════════════════════════════════════
+// 沿分支路径插值获取位置
+// ═══════════════════════════════════════════
+
+function getBranchPosition(
+  branch: NeuronBranch,
+  progress: number,
+  offset: number,
+): { x: number; y: number; z: number } {
+  const points = branch.points;
+  const clampedP = clamp(progress, 0, 1);
+  const segCount = points.length - 1;
+  const segIdx = Math.min(segCount - 1, Math.floor(clampedP * segCount));
+  const segT = clampedP * segCount - segIdx;
+
+  const p0 = points[segIdx];
+  const p1 = points[segIdx + 1] || p0;
+  const x = lerp(p0.x, p1.x, segT);
+  const y = lerp(p0.y, p1.y, segT);
+  const z = lerp(p0.z, p1.z, segT);
+
+  const dirX = p1.x - p0.x;
+  const dirY = p1.y - p0.y;
+  const dirLen = Math.hypot(dirX, dirY) || 1;
+  const nx = -dirY / dirLen;
+  const ny = dirX / dirLen;
+
+  return { x: x + nx * offset, y: y + ny * offset, z };
 }
 
 // ═══════════════════════════════════════════
@@ -384,90 +407,73 @@ export function LifeCoreCanvas({
   const [isDragging, setIsDragging] = useState(false);
   const [showHint, setShowHint] = useState(true);
 
-  const cloud = useMemo(() => buildNeuronCloud(counts, level), [counts, level]);
-  const cloudRef = useRef(cloud);
-  cloudRef.current = cloud;
+  const neuron = useMemo(() => buildNeuronTree(counts, level), [counts, level]);
+  const neuronRef = useRef(neuron);
+  neuronRef.current = neuron;
 
-  // 拖拽状态
   const dragRef = useRef({
     isDragging: false,
-    lastX: 0,
-    lastY: 0,
-    velX: 0,
-    velY: 0,
+    lastX: 0, lastY: 0,
+    velX: 0, velY: 0,
     pointerId: -1,
   });
 
-  // 视角旋转状态
   const viewRef = useRef({
-    yaw: 0,
-    pitch: DEFAULT_PITCH,
-    targetYaw: 0,
-    targetPitch: DEFAULT_PITCH,
+    yaw: 0, pitch: DEFAULT_PITCH,
+    targetYaw: 0, targetPitch: DEFAULT_PITCH,
   });
 
-  // 上一帧时间（用于 dt 计算）
   const lastFrameRef = useRef<number>(0);
-
-  // 初始爆发动画起始时间戳
   const startTimeRef = useRef<number>(0);
   const BURST_DURATION = 2.5;
-
-  // 屏幕坐标缓存（用于 hover 检测）
   const screenPositionsRef = useRef<Array<{ kind: NodeKind; sx: number; sy: number }>>([]);
 
-  // 是否已交互过
-  const interactedRef = useRef(false);
-
-  // 预渲染粒子 sprite
+  // 预渲染 sprite
   const [particleSprite, setParticleSprite] = useState<HTMLCanvasElement | null>(null);
   const [coreSprite, setCoreSprite] = useState<HTMLCanvasElement | null>(null);
   const [glowSprite, setGlowSprite] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // 标准粒子光晕 sprite — 白色中心 + 翡翠绿边缘
+    // 粒子光晕 — 暖色
     const size = 64;
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d')!;
-    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.15, 'rgba(220,255,240,0.7)');
-    grad.addColorStop(0.4, 'rgba(100,255,180,0.2)');
-    grad.addColorStop(1, 'rgba(0,210,106,0)');
+    grad.addColorStop(0.15, 'rgba(255,240,200,0.7)');
+    grad.addColorStop(0.4, 'rgba(255,180,80,0.2)');
+    grad.addColorStop(1, 'rgba(255,100,40,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     setParticleSprite(canvas);
 
-    // 核心粒子 sprite — 白热中心 + 翡翠绿光晕
+    // 核心 sprite — 白热
     const coreSize = 128;
     const coreCanvas = document.createElement('canvas');
-    coreCanvas.width = coreSize;
-    coreCanvas.height = coreSize;
+    coreCanvas.width = coreSize; coreCanvas.height = coreSize;
     const cctx = coreCanvas.getContext('2d')!;
-    const coreGrad = cctx.createRadialGradient(coreSize / 2, coreSize / 2, 0, coreSize / 2, coreSize / 2, coreSize / 2);
+    const coreGrad = cctx.createRadialGradient(coreSize/2, coreSize/2, 0, coreSize/2, coreSize/2, coreSize/2);
     coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
-    coreGrad.addColorStop(0.1, 'rgba(220,255,240,0.85)');
-    coreGrad.addColorStop(0.25, 'rgba(150,255,200,0.4)');
-    coreGrad.addColorStop(0.5, 'rgba(0,210,106,0.15)');
-    coreGrad.addColorStop(1, 'rgba(0,210,106,0)');
+    coreGrad.addColorStop(0.1, 'rgba(255,250,220,0.85)');
+    coreGrad.addColorStop(0.25, 'rgba(255,200,100,0.4)');
+    coreGrad.addColorStop(0.5, 'rgba(255,140,50,0.15)');
+    coreGrad.addColorStop(1, 'rgba(200,80,30,0)');
     cctx.fillStyle = coreGrad;
     cctx.fillRect(0, 0, coreSize, coreSize);
     setCoreSprite(coreCanvas);
 
-    // 背景光晕 sprite — 大范围翡翠绿辉光
+    // 背景光晕
     const glowSize = 512;
     const glowCanvas = document.createElement('canvas');
-    glowCanvas.width = glowSize;
-    glowCanvas.height = glowSize;
+    glowCanvas.width = glowSize; glowCanvas.height = glowSize;
     const gctx = glowCanvas.getContext('2d')!;
-    const glowGrad = gctx.createRadialGradient(glowSize / 2, glowSize / 2, 0, glowSize / 2, glowSize / 2, glowSize / 2);
-    glowGrad.addColorStop(0, 'rgba(0,210,106,0.15)');
-    glowGrad.addColorStop(0.15, 'rgba(0,210,106,0.1)');
-    glowGrad.addColorStop(0.35, 'rgba(0,180,90,0.05)');
-    glowGrad.addColorStop(0.65, 'rgba(0,140,80,0.02)');
-    glowGrad.addColorStop(1, 'rgba(0,100,60,0)');
+    const glowGrad = gctx.createRadialGradient(glowSize/2, glowSize/2, 0, glowSize/2, glowSize/2, glowSize/2);
+    glowGrad.addColorStop(0, 'rgba(255,160,60,0.15)');
+    glowGrad.addColorStop(0.15, 'rgba(255,140,50,0.1)');
+    glowGrad.addColorStop(0.35, 'rgba(220,100,40,0.05)');
+    glowGrad.addColorStop(0.65, 'rgba(180,70,30,0.02)');
+    glowGrad.addColorStop(1, 'rgba(120,40,15,0)');
     gctx.fillStyle = glowGrad;
     gctx.fillRect(0, 0, glowSize, glowSize);
     setGlowSprite(glowCanvas);
@@ -491,14 +497,12 @@ export function LifeCoreCanvas({
       canvas.style.width = width + 'px';
       canvas.style.height = height + 'px';
     }
-
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const { particles, bgStars, stemPoints } = cloudRef.current;
-    if (!particles.length || !particleSprite || !coreSprite || !glowSprite) return;
+    const { branches, particles, signals, bgStars } = neuronRef.current;
+    if (!branches.length || !particleSprite || !coreSprite || !glowSprite) return;
 
-    // 帧时间 & dt
     const now = performance.now() / 1000;
     if (startTimeRef.current === 0) {
       startTimeRef.current = now;
@@ -506,13 +510,13 @@ export function LifeCoreCanvas({
     }
     const dt = Math.min(0.05, now - lastFrameRef.current);
     lastFrameRef.current = now;
-
     const frame = now;
+
     const cx = width / 2;
     const cy = height * 0.45;
-    const galaxyScale = Math.min(width, height) * 1.1;
+    const baseScale = Math.min(width, height) * 1.1;
 
-    // 初始爆发动画进度
+    // 爆发动画
     const elapsed = frame - startTimeRef.current;
     const burstProgress = reducedMotion ? 1 : Math.min(1, elapsed / BURST_DURATION);
     const burstEase = burstProgress === 1 ? 1 : 1 - Math.pow(2, -10 * burstProgress);
@@ -520,7 +524,7 @@ export function LifeCoreCanvas({
     const burstSpin = reducedMotion ? 0 : (1 - burstEase) * 3.0;
     const burstAlpha = reducedMotion ? 1 : Math.min(1, burstProgress * 1.5);
 
-    // 星系整体呼吸
+    // 呼吸
     const breath = state === 'companion'
       ? 0.97 + Math.sin(frame * 0.6) * 0.03
       : state === 'learning'
@@ -528,13 +532,11 @@ export function LifeCoreCanvas({
       : state === 'recalling'
       ? 0.93 + Math.sin(frame * 1.6) * 0.08
       : 1.04 + Math.sin(frame * 0.5) * 0.05;
+    const scale = baseScale * breath * burstScale;
 
-    const scale = galaxyScale * breath * burstScale;
-
-    // 视角更新
+    // 视角
     const drag = dragRef.current;
     const view = viewRef.current;
-
     if (drag.isDragging) {
       view.yaw += (view.targetYaw - view.yaw) * 0.35;
       view.pitch += (view.targetPitch - view.pitch) * 0.35;
@@ -549,13 +551,30 @@ export function LifeCoreCanvas({
       view.yaw += (view.targetYaw - view.yaw) * 0.08;
       view.pitch += (view.targetPitch - view.pitch) * 0.08;
     }
-
     const viewYaw = view.yaw;
     const viewPitch = view.pitch;
-    const autoRot = reducedMotion ? 0 : (frame * 0.03 + burstSpin);
-    const sparkPhase = reducedMotion ? 0 : frame * 0.5;
+    const autoRot = reducedMotion ? 0 : (frame * 0.02 + burstSpin);
+    const rotYaw = viewYaw + autoRot * 0.3;
 
-    // ═══ 1. 背景星场（视差旋转） ═══
+    // 预计算所有分支点的屏幕坐标（用于后续渲染复用）
+    const branchScreenCache: Array<Array<{ sx: number; sy: number; persp: number; z: number }>> = [];
+    for (const branch of branches) {
+      const pts: Array<{ sx: number; sy: number; persp: number; z: number }> = [];
+      for (const pt of branch.points) {
+        const [x1, y1, z1] = rotY(pt.x, pt.y, pt.z, rotYaw);
+        const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
+        const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
+        pts.push({
+          sx: cx + x2 * scale * persp,
+          sy: cy + y2 * scale * persp,
+          persp,
+          z: z2,
+        });
+      }
+      branchScreenCache.push(pts);
+    }
+
+    // ═══ 1. 背景星场 ═══
     ctx.globalCompositeOperation = 'lighter';
     for (const star of bgStars) {
       const [x1, y1, z1] = rotY(star.x, star.y, star.z, viewYaw * 0.3);
@@ -568,7 +587,7 @@ export function LifeCoreCanvas({
       const alpha = star.brightness * twinkle * persp;
       if (alpha < 0.01) continue;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(200, 230, 255, 0.8)';
+      ctx.fillStyle = 'rgba(255, 220, 180, 0.8)';
       ctx.beginPath();
       ctx.arc(sx, sy, Math.max(0.3, star.size * persp), 0, Math.PI * 2);
       ctx.fill();
@@ -579,290 +598,313 @@ export function LifeCoreCanvas({
     const gw = scale * 2.2, gh = scale * 1.9;
     ctx.drawImage(glowSprite, cx - gw / 2, cy - gh / 2, gw, gh);
 
-    // ═══ 3. 更新粒子 ═══
+    // ═══ 3. 更新粒子位置 ═══
     if (!reducedMotion) {
       const dtScaled = dt * 60;
       for (const p of particles) {
-        updateParticle(p, frame, dtScaled);
+        p.progress += p.speed * dtScaled;
+        p.life += dtScaled;
+
+        const branch = branches[p.branchId];
+        if (branch) {
+          const noise = curlNoise2D(p.progress * 5 + p.branchId, p.branchId * 0.7, frame);
+          p.offset = noise * branch.thickness * 0.012;
+        }
+
+        if (p.progress >= 1 || p.life > p.maxLife) {
+          p.progress = 0;
+          p.life = 0;
+          p.trail = [];
+          p.maxLife = 150 + Math.random() * 200;
+        }
+
+        if (branch) {
+          const pos = getBranchPosition(branch, p.progress, p.offset);
+          p.trail.push({ x: pos.x, y: pos.y, z: pos.z });
+          if (p.trail.length > p.trailMax) p.trail.shift();
+        }
+      }
+
+      // 更新信号脉冲
+      for (const sig of signals) {
+        sig.progress += sig.speed * dtScaled;
+        sig.life += dtScaled;
+        if (sig.progress >= 1 || sig.life > 400) {
+          sig.progress = 0;
+          sig.life = 0;
+          sig.intensity = 0.6 + Math.random() * 0.4;
+          sig.speed = 0.008 + Math.random() * 0.012;
+        }
       }
     }
 
-    // ═══ 4. 计算粒子屏幕坐标 ═══
-    const screenData: Array<{
-      p: NeuronParticle;
-      sx: number;
-      sy: number;
-      persp: number;
-      dist: number;
-    }> = [];
+    // ═══ 4. 渲染分支骨架 — 多层辉光（核心改进：让神经元形态清晰可见） ═══
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (let bi = 0; bi < branches.length; bi++) {
+      const branch = branches[bi];
+      const screenPts = branchScreenCache[bi];
+      if (!screenPts || screenPts.length < 2) continue;
+
+      const [r, g, b] = kindColor(branch.kind, 0.5); // 用中段色调
+
+      // --- Pass 1: 外层宽辉光（大半径低透明度） ---
+      const outerAlpha = branch.thickness * 0.08 * burstAlpha;
+      if (outerAlpha > 0.003) {
+        ctx.globalAlpha = outerAlpha;
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.6)`;
+        ctx.lineWidth = branch.thickness * 8 * burstScale;
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+        for (let i = 1; i < screenPts.length; i++) {
+          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
+        }
+        ctx.stroke();
+      }
+
+      // --- Pass 2: 中层辉光 ---
+      const midAlpha = branch.thickness * 0.15 * burstAlpha;
+      if (midAlpha > 0.005) {
+        ctx.globalAlpha = midAlpha;
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.8)`;
+        ctx.lineWidth = branch.thickness * 3.5 * burstScale;
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+        for (let i = 1; i < screenPts.length; i++) {
+          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
+        }
+        ctx.stroke();
+      }
+
+      // --- Pass 3: 亮芯线（细而亮） ---
+      const coreAlpha = branch.thickness * 0.3 * burstAlpha;
+      if (coreAlpha > 0.008) {
+        ctx.globalAlpha = coreAlpha;
+        ctx.strokeStyle = `rgba(255,230,180,0.9)`;
+        ctx.lineWidth = branch.thickness * 1.2 * burstScale;
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+        for (let i = 1; i < screenPts.length; i++) {
+          ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
+        }
+        ctx.stroke();
+      }
+
+      // --- Pass 4: 初级树突根部增亮（连接胞体处更亮） ---
+      if (branch.level === 0 && screenPts.length >= 3) {
+        const rootAlpha = 0.25 * burstAlpha;
+        ctx.globalAlpha = rootAlpha;
+        ctx.strokeStyle = `rgba(255,250,220,0.9)`;
+        ctx.lineWidth = branch.thickness * 2.0 * burstScale;
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+        ctx.lineTo(screenPts[2].sx, screenPts[2].sy);
+        ctx.stroke();
+      }
+    }
+
+    // ═══ 5. 渲染信号脉冲 — 沿分支传播的明亮光点 ═══
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (const sig of signals) {
+      const branch = branches[sig.branchId];
+      if (!branch) continue;
+      const screenPts = branchScreenCache[sig.branchId];
+      if (!screenPts) continue;
+
+      const pos = getBranchPosition(branch, sig.progress, 0);
+      const [x1, y1, z1] = rotY(pos.x, pos.y, pos.z, rotYaw);
+      const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
+      const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
+      const sx = cx + x2 * scale * persp;
+      const sy = cy + y2 * scale * persp;
+
+      const [r, g, b] = kindColor(branch.kind, sig.progress);
+      const lifeFade = Math.min(1, sig.life / 20) * Math.min(1, (400 - sig.life) / 50);
+      const alpha = sig.intensity * persp * lifeFade * burstAlpha;
+
+      // 信号脉冲光晕
+      const pulseSize = 15 * sig.intensity * persp * burstScale;
+      ctx.globalAlpha = Math.min(0.8, alpha * 0.5);
+      ctx.drawImage(particleSprite, sx - pulseSize / 2, sy - pulseSize / 2, pulseSize, pulseSize);
+
+      // 信号脉冲核心
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.fillStyle = `rgba(255,250,220,0.95)`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(1.5, 2.5 * sig.intensity * persp * burstScale), 0, Math.PI * 2);
+      ctx.fill();
+
+      // 信号脉冲拖尾（沿分支反方向几段）
+      const trailSegs = 5;
+      for (let t = 1; t <= trailSegs; t++) {
+        const trailProgress = Math.max(0, sig.progress - t * 0.015);
+        const tPos = getBranchPosition(branch, trailProgress, 0);
+        const [tx1, ty1, tz1] = rotY(tPos.x, tPos.y, tPos.z, rotYaw);
+        const [tx2, ty2, tz2] = rotX(tx1, ty1, tz1, viewPitch);
+        const tp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + tz2));
+        const tsx = cx + tx2 * scale * tp;
+        const tsy = cy + ty2 * scale * tp;
+        const tAlpha = alpha * (1 - t / trailSegs) * 0.5;
+        if (tAlpha < 0.01) continue;
+        ctx.globalAlpha = tAlpha;
+        ctx.fillStyle = `rgba(${r},${g},${b},0.8)`;
+        ctx.beginPath();
+        ctx.arc(tsx, tsy, Math.max(0.8, 1.5 * (1 - t / trailSegs) * persp * burstScale), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // ═══ 6. 渲染粒子拖尾（强化分支形态） ═══
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
 
     for (const p of particles) {
-      const [x1, y1, z1] = rotY(p.x, p.y, p.z, viewYaw + autoRot * 0.3);
-      const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
-      const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
-      const dist = Math.hypot(p.x, p.y, p.z);
-      screenData.push({
-        p,
-        sx: cx + x2 * scale * persp * breath * burstScale,
-        sy: cy + y2 * scale * persp * breath * burstScale,
-        persp,
-        dist,
-      });
-    }
+      const branch = branches[p.branchId];
+      if (!branch || p.trail.length < 2) continue;
 
-    // 缓存屏幕坐标用于 hover 检测（每帧更新）
-    if (screenPositionsRef.current.length !== screenData.length) {
-      screenPositionsRef.current = new Array(screenData.length);
-    }
-    for (let i = 0; i < screenData.length; i++) {
-      const sd = screenData[i];
-      screenPositionsRef.current[i] = { kind: sd.p.kind, sx: sd.sx, sy: sd.sy };
-    }
+      const distFromCenter = p.progress;
+      const [r, g, b] = kindColor(p.kind, distFromCenter);
 
-    // ═══ 5. 粒子拖尾 ═══
-    if (!reducedMotion) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineCap = 'round';
-      for (const sd of screenData) {
-        const p = sd.p;
-        if (p.trail.length < 2) continue;
-        const [r, g, b] = tempColor(NODE_COLOR[p.kind], clamp(sd.dist, 0, 1));
-        for (let i = 1; i < p.trail.length; i++) {
-          const t0 = p.trail[i - 1];
-          const t1 = p.trail[i];
-          const [tx1, ty1, tz1] = rotY(t0.x, t0.y, t0.z, viewYaw + autoRot * 0.3);
-          const [tx2, ty2, tz2] = rotX(tx1, ty1, tz1, viewPitch);
-          const tp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + tz2));
-          const [ux1, uy1, uz1] = rotY(t1.x, t1.y, t1.z, viewYaw + autoRot * 0.3);
-          const [ux2, uy2, uz2] = rotX(ux1, uy1, uz1, viewPitch);
-          const up = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + uz2));
+      for (let i = 1; i < p.trail.length; i++) {
+        const t0 = p.trail[i - 1];
+        const t1 = p.trail[i];
+        const [tx1, ty1, tz1] = rotY(t0.x, t0.y, t0.z, rotYaw);
+        const [tx2, ty2, tz2] = rotX(tx1, ty1, tz1, viewPitch);
+        const tp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + tz2));
+        const [ux1, uy1, uz1] = rotY(t1.x, t1.y, t1.z, rotYaw);
+        const [ux2, uy2, uz2] = rotX(ux1, uy1, uz1, viewPitch);
+        const up = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + uz2));
 
-          const x0 = cx + tx2 * scale * tp * breath * burstScale;
-          const y0 = cy + ty2 * scale * tp * breath * burstScale;
-          const x1s = cx + ux2 * scale * up * breath * burstScale;
-          const y1s = cy + uy2 * scale * up * breath * burstScale;
+        const x0 = cx + tx2 * scale * tp;
+        const y0 = cy + ty2 * scale * tp;
+        const x1s = cx + ux2 * scale * up;
+        const y1s = cy + uy2 * scale * up;
 
-          const trailAlpha = (i / p.trail.length) * 0.15 * sd.persp * burstAlpha;
-          if (trailAlpha < 0.01) continue;
-          ctx.globalAlpha = trailAlpha;
-          ctx.strokeStyle = `rgba(${r},${g},${b},0.6)`;
-          ctx.lineWidth = (i / p.trail.length) * p.size * sd.persp * 0.8;
-          ctx.beginPath();
-          ctx.moveTo(x0, y0);
-          ctx.lineTo(x1s, y1s);
-          ctx.stroke();
-        }
-      }
-    }
+        const trailT = i / p.trail.length;
+        const lifeFade = Math.min(1, p.life / 15) * Math.min(1, (p.maxLife - p.life) / 25);
+        const trailAlpha = trailT * 0.4 * branch.thickness * tp * lifeFade * burstAlpha;
+        if (trailAlpha < 0.01) continue;
 
-    // ═══ 6. 动态连线（神经网络突触） ═══
-    const CONNECT_DIST = 0.13;
-    const CONNECT_DIST_SQ = CONNECT_DIST * CONNECT_DIST;
-    const NEIGHBOR_CHECK = 40; // 每个粒子检查的邻居数
-
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-
-    for (let i = 0; i < screenData.length; i++) {
-      const a = screenData[i];
-      for (let j = i + 1; j < Math.min(i + NEIGHBOR_CHECK, screenData.length); j++) {
-        const b = screenData[j];
-        const dx = a.p.x - b.p.x;
-        const dy = a.p.y - b.p.y;
-        const dz = a.p.z - b.p.z;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        if (distSq > CONNECT_DIST_SQ) continue;
-
-        const dist = Math.sqrt(distSq);
-        const proximity = 1 - dist / CONNECT_DIST;
-        const [r, g, bl] = tempColor(NODE_COLOR[a.p.kind], clamp((a.dist + b.dist) / 2, 0, 1));
-
-        const lineAlpha = proximity * 0.25 * a.persp * burstAlpha;
-        if (lineAlpha < 0.01) continue;
-
-        ctx.globalAlpha = lineAlpha;
-        ctx.strokeStyle = `rgba(${r},${g},${bl},0.7)`;
-        ctx.lineWidth = proximity * 0.8 * Math.min(a.persp, b.persp);
+        ctx.globalAlpha = trailAlpha;
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.9)`;
+        ctx.lineWidth = trailT * p.size * branch.thickness * tp * 1.5;
         ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1s, y1s);
         ctx.stroke();
-
-        // 信号光点（沿连线流动）
-        if (proximity > 0.5) {
-          const signalT = (Math.sin(frame * 2 + i * 0.3) + 1) / 2;
-          const sigX = lerp(a.sx, b.sx, signalT);
-          const sigY = lerp(a.sy, b.sy, signalT);
-          const sigAlpha = proximity * 0.4 * a.persp * burstAlpha;
-          ctx.globalAlpha = sigAlpha;
-          ctx.fillStyle = 'rgba(180, 255, 220, 0.9)';
-          ctx.beginPath();
-          ctx.arc(sigX, sigY, Math.max(0.5, 1.2 * a.persp), 0, Math.PI * 2);
-          ctx.fill();
-        }
       }
     }
 
-    // ═══ 7. 轴突茎 ═══
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.2;
-    ctx.strokeStyle = 'rgba(0, 210, 106, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    let stemStarted = false;
-    for (let i = 0; i < stemPoints.length; i++) {
-      const sp = stemPoints[i];
-      const waveX = Math.sin(frame * 0.4 + i * 0.3) * 0.003;
-      const [x1, y1, z1] = rotY(sp.x + waveX, sp.y, sp.z, viewYaw);
-      const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
-      const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
-      const sx = cx + x2 * scale * persp;
-      const sy = cy + y2 * scale * persp;
-      if (!stemStarted) { ctx.moveTo(sx, sy); stemStarted = true; }
-      else ctx.lineTo(sx, sy);
-    }
-    ctx.stroke();
+    // ═══ 7. 粒子点渲染 ═══
+    const screenPositions: Array<{ kind: NodeKind; sx: number; sy: number }> = [];
 
-    // 茎上微弱粒子点
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 1; i < stemPoints.length; i++) {
-      const sp = stemPoints[i];
-      const waveX = Math.sin(frame * 0.4 + i * 0.3) * 0.003;
-      const [x1, y1, z1] = rotY(sp.x + waveX, sp.y, sp.z, viewYaw);
+    for (const p of particles) {
+      const branch = branches[p.branchId];
+      if (!branch) continue;
+
+      const pos = getBranchPosition(branch, p.progress, p.offset);
+      const [x1, y1, z1] = rotY(pos.x, pos.y, pos.z, rotYaw);
       const [x2, y2, z2] = rotX(x1, y1, z1, viewPitch);
       const persp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + z2));
       const sx = cx + x2 * scale * persp;
       const sy = cy + y2 * scale * persp;
-      const alpha = (0.15 + Math.sin(frame * 1.5 + i * 0.5) * 0.08) * persp;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(0, 210, 106, 0.7)';
+
+      screenPositions.push({ kind: p.kind, sx, sy });
+
+      const [r, g, b] = kindColor(p.kind, p.progress);
+      const twinkle = reducedMotion ? 1.0 : (0.75 + 0.25 * Math.sin(frame * 3 + p.branchId * 0.5));
+      const pulse = 0.65 + Math.sin(frame * p.speed * 100 + p.branchId) * 0.35;
+      const lifeFade = Math.min(1, p.life / 15) * Math.min(1, (p.maxLife - p.life) / 25);
+      const alpha = (0.5 + 0.3 * pulse) * persp * twinkle * lifeFade * burstAlpha;
+
+      const spriteSize = p.size * 10 * pulse * persp * branch.thickness;
+      ctx.globalAlpha = Math.min(0.85, alpha);
+      ctx.drawImage(particleSprite, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
+
+      ctx.globalAlpha = Math.min(1, alpha * 1.8);
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.beginPath();
-      ctx.arc(sx, sy, Math.max(0.3, (1.2 - i * 0.06) * persp), 0, Math.PI * 2);
+      ctx.arc(sx, sy, Math.max(0.6, p.size * 0.6 * persp * branch.thickness), 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // ═══ 8. 粒子渲染 ═══
-    ctx.globalCompositeOperation = 'lighter';
+    screenPositionsRef.current = screenPositions;
 
-    for (const sd of screenData) {
-      const p = sd.p;
-      const [r, g, b] = tempColor(NODE_COLOR[p.kind], clamp(sd.dist, 0, 1));
-
-      // 闪烁
-      const twinkle = reducedMotion ? 1.0 : (0.75 + 0.25 * Math.sin(frame * p.twinkleSpeed + p.twinklePhase));
-      // 脉冲
-      const pulse = 0.65 + Math.sin(frame * p.pulseSpeed + p.phase) * 0.35;
-      // 能量脉冲波
-      let spark = 1;
-      if (!reducedMotion) {
-        const sp = Math.sin(sparkPhase - sd.dist * 7);
-        if (sp > 0.8) spark = 1 + (sp - 0.8) * 3;
-      }
-
-      // 生命周期淡入淡出
-      const lifeFade = Math.min(1, p.life / 20) * Math.min(1, (p.maxLife - p.life) / 30);
-      const brightness = sd.persp * twinkle * spark * lifeFade * burstAlpha;
-      const alpha = (0.4 + 0.3 * pulse) * brightness;
-
-      if (p.isCore) {
-        // 核心粒子：白热光晕 + 大 sprite
-        const spriteSize = p.size * 14 * pulse * sd.persp * spark;
-        ctx.globalAlpha = Math.min(0.9, alpha);
-        ctx.drawImage(coreSprite, sd.sx - spriteSize / 2, sd.sy - spriteSize / 2, spriteSize, spriteSize);
-        // 核心纯白点
-        ctx.globalAlpha = Math.min(1, alpha * 1.5);
-        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * twinkle * burstAlpha})`;
-        ctx.beginPath();
-        ctx.arc(sd.sx, sd.sy, Math.max(0.8, p.size * 0.8 * sd.persp), 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // 普通粒子：彩色光晕
-        const distFade = Math.max(0.5, 1 - sd.dist * 0.4);
-        const spriteSize = p.size * 10 * pulse * sd.persp * distFade;
-        ctx.globalAlpha = Math.min(0.85, alpha);
-        ctx.drawImage(particleSprite, sd.sx - spriteSize / 2, sd.sy - spriteSize / 2, spriteSize, spriteSize);
-        // 粒子核心点（彩色）
-        ctx.globalAlpha = Math.min(1, alpha * 1.8);
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-        ctx.beginPath();
-        ctx.arc(sd.sx, sd.sy, Math.max(0.6, p.size * 0.7 * sd.persp), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // ═══ 9. 中心核心光晕（多层径向渐变 + 脉冲光射线） ═══
+    // ═══ 8. 胞体核心 — 更突出的白热球体 ═══
     const [ccx1, ccy1, ccz1] = rotY(0, 0, 0, viewYaw);
     const [ccx2, ccy2, ccz2] = rotX(ccx1, ccy1, ccz1, viewPitch);
     const corePersp = Math.max(0.1, FOCAL_LENGTH / (FOCAL_LENGTH + ccz2));
-    const coreScreenX = cx + ccx2 * scale * corePersp;
-    const coreScreenY = cy + ccy2 * scale * corePersp;
+    const coreX = cx + ccx2 * scale * corePersp;
+    const coreY = cy + ccy2 * scale * corePersp;
 
     ctx.globalCompositeOperation = 'lighter';
-    const coreBurstBoost = burstProgress < 0.3 ? (1 + (0.3 - burstProgress) * 3) : 1;
-    const corePulse = (0.25 + Math.sin(frame * 0.8) * 0.12) * coreBurstBoost;
-    const coreRadius = scale * 0.16 * corePersp;
+    const coreBurst = burstProgress < 0.3 ? (1 + (0.3 - burstProgress) * 3) : 1;
+    const corePulse = (0.3 + Math.sin(frame * 0.8) * 0.12) * coreBurst;
+    const coreR = scale * 0.16 * corePersp;
 
     // 外层弥散光晕
-    ctx.globalAlpha = Math.min(0.6, corePulse * 0.7 * corePersp * burstAlpha);
-    const outerGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius * 2);
-    outerGrad.addColorStop(0, 'rgba(0, 210, 106, 0.12)');
-    outerGrad.addColorStop(0.3, 'rgba(0, 180, 90, 0.06)');
-    outerGrad.addColorStop(0.7, 'rgba(0, 140, 70, 0.02)');
-    outerGrad.addColorStop(1, 'rgba(0, 100, 50, 0)');
-    ctx.fillStyle = outerGrad;
+    ctx.globalAlpha = Math.min(0.7, corePulse * 0.8 * corePersp * burstAlpha);
+    const og = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 2.5);
+    og.addColorStop(0, 'rgba(255,160,60,0.15)');
+    og.addColorStop(0.3, 'rgba(255,120,40,0.08)');
+    og.addColorStop(0.7, 'rgba(200,80,30,0.03)');
+    og.addColorStop(1, 'rgba(120,40,15,0)');
+    ctx.fillStyle = og;
     ctx.beginPath();
-    ctx.arc(coreScreenX, coreScreenY, coreRadius * 2, 0, Math.PI * 2);
+    ctx.arc(coreX, coreY, coreR * 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 中层翡翠光晕
-    ctx.globalAlpha = Math.min(0.7, corePulse * corePersp * burstAlpha);
-    const midGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius);
-    midGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-    midGrad.addColorStop(0.15, 'rgba(180, 255, 220, 0.15)');
-    midGrad.addColorStop(0.4, 'rgba(0, 210, 106, 0.16)');
-    midGrad.addColorStop(0.75, 'rgba(0, 160, 80, 0.05)');
-    midGrad.addColorStop(1, 'rgba(0, 120, 60, 0)');
-    ctx.fillStyle = midGrad;
+    // 中层光晕
+    ctx.globalAlpha = Math.min(0.8, corePulse * 1.1 * corePersp * burstAlpha);
+    const mg = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 1.2);
+    mg.addColorStop(0, 'rgba(255,255,240,0.25)');
+    mg.addColorStop(0.15, 'rgba(255,220,150,0.18)');
+    mg.addColorStop(0.4, 'rgba(255,160,60,0.12)');
+    mg.addColorStop(0.75, 'rgba(200,100,40,0.04)');
+    mg.addColorStop(1, 'rgba(150,60,20,0)');
+    ctx.fillStyle = mg;
     ctx.beginPath();
-    ctx.arc(coreScreenX, coreScreenY, coreRadius, 0, Math.PI * 2);
+    ctx.arc(coreX, coreY, coreR * 1.2, 0, Math.PI * 2);
     ctx.fill();
 
     // 核心 sprite
-    ctx.globalAlpha = Math.min(0.9, corePulse * 1.2 * burstAlpha);
-    const csSize = coreRadius * 1.5;
-    ctx.drawImage(coreSprite, coreScreenX - csSize / 2, coreScreenY - csSize / 2, csSize, csSize);
+    ctx.globalAlpha = Math.min(0.95, corePulse * 1.3 * burstAlpha);
+    const csSize = coreR * 1.8;
+    ctx.drawImage(coreSprite, coreX - csSize / 2, coreY - csSize / 2, csSize, csSize);
 
-    // 核心白热点
-    ctx.globalAlpha = Math.min(1, corePulse * 1.8 * burstAlpha);
-    const innerGrad = ctx.createRadialGradient(coreScreenX, coreScreenY, 0, coreScreenX, coreScreenY, coreRadius * 0.3);
-    innerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-    innerGrad.addColorStop(0.5, 'rgba(220, 255, 240, 0.15)');
-    innerGrad.addColorStop(1, 'rgba(150, 255, 200, 0)');
-    ctx.fillStyle = innerGrad;
+    // 白热点
+    ctx.globalAlpha = Math.min(1, corePulse * 2.0 * burstAlpha);
+    const ig = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 0.35);
+    ig.addColorStop(0, 'rgba(255,255,255,0.5)');
+    ig.addColorStop(0.5, 'rgba(255,240,200,0.2)');
+    ig.addColorStop(1, 'rgba(255,200,100,0)');
+    ctx.fillStyle = ig;
     ctx.beginPath();
-    ctx.arc(coreScreenX, coreScreenY, coreRadius * 0.3, 0, Math.PI * 2);
+    ctx.arc(coreX, coreY, coreR * 0.35, 0, Math.PI * 2);
     ctx.fill();
 
     // 脉冲光射线
     if (!reducedMotion && burstProgress > 0.3) {
-      const rayCount = 6;
-      const rayRotation = frame * 0.12;
-      const rayLen = coreRadius * 3;
+      const rayCount = 8;
+      const rayRot = frame * 0.12;
+      const rayLen = coreR * 3.5;
       const rayPulse = 0.5 + 0.5 * Math.sin(frame * 0.8);
-      ctx.globalAlpha = 0.05 * rayPulse * burstAlpha;
+      ctx.globalAlpha = 0.06 * rayPulse * burstAlpha;
       ctx.lineWidth = 1.5;
       for (let r = 0; r < rayCount; r++) {
-        const angle = rayRotation + (r / rayCount) * Math.PI * 2;
-        const ex = coreScreenX + Math.cos(angle) * rayLen;
-        const ey = coreScreenY + Math.sin(angle) * rayLen;
-        const rayGrad = ctx.createLinearGradient(coreScreenX, coreScreenY, ex, ey);
-        rayGrad.addColorStop(0, 'rgba(180, 255, 220, 0.3)');
-        rayGrad.addColorStop(0.5, 'rgba(0, 210, 106, 0.1)');
-        rayGrad.addColorStop(1, 'rgba(0, 210, 106, 0)');
-        ctx.strokeStyle = rayGrad;
+        const angle = rayRot + (r / rayCount) * Math.PI * 2;
+        const ex = coreX + Math.cos(angle) * rayLen;
+        const ey = coreY + Math.sin(angle) * rayLen;
+        const rg = ctx.createLinearGradient(coreX, coreY, ex, ey);
+        rg.addColorStop(0, 'rgba(255,220,150,0.3)');
+        rg.addColorStop(0.5, 'rgba(255,140,50,0.1)');
+        rg.addColorStop(1, 'rgba(200,80,30,0)');
+        ctx.strokeStyle = rg;
         ctx.beginPath();
-        ctx.moveTo(coreScreenX, coreScreenY);
+        ctx.moveTo(coreX, coreY);
         ctx.lineTo(ex, ey);
         ctx.stroke();
       }
@@ -872,7 +914,7 @@ export function LifeCoreCanvas({
     ctx.globalAlpha = 1;
   }, [state, particleSprite, coreSprite, glowSprite, reducedMotion]);
 
-  // 动画循环（节流到 ~30fps）
+  // 动画循环 30fps
   useEffect(() => {
     let running = true;
     let lastFrame = 0;
@@ -892,7 +934,7 @@ export function LifeCoreCanvas({
     };
   }, [draw]);
 
-  // Resize observer
+  // Resize
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -901,14 +943,13 @@ export function LifeCoreCanvas({
     return () => ro.disconnect();
   }, [draw]);
 
-  // 自动隐藏拖拽提示
+  // 自动隐藏提示
   useEffect(() => {
     const timer = setTimeout(() => setShowHint(false), 6000);
     return () => clearTimeout(timer);
   }, []);
 
-  // === 拖拽交互处理器 ===
-
+  // === 交互 ===
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     if (!container) return;
@@ -920,49 +961,38 @@ export function LifeCoreCanvas({
     dragRef.current.velY = 0;
     dragRef.current.pointerId = e.pointerId;
     setIsDragging(true);
-    interactedRef.current = true;
     setShowHint(false);
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-
     if (drag.isDragging) {
-      const deltaX = e.clientX - drag.lastX;
-      const deltaY = e.clientY - drag.lastY;
-      const sensitivity = 0.006;
-
-      viewRef.current.targetYaw += deltaX * sensitivity;
-      viewRef.current.targetPitch += deltaY * sensitivity;
+      const dx = e.clientX - drag.lastX;
+      const dy = e.clientY - drag.lastY;
+      const sens = 0.006;
+      viewRef.current.targetYaw += dx * sens;
+      viewRef.current.targetPitch += dy * sens;
       viewRef.current.targetPitch = clamp(viewRef.current.targetPitch, -1.35, 1.35);
-
-      drag.velX = deltaX * sensitivity * 0.5;
-      drag.velY = deltaY * sensitivity * 0.5;
-
+      drag.velX = dx * sens * 0.5;
+      drag.velY = dy * sens * 0.5;
       drag.lastX = e.clientX;
       drag.lastY = e.clientY;
     } else {
-      // 悬停检测：使用缓存的屏幕坐标
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
       const positions = screenPositionsRef.current;
       let best: { kind: NodeKind; x: number; y: number; d: number } | null = null;
-
       for (const pos of positions) {
         const d = Math.hypot(x - pos.sx, y - pos.sy);
         if (d < 20 && (!best || d < best.d)) {
           best = { kind: pos.kind, x: pos.sx, y: pos.sy, d };
         }
       }
-      if (best) {
-        setHoverInfo({ kind: best.kind, x: best.x, y: best.y });
-      } else {
-        setHoverInfo(null);
-      }
+      if (best) setHoverInfo({ kind: best.kind, x: best.x, y: best.y });
+      else setHoverInfo(null);
     }
   }, []);
 
@@ -970,16 +1000,13 @@ export function LifeCoreCanvas({
     const drag = dragRef.current;
     if (drag.pointerId === e.pointerId || drag.isDragging) {
       const container = containerRef.current;
-      if (container) {
-        try { container.releasePointerCapture(e.pointerId); } catch { /* noop */ }
-      }
+      if (container) try { container.releasePointerCapture(e.pointerId); } catch { /* noop */ }
       drag.isDragging = false;
       drag.pointerId = -1;
       setIsDragging(false);
     }
   }, []);
 
-  // 双击重置视角
   const handleDoubleClick = useCallback(() => {
     viewRef.current.targetYaw = 0;
     viewRef.current.targetPitch = DEFAULT_PITCH;
@@ -1015,20 +1042,14 @@ export function LifeCoreCanvas({
       {hoverInfo && !isDragging && (
         <div
           className="pointer-events-none absolute z-10 rounded-lg border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-2 py-1 text-xs text-[var(--color-text-secondary)] backdrop-blur-glass"
-          style={{
-            left: hoverInfo.x + 12,
-            top: hoverInfo.y - 24,
-            transform: 'translateX(-50%)',
-          }}
+          style={{ left: hoverInfo.x + 12, top: hoverInfo.y - 24, transform: 'translateX(-50%)' }}
         >
           {kindLabels[hoverInfo.kind]}
         </div>
       )}
       {showHint && (
-        <div
-          className="life-core__drag-hint pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-3 py-1 text-xs text-[var(--color-text-tertiary)] backdrop-blur-glass"
-        >
-          拖拽旋转神经元云 · 双击重置 ✦
+        <div className="life-core__drag-hint pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-3 py-1 text-xs text-[var(--color-text-tertiary)] backdrop-blur-glass">
+          拖拽旋转神经元 · 双击重置 ✦
         </div>
       )}
     </div>
