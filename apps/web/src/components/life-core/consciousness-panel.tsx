@@ -197,8 +197,6 @@ export default function ConsciousnessPanel({
         const layerAmp = dynamicAmp * (1 - layer * 0.18);
         const layerFreq = p.baseFreq * (1 + layer * 0.15);
 
-        const [r, g, b] = p.color;
-
         // 采样点
         const samples = Math.max(60, Math.floor(W / 2));
         const points: { x: number; y: number; alpha: number }[] = [];
