@@ -29,7 +29,10 @@ import {
   Smile,
   HandHeart,
   TreePine,
+  MessageCircle,
+  Bot,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   PageTransition,
   StaggerContainer,
@@ -41,6 +44,8 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { GlassLayer } from "@/components/glass";
 import { apiClient, swrFetcher } from "@/lib/api-client";
+import AgentChatModal from "@/components/home/agent-chat-modal";
+import type { AgentRuntime } from "@/stores/family-hub-store";
 import useSWR from "swr";
 
 const springHover = {
@@ -64,6 +69,8 @@ interface Skill {
   description: string;
   examples: string[];
   tags: string[];
+  sourceAgentCode?: string;
+  sourceAgent?: string;
 }
 
 const initialSkills: Skill[] = [
@@ -349,12 +356,38 @@ interface APISkill {
 }
 
 export default function SkillsPage() {
+  const router = useRouter();
   // Fetch skills from backend API
   const { data: apiSkills, mutate } = useSWR<APISkill[]>(
     "family-hub/skills",
     swrFetcher,
   );
+  // Fetch agents to power "和 Agent 对话" entries on each skill card
+  const { data: apiAgents } = useSWR<AgentRuntime[]>(
+    "family-hub/agents",
+    swrFetcher,
+  );
   const [learningIds, setLearningIds] = React.useState<Set<string>>(new Set());
+  const [chatAgent, setChatAgent] = React.useState<AgentRuntime | null>(null);
+
+  // Locate the live AgentRuntime behind a skill (matched by sourceAgentCode).
+  const findAgentForSkill = React.useCallback(
+    (skill: Skill): AgentRuntime | undefined => {
+      if (!apiAgents || apiAgents.length === 0) return undefined;
+      if (skill.sourceAgentCode) {
+        const byCode = apiAgents.find((a) => a.id === skill.sourceAgentCode);
+        if (byCode) return byCode;
+      }
+      if (skill.sourceAgent) {
+        const byName = apiAgents.find(
+          (a) => a.name === skill.sourceAgent || a.role === skill.sourceAgent,
+        );
+        if (byName) return byName;
+      }
+      return undefined;
+    },
+    [apiAgents],
+  );
 
   // Merge API skills with local fallback
   const skills: Skill[] = React.useMemo(() => {
@@ -372,6 +405,8 @@ export default function SkillsPage() {
           description: s.description || "",
           examples: s.examples || [],
           tags: s.tags || [],
+          sourceAgentCode: s.sourceAgentCode,
+          sourceAgent: s.sourceAgent,
         };
       });
     }
@@ -503,6 +538,40 @@ export default function SkillsPage() {
             </div>
           </motion.div>
 
+          {/* ===== Agent Console Entry ===== */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
+            className="mb-8"
+          >
+            <GlassLayer asChild intensity="default" interactive>
+              <button
+                onClick={() => router.push("/agents")}
+                className="w-full p-4 flex items-center gap-4 text-left focus-ring"
+                aria-label="进入 Agent 控制台"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent/10 border border-accent/15">
+                  <Bot className="h-5 w-5 text-accent" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-text">
+                      Agent 控制台
+                    </h3>
+                    <Badge variant="outline">
+                      {apiAgents?.length ?? 0} 个守护者
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    和每一位时墨守护者直接对话，触发真实工具调用
+                  </p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-text-subtle shrink-0" />
+              </button>
+            </GlassLayer>
+          </motion.div>
+
           {/* ===== Skills Grid ===== */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -521,6 +590,7 @@ export default function SkillsPage() {
                 const Icon = skill.icon;
                 const isExpanded = expandedSkill === skill.id;
                 const isLearning = learningIds.has(skill.id);
+                const linkedAgent = findAgentForSkill(skill);
                 return (
                   <StaggerItem key={skill.id}>
                     <SkillCard
@@ -530,6 +600,9 @@ export default function SkillsPage() {
                       onToggle={() => toggleExpand(skill.id)}
                       onLearn={() => handleLearn(skill.id)}
                       isLearning={isLearning}
+                      onChat={() => linkedAgent && setChatAgent(linkedAgent)}
+                      canChat={!!linkedAgent}
+                      agentName={linkedAgent?.name ?? skill.sourceAgent}
                     />
                   </StaggerItem>
                 );
@@ -714,6 +787,13 @@ export default function SkillsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ===== Agent Chat Modal ===== */}
+      <AgentChatModal
+        agent={chatAgent}
+        open={!!chatAgent}
+        onClose={() => setChatAgent(null)}
+      />
     </PageTransition>
   );
 }
@@ -725,6 +805,9 @@ function SkillCard({
   onToggle,
   onLearn,
   isLearning,
+  onChat,
+  canChat,
+  agentName,
 }: {
   skill: Skill;
   icon: React.ReactNode;
@@ -732,6 +815,9 @@ function SkillCard({
   onToggle: () => void;
   onLearn: () => void;
   isLearning: boolean;
+  onChat: () => void;
+  canChat: boolean;
+  agentName?: string;
 }) {
   return (
     <GlassLayer asChild intensity="default" interactive>
@@ -853,6 +939,22 @@ function SkillCard({
                     学习技能
                   </>
                 )}
+              </motion.button>
+            )}
+
+            {/* 和 Agent 对话 */}
+            {canChat && (
+              <motion.button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChat();
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="mt-2 w-full py-2 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5 bg-accent/10 hover:bg-accent/15 border border-accent/20 text-accent focus-ring"
+              >
+                <MessageCircle className="w-3 h-3" />
+                和 {agentName} 对话
               </motion.button>
             )}
           </div>

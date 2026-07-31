@@ -29,6 +29,7 @@ import {
 import { useFamilyHubStore } from '@/stores/family-hub-store';
 import type { AgentRuntime, SkillProgress } from '@/stores/family-hub-store';
 import { GlassLayer } from '@/components/glass';
+import AgentChatModal from '@/components/home/agent-chat-modal';
 
 type IconComponent = React.ComponentType<{
   size?: number;
@@ -65,6 +66,7 @@ export default function InkDrop() {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'skills'>('overview');
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
+  const [chatAgent, setChatAgent] = useState<AgentRuntime | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { agents, skills, shimoCore, fetchAll } = useFamilyHubStore();
@@ -308,7 +310,7 @@ export default function InkDrop() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: index * 0.02 }}
-                        className="p-2.5 rounded-xl bg-glass border border-glass-border hover:bg-glass-hover transition-colors cursor-default"
+                        className="p-2.5 rounded-xl bg-glass border border-glass-border hover:bg-glass-hover transition-colors cursor-default group"
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <Icon size={14} className="text-text-muted" />
@@ -330,6 +332,23 @@ export default function InkDrop() {
                           </div>
                           <span className="text-4xs text-text-subtle">阶段 {agent.level}</span>
                         </div>
+                        <motion.button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const original = agents.find((a) => a.id === agent.id);
+                            if (original) {
+                              setExpanded(false);
+                              setChatAgent(original);
+                            }
+                          }}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          className="mt-2 w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/15 border border-accent/15 text-3xs text-accent transition-colors focus-ring"
+                          aria-label={`和 ${agent.label} 对话`}
+                        >
+                          <MessageCircle size={11} />
+                          对话
+                        </motion.button>
                       </motion.div>
                     );
                   })
@@ -415,6 +434,12 @@ export default function InkDrop() {
           </GlassLayer>
         )}
       </AnimatePresence>
+
+      <AgentChatModal
+        agent={chatAgent}
+        open={!!chatAgent}
+        onClose={() => setChatAgent(null)}
+      />
     </div>
   );
 }
