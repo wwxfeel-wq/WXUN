@@ -27,16 +27,17 @@
   --brand-color-philosophy: 'Warm obsidian canvas with soft liquid-glass refraction and warm organic life accents';
   --brand-motion-philosophy: 'Springy, calm, liquid-like transitions with subtle hover feedback';
 
-  /* === Primary Brand — 时墨绿 Shimo Green ===
-   * 生命、成长、陪伴的主色。更明亮、更青翠。
+  /* === Primary Brand — 时墨绿 Shimo Green (Emerald) ===
+   * 生命、成长、陪伴的主色。参考图中鲜艳的翡翠绿 #00D26A。
+   * 比之前的青绿更饱满、更有生命力。
    */
-  --color-primary: #00E5A8;
-  --color-primary-hover: #00FFB8;
-  --color-primary-active: #00D098;
-  --color-primary-disabled: rgba(0, 229, 168, 0.35);
-  --color-primary-glow: rgba(0, 229, 168, 0.28);
-  --color-primary-soft: rgba(0, 229, 168, 0.14);
-  --color-primary-faint: rgba(0, 229, 168, 0.08);
+  --color-primary: #00D26A;
+  --color-primary-hover: #00E676;
+  --color-primary-active: #00B85A;
+  --color-primary-disabled: rgba(0, 210, 106, 0.35);
+  --color-primary-glow: rgba(0, 210, 106, 0.35);
+  --color-primary-soft: rgba(0, 210, 106, 0.14);
+  --color-primary-faint: rgba(0, 210, 106, 0.08);
 
   /* === Secondary — Soft Sky ===
    * 从冷蓝改为更柔和、略带暖意的天空蓝，降低科技感。
@@ -128,36 +129,37 @@
   --color-gray-900: rgba(255, 255, 255, 0.05);
   --color-gray-950: rgba(255, 255, 255, 0.03);
 
-  /* === Surface (deep blue-black spatial space) ===
-   * 深蓝黑色空间背景，轻微环境光，符合 VisionOS 空间计算界面。
+  /* === Surface (deep black spatial space) ===
+   * 参考图深黑背景 #0A0A0F，配合翡翠绿环境光。
+   * 比之前更暗、更冷，让玻璃效果和绿色辉光更突出。
    */
-  --color-bg: #0a0e14;
-  --color-bg-elevated: #0d1118;
-  --color-bg-warm: #0f1219;
-  --color-bg-gradient-start: #0d1118;
-  --color-bg-gradient-end: #080b10;
-  --color-surface: rgba(140, 160, 180, 0.045);
-  --color-surface-raised: rgba(140, 160, 180, 0.07);
-  --color-surface-overlay: rgba(140, 160, 180, 0.10);
+  --color-bg: #0A0A0F;
+  --color-bg-elevated: #0E0E14;
+  --color-bg-warm: #0C0C12;
+  --color-bg-gradient-start: #0E0E14;
+  --color-bg-gradient-end: #08080C;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-raised: rgba(255, 255, 255, 0.06);
+  --color-surface-overlay: rgba(255, 255, 255, 0.08);
 
-  /* === Glass Surfaces (Apple Liquid Glass) ===
-   * 浅色毛玻璃：白色半透明底色 + 顶部高光 + 顶部边框更亮。
-   * 完全复刻参考图的 Apple Liquid Glass 效果。
-   * 关键：玻璃本身是浅色半透明，背景透过但高度模糊。
-   * 调优：稍微提高白色透明度让玻璃更可见，边框更亮以突出玻璃边缘。
+  /* === Glass Surfaces (Premium Dark Glassmorphism) ===
+   * 参考图风格：极低透明度白色底色 + 强模糊 + 高饱和度。
+   * 底色 rgba(255,255,255,0.06) — 比之前更低，让背景更多透过
+   * 边框 rgba(255,255,255,0.15) — 更亮，突出玻璃边缘
+   * 顶部高光 rgba(255,255,255,0.3) — 模拟光源照射
    */
-  --color-glass: rgba(255, 255, 255, 0.10);
-  --color-glass-hover: rgba(255, 255, 255, 0.14);
-  --color-glass-strong: rgba(255, 255, 255, 0.12);
-  --color-glass-strong-hover: rgba(255, 255, 255, 0.16);
-  --color-glass-extreme: rgba(255, 255, 255, 0.14);
-  --color-glass-extreme-hover: rgba(255, 255, 255, 0.18);
-  --color-glass-border: rgba(255, 255, 255, 0.18);
-  --color-glass-border-hover: rgba(255, 255, 255, 0.28);
-  --color-glass-border-strong: rgba(255, 255, 255, 0.22);
+  --color-glass: rgba(255, 255, 255, 0.06);
+  --color-glass-hover: rgba(255, 255, 255, 0.10);
+  --color-glass-strong: rgba(255, 255, 255, 0.08);
+  --color-glass-strong-hover: rgba(255, 255, 255, 0.12);
+  --color-glass-extreme: rgba(255, 255, 255, 0.10);
+  --color-glass-extreme-hover: rgba(255, 255, 255, 0.14);
+  --color-glass-border: rgba(255, 255, 255, 0.15);
+  --color-glass-border-hover: rgba(255, 255, 255, 0.25);
+  --color-glass-border-strong: rgba(255, 255, 255, 0.20);
   --color-glass-border-top: rgba(255, 255, 255, 0.30);
-  --color-glass-highlight: rgba(255, 255, 255, 0.20);
-  --color-glass-shimmer: rgba(255, 255, 255, 0.24);
+  --color-glass-highlight: rgba(255, 255, 255, 0.22);
+  --color-glass-shimmer: rgba(255, 255, 255, 0.26);
   --color-glass-tint-primary: rgba(0, 229, 168, 0.03);
   --color-glass-tint-secondary: rgba(122, 184, 240, 0.03);
   --color-glass-tint-rose: rgba(242, 130, 140, 0.02);
@@ -269,17 +271,18 @@
   --color-light-rim: #c8e6ff;
 
   /* === Ambient Background ===
-   * 温暖有机的氛围光，替代冷蓝波浪。轻微环境光、微弱粒子。
+   * 参考图风格：翡翠绿环境光，在深黑背景上产生柔和的绿色辉光。
+   * 比之前更亮、更绿，营造生命感氛围。
    */
-  --color-aurora-primary: rgba(0, 229, 168, 0.06);
-  --color-aurora-secondary: rgba(122, 184, 240, 0.05);
-  --color-aurora-warm: rgba(245, 200, 91, 0.04);
-  --color-aurora-rose: rgba(242, 130, 140, 0.03);
-  --color-aurora-primary-soft: rgba(0, 229, 168, 0.04);
-  --color-aurora-secondary-soft: rgba(122, 184, 240, 0.03);
-  --color-aurora-warm-soft: rgba(245, 200, 91, 0.03);
-  --color-aurora-root: rgba(0, 229, 168, 0.18);
-  --color-aurora-root-dot: rgba(0, 229, 168, 0.24);
+  --color-aurora-primary: rgba(0, 210, 106, 0.10);
+  --color-aurora-secondary: rgba(122, 184, 240, 0.06);
+  --color-aurora-warm: rgba(245, 200, 91, 0.05);
+  --color-aurora-rose: rgba(242, 130, 140, 0.04);
+  --color-aurora-primary-soft: rgba(0, 210, 106, 0.06);
+  --color-aurora-secondary-soft: rgba(122, 184, 240, 0.04);
+  --color-aurora-warm-soft: rgba(245, 200, 91, 0.04);
+  --color-aurora-root: rgba(0, 210, 106, 0.20);
+  --color-aurora-root-dot: rgba(0, 210, 106, 0.26);
 
   /* === Immersive Home Scene ===
    * 深蓝黑空间背景，灰蓝玻璃面板。
@@ -294,8 +297,8 @@
   --color-home-panel-inset: inset 0 1px 0 rgba(160, 180, 200, 0.08), inset 0 0 0 1px rgba(140, 160, 180, 0.04);
   --color-home-grid: rgba(93, 211, 232, 0.04);
   --color-home-vignette: rgba(8, 11, 16, 0.62);
-  --home-panel-blur: blur(16px) saturate(1.1);
-  --home-panel-blur-strong: blur(20px) saturate(1.15);
+  --home-panel-blur: blur(20px) saturate(1.4);
+  --home-panel-blur-strong: blur(28px) saturate(1.5);
   --home-panel-width: 17rem;
   --home-edge-gap: clamp(0.75rem, 1.8vw, 1.75rem);
   --home-top-gap: clamp(4.75rem, 9vh, 6.75rem);
@@ -448,11 +451,15 @@
   --shadow-glow-secondary: 0 0 24px var(--color-secondary-glow);
   --shadow-glow-highlight: 0 0 24px var(--color-highlight-glow);
 
-  /* === Glass Shadows === */
-  --shadow-glass-soft: 0 8px 28px color-mix(in srgb, var(--color-shadow) 20%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 12%, transparent);
-  --shadow-glass-medium: 0 14px 40px color-mix(in srgb, var(--color-shadow) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 16%, transparent);
-  --shadow-glass-strong: 0 22px 56px color-mix(in srgb, var(--color-shadow) 40%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 20%, transparent);
-  --shadow-glass-extreme: 0 30px 76px color-mix(in srgb, var(--color-shadow) 50%, transparent), 0 12px 32px color-mix(in srgb, var(--color-shadow) 24%, transparent);
+  /* === Glass Shadows ===
+   * 参考图多层阴影：环境阴影 + 内高光 + 绿色辉光
+   */
+  --shadow-glass-soft: 0 8px 28px color-mix(in srgb, var(--color-shadow) 20%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 12%, transparent), inset 0 1px 0 rgba(255,255,255,0.06);
+  --shadow-glass-medium: 0 12px 36px color-mix(in srgb, var(--color-shadow) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 16%, transparent), inset 0 1px 0 rgba(255,255,255,0.08);
+  --shadow-glass-strong: 0 20px 52px color-mix(in srgb, var(--color-shadow) 40%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 20%, transparent), inset 0 1px 0 rgba(255,255,255,0.10);
+  --shadow-glass-extreme: 0 28px 72px color-mix(in srgb, var(--color-shadow) 50%, transparent), 0 12px 32px color-mix(in srgb, var(--color-shadow) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.12);
+  /* 绿色辉光阴影 — 用于活跃/高亮状态 */
+  --shadow-glow-green: 0 0 40px rgba(0, 210, 106, 0.25), 0 0 80px rgba(0, 210, 106, 0.10);
 
   /* === Z-Index Layers === */
   --z-base: 0;
@@ -521,19 +528,20 @@
   --bp-3xl: 1920px;
 
   /* === Liquid Glass Effects ===
-   * 性能优化版：blur 从 24px 降至 16px，saturate 从 1.2 降至 1.1
-   * 16px 模糊已足够产生玻璃质感，GPU 合成开销减少约 40%
-   * 页面剩余 GlassLayer 实例（左侧导航、右侧面板、输入框）使用此值
+   * 参考图复刻：blur(20px) saturate(1.4)
+   * 参考图使用 blur(40px) saturate(180%)，但考虑性能折中。
+   * 20px 模糊 + 1.4 饱和度已足够产生明显的毛玻璃质感。
+   * 底色更透明(0.06)，让模糊效果更依赖 backdrop 而非背景色。
    */
-  --glass-blur: blur(16px) saturate(1.1);
-  --glass-blur-strong: blur(20px) saturate(1.15);
-  --glass-blur-extreme: blur(28px) saturate(1.2);
-  --glass-blur-subtle: blur(12px) saturate(1.08);
-  --glass-blur-radius: 16px;
-  --glass-blur-radius-strong: 20px;
-  --glass-blur-radius-extreme: 28px;
-  --glass-blur-radius-subtle: 12px;
-  --glass-blur-radius-mobile: 8px;
+  --glass-blur: blur(20px) saturate(1.4);
+  --glass-blur-strong: blur(28px) saturate(1.5);
+  --glass-blur-extreme: blur(36px) saturate(1.6);
+  --glass-blur-subtle: blur(14px) saturate(1.25);
+  --glass-blur-radius: 20px;
+  --glass-blur-radius-strong: 28px;
+  --glass-blur-radius-extreme: 36px;
+  --glass-blur-radius-subtle: 14px;
+  --glass-blur-radius-mobile: 10px;
 
   /* === Ambient Blur Tokens === */
   --blur-orb-sm: 50px;

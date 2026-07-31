@@ -47,19 +47,19 @@
     overflow-x: hidden;
     font-feature-settings: "tnum" 1, "kern" 1;
     background:
-      /* top-centered ambient glow — soft, like early morning light through glass */
-      radial-gradient(ellipse 80% 50% at 50% -10%, var(--color-bg-elevated), transparent 65%),
-      /* warm caustic bloom — top-right */
-      radial-gradient(ellipse 55% 35% at 110% 8%, color-mix(in srgb, var(--color-warm) 10%, transparent), transparent 60%),
-      /* life green caustic bloom — top-left */
-      radial-gradient(ellipse 50% 32% at -8% 18%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 58%),
+      /* top-centered ambient glow — 翡翠绿环境光 */
+      radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 65%),
+      /* green caustic bloom — top-right */
+      radial-gradient(ellipse 55% 35% at 110% 8%, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 60%),
+      /* green caustic bloom — top-left */
+      radial-gradient(ellipse 50% 32% at -8% 18%, color-mix(in srgb, var(--color-primary) 5%, transparent), transparent 58%),
       /* warm amber glow, bottom-left */
-      radial-gradient(ellipse 55% 35% at -12% 92%, color-mix(in srgb, var(--color-highlight) 7%, transparent), transparent 58%),
+      radial-gradient(ellipse 55% 35% at -12% 92%, color-mix(in srgb, var(--color-highlight) 4%, transparent), transparent 58%),
       /* soft sky refraction, bottom-right */
-      radial-gradient(ellipse 50% 30% at 112% 88%, color-mix(in srgb, var(--color-secondary) 7%, transparent), transparent 58%),
-      /* gentle rose warmth crossing the center */
-      radial-gradient(ellipse 70% 45% at 50% 58%, color-mix(in srgb, var(--color-rose) 4%, transparent), transparent 65%),
-      /* warm obsidian base gradient */
+      radial-gradient(ellipse 50% 30% at 112% 88%, color-mix(in srgb, var(--color-secondary) 4%, transparent), transparent 58%),
+      /* gentle green crossing the center */
+      radial-gradient(ellipse 70% 45% at 50% 58%, color-mix(in srgb, var(--color-primary) 3%, transparent), transparent 65%),
+      /* deep black base gradient */
       linear-gradient(180deg, var(--color-bg-gradient-start) 0%, var(--color-bg-warm) 35%, var(--color-bg) 70%, var(--color-bg-gradient-end) 100%);
     background-attachment: fixed;
     color: var(--color-text-primary);
@@ -143,18 +143,18 @@
     height: 100%;
   }
 
-  /* Legacy glass-card alias — Apple Liquid Glass 风格 */
+  /* Legacy glass-card alias — Premium Dark Glassmorphism */
   .glass-card {
     position: relative;
     background: var(--color-glass);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: var(--border-width) solid var(--color-glass-border);
+    /* 参考图多层阴影：外阴影 + 内高光 + 顶部边框高光 */
     box-shadow:
       var(--shadow-glass-medium),
-      inset 0 2px 2px rgba(255,255,255,0.15),
-      inset 0 -1px 2px rgba(0,0,0,0.10),
-      inset 0 0 0 1px rgba(255,255,255,0.08);
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      inset 0 -1px 0 rgba(0,0,0,0.08);
     border-radius: var(--radius-xl);
     transition: var(--transition-liquid);
   }
@@ -162,7 +162,10 @@
     background: var(--color-glass-hover);
     border-color: var(--color-glass-border-hover);
     transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+    box-shadow:
+      var(--shadow-glass-strong),
+      var(--shadow-glow-green),
+      inset 0 1px 0 rgba(255,255,255,0.12);
   }
   .glass-card-hover:active {
     transform: scale(var(--state-active-scale));
@@ -185,10 +188,10 @@
 
   /* Message bubbles — Apple Liquid Glass 风格 */
   .msg-user {
-    background: var(--color-primary-glow);
+    background: rgba(0, 210, 106, 0.12);
     backdrop-filter: var(--glass-blur-subtle);
     -webkit-backdrop-filter: var(--glass-blur-subtle);
-    border: var(--border-width) solid rgba(0, 229, 168, 0.20);
+    border: var(--border-width) solid rgba(0, 210, 106, 0.25);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.10),
       0 2px 8px rgba(0,0,0,0.15);
@@ -258,9 +261,8 @@
     z-index: var(--z-glass-dispersion);
   }
 
-  /* === Aurora Background Effect (warm organic ambient) ===
-   * 替代 SpheroAI 冷蓝波浪。以生命绿、暖琥珀、柔和玫瑰为主，
-   * 营造安静、温暖、有生命感的家庭 AI 空间。
+  /* === Aurora Background Effect (emerald ambient) ===
+   * 参考图翡翠绿环境光，在深黑背景上产生柔和的绿色辉光。
    */
   .aurora-bg {
     position: fixed;
@@ -273,7 +275,7 @@
       radial-gradient(ellipse 60% 50% at 78% 18%, var(--color-aurora-warm), transparent 62%),
       radial-gradient(ellipse 75% 60% at 72% 82%, var(--color-aurora-secondary), transparent 68%),
       radial-gradient(ellipse 55% 45% at 22% 78%, var(--color-aurora-rose), transparent 62%),
-      radial-gradient(ellipse 50% 40% at 50% 55%, var(--color-aurora-warm-soft), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 50% 55%, var(--color-aurora-primary-soft), transparent 70%),
       linear-gradient(180deg, var(--color-bg-gradient-start) 0%, var(--color-bg-warm) 45%, var(--color-bg-gradient-end) 100%);
     background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
     background-repeat: no-repeat;
@@ -931,13 +933,14 @@
   opacity: 0.6;
 }
 
-/* 顶部四个状态卡片 */
+/* 顶部四个状态卡片 — 参考图 3D 透视风格 */
 .spatial-home__top-cards {
   grid-area: top;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-sm);
   width: 100%;
+  perspective: 800px;
 }
 
 @media (min-width: 48rem) {
@@ -954,20 +957,25 @@
   gap: var(--space-md);
   border-radius: var(--radius-xl);
   min-height: 3.5rem;
-  /* 轻量玻璃质感：半透明背景 + 边框 + 阴影（无 backdrop-filter，GPU 零负担） */
-  background: color-mix(in srgb, var(--color-glass) 85%, transparent);
-  border: var(--border-width) solid var(--color-glass-border);
+  /* 参考图轻量玻璃：半透明 + 边框 + 多层阴影（无 backdrop-filter） */
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--border-width) solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    var(--shadow-glass-medium),
-    inset 0 1px 0 rgba(255,255,255,0.08);
+    0 8px 24px rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
     transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.35s ease;
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
 }
 
 .spatial-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glass-medium);
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.20);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.30),
+    0 0 40px rgba(0, 210, 106, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .spatial-card--compact {
@@ -1138,11 +1146,11 @@
 .spatial-panel {
   padding: var(--space-lg);
   border-radius: var(--radius-xl);
+  /* 参考图面板玻璃：多层内阴影 + 顶部高光 */
   box-shadow:
     var(--shadow-glass-medium),
-    inset 0 2px 2px rgba(255,255,255,0.12),
-    inset 0 -1px 2px rgba(0,0,0,0.08),
-    inset 0 0 0 1px rgba(255,255,255,0.06);
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.06);
 }
 
 @media (min-width: 48rem) {
@@ -1406,7 +1414,7 @@
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
   /* SVG 波浪 path — 两端平齐确保无缝循环 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'%3E%3Cpath d='M0 20 Q 25 5, 50 20 T 100 20 T 150 20 T 200 20' fill='none' stroke='rgb(0,229,168)' stroke-width='1.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'%3E%3Cpath d='M0 20 Q 25 5, 50 20 T 100 20 T 150 20 T 200 20' fill='none' stroke='rgb(0,210,106)' stroke-width='1.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
   transform: translateY(-50%);
 }
 

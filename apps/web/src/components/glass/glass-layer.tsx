@@ -91,43 +91,40 @@ function GlassEffects({
 }) {
   return (
     <>
-      {/* 外阴影：柔和的环境阴影 + 紧贴的接地阴影
-          Apple Liquid Glass 的阴影特点：大范围、低透明度、柔和扩散 */}
+      {/* 外阴影：参考图风格 — 大范围柔和阴影 + 绿色环境辉光 */}
       {shadow && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-y-3 -inset-x-2 z-glass-below rounded-[inherit] opacity-70 blur-2xl"
+          className="pointer-events-none absolute -inset-y-3 -inset-x-2 z-glass-below rounded-[inherit] opacity-60 blur-2xl"
           style={{
             background:
-              'radial-gradient(ellipse 90% 80% at 50% 100%, rgba(0,0,0,0.40), transparent 70%)',
+              'radial-gradient(ellipse 90% 80% at 50% 100%, rgba(0,0,0,0.50), transparent 70%)',
           }}
         />
       )}
 
-      {/* 顶部高光渐变：模拟光线从上方照射玻璃表面
-          这是 Apple Liquid Glass 最关键的效果——顶部亮、底部暗
-          高光集中在顶部 12% 区域，中段保持通透，底部轻微暗化 */}
+      {/* 顶部高光渐变：参考图核心效果 — 顶部亮、底部暗
+          模拟光源从上方照射玻璃表面，高光集中在顶部 15% */}
       {smoke && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit]"
           style={{
             background: `linear-gradient(180deg,
-              rgba(255,255,255,0.28) 0%,
-              rgba(255,255,255,0.14) 5%,
-              rgba(255,255,255,0.04) 12%,
-              transparent 25%,
-              transparent 82%,
-              rgba(0,0,0,0.08) 100%
+              rgba(255,255,255,0.18) 0%,
+              rgba(255,255,255,0.08) 8%,
+              rgba(255,255,255,0.02) 18%,
+              transparent 30%,
+              transparent 85%,
+              rgba(0,0,0,0.10) 100%
             )`,
           }}
         />
       )}
 
-      {/* 厚度感：双层内阴影塑造玻璃实体厚度
-          第一层：顶部内高光（亮）+ 底部内暗影（深）= 凸面玻璃效果
-          第二层：1px 白色内边框 + 内侧暗边 = 玻璃切面厚度
-          这是让玻璃看起来"厚"的关键 */}
+      {/* 厚度感：参考图双层内阴影
+          第一层：顶部内高光 + 底部内暗影 = 凸面玻璃
+          第二层：1px 白色内边框 = 玻璃切面 */}
       {thickness && (
         <>
           <span
@@ -135,9 +132,9 @@ function GlassEffects({
             className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
             style={{
               boxShadow: `
-                inset 0 2px 2px rgba(255,255,255,0.20),
-                inset 0 -2px 3px rgba(0,0,0,0.14),
-                inset 0 0 0 1px rgba(255,255,255,0.12)
+                inset 0 1px 1px rgba(255,255,255,0.15),
+                inset 0 -1px 2px rgba(0,0,0,0.12),
+                inset 0 0 0 1px rgba(255,255,255,0.08)
               `,
             }}
           />
@@ -146,24 +143,24 @@ function GlassEffects({
             className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
             style={{
               boxShadow: `
-                inset 0 0 0 0.5px rgba(255,255,255,0.06),
-                inset 2px 0 4px -2px rgba(0,0,0,0.10),
-                inset -2px 0 4px -2px rgba(0,0,0,0.10)
+                inset 0 0 0 0.5px rgba(255,255,255,0.05),
+                inset 1px 0 3px -1px rgba(0,0,0,0.08),
+                inset -1px 0 3px -1px rgba(0,0,0,0.08)
               `,
             }}
           />
         </>
       )}
 
-      {/* 顶部边缘高光：细而亮的白色线，模拟玻璃切面反光
-          Apple Liquid Glass 的标志性顶部反光线 */}
+      {/* 顶部边缘高光：参考图标志性细亮线
+          模拟玻璃切面顶部反光，中间最亮向两端渐隐 */}
       {edge && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-1 top-0 z-glass-specular h-px rounded-full"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(255,255,255,0.40) 12%, rgba(255,255,255,0.65) 50%, rgba(255,255,255,0.40) 88%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(255,255,255,0.25) 10%, rgba(255,255,255,0.50) 50%, rgba(255,255,255,0.25) 90%, transparent)',
           }}
         />
       )}
@@ -172,7 +169,7 @@ function GlassEffects({
       {noise && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.012] mix-blend-overlay"
+          className="pointer-events-none absolute inset-0 z-glass-below rounded-[inherit] opacity-[0.015] mix-blend-overlay"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
           }}

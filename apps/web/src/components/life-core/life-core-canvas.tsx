@@ -40,9 +40,9 @@ interface LifeCoreCanvasProps {
   className?: string;
 }
 
-// 粒子颜色
+// 粒子颜色 — 翡翠绿主色
 const NODE_COLOR: Record<NodeKind, [number, number, number]> = {
-  agent: [0, 229, 168],      // 时墨绿（主色，最多）
+  agent: [0, 210, 106],      // 时墨翡翠绿（主色，最多）
   memory: [245, 200, 91],    // 记忆金
   event: [167, 139, 250],    // 生命紫
   knowledge: [122, 184, 240], // 天空蓝
@@ -260,13 +260,13 @@ export function LifeCoreCanvas({
     glowCanvas.width = glowSize;
     glowCanvas.height = glowSize;
     const gctx = glowCanvas.getContext('2d')!;
-    // 多层柔和光晕，不是亮白而是时墨绿
+    // 多层柔和光晕，翡翠绿中心光晕
     const glowGrad = gctx.createRadialGradient(glowSize / 2, glowSize / 2, 0, glowSize / 2, glowSize / 2, glowSize / 2);
-    glowGrad.addColorStop(0, 'rgba(0,229,168,0.18)');
-    glowGrad.addColorStop(0.25, 'rgba(0,229,168,0.10)');
-    glowGrad.addColorStop(0.5, 'rgba(0,180,140,0.05)');
-    glowGrad.addColorStop(0.75, 'rgba(0,140,120,0.02)');
-    glowGrad.addColorStop(1, 'rgba(0,100,100,0)');
+    glowGrad.addColorStop(0, 'rgba(0,210,106,0.20)');
+    glowGrad.addColorStop(0.25, 'rgba(0,210,106,0.12)');
+    glowGrad.addColorStop(0.5, 'rgba(0,180,90,0.06)');
+    glowGrad.addColorStop(0.75, 'rgba(0,140,80,0.03)');
+    glowGrad.addColorStop(1, 'rgba(0,100,60,0)');
     gctx.fillStyle = glowGrad;
     gctx.fillRect(0, 0, glowSize, glowSize);
     setNebulaGlowSprite(glowCanvas);
@@ -323,7 +323,7 @@ export function LifeCoreCanvas({
     // 2. 轴突茎（从星云底部向下延伸）
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = 'rgba(0, 200, 150, 0.3)';
+    ctx.strokeStyle = 'rgba(0, 210, 106, 0.3)';
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -343,7 +343,7 @@ export function LifeCoreCanvas({
       const sy = cy + sp.y * scale;
       const alpha = 0.2 + Math.sin(frame * 2 + i * 0.5) * 0.1;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(0, 229, 168, 0.8)';
+      ctx.fillStyle = 'rgba(0, 210, 106, 0.8)';
       ctx.beginPath();
       ctx.arc(sx, sy, 1.5 - i * 0.08, 0, Math.PI * 2);
       ctx.fill();
@@ -469,9 +469,9 @@ export function LifeCoreCanvas({
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.2;
     const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.12);
-    coreGrad.addColorStop(0, 'rgba(0, 229, 168, 0.20)');
-    coreGrad.addColorStop(0.5, 'rgba(0, 180, 140, 0.08)');
-    coreGrad.addColorStop(1, 'rgba(0, 140, 120, 0)');
+    coreGrad.addColorStop(0, 'rgba(0, 210, 106, 0.22)');
+    coreGrad.addColorStop(0.5, 'rgba(0, 180, 90, 0.08)');
+    coreGrad.addColorStop(1, 'rgba(0, 140, 70, 0)');
     ctx.fillStyle = coreGrad;
     ctx.beginPath();
     ctx.arc(cx, cy, scale * 0.12, 0, Math.PI * 2);
