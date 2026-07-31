@@ -4,16 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 粒子云树 V12 (3D Particle Cloud · Emerald Pulse)
+ * SuiYan Life Core — 粒子云树 V13 (3D Particle Cloud · Emerald Pulse · Bold)
  * ─────────────────────────────────────────────────────────────
  * 复刻 Bilibili BV1ow4m1Y7qu 粒子神经元效果
  *
- * V12 核心变化：3D 深度 + 脉冲运动 + 翡翠绿配色
- * - 增强Z轴深度变化，分支在三维空间中弯曲，非平面
- * - 粒子云脉冲运动：沿径向呼吸式扩张/收缩
- * - 配色统一为项目翡翠绿：白绿胞体 → 翠绿中段 → 深绿终端
- * - 零线条渲染，纯粒子云勾勒树状形态
- * - 3D 透视 + 拖拽旋转 + 惯性 + 双击重置
+ * V13 核心变化：加粗粒子云树状形态
+ * - 粒子密度提升 ~50%（每分支层级增加 40-55 个粒子）
+ * - 粒子尺寸增大 ~40%（baseSize 全层级提升）
+ * - 光晕 sprite 更浓更亮（核心区扩大、中段密度提升）
+ * - 渲染光晕倍率 8→11，核心点倍率 0.7→1.0
+ * - 散射宽度 0.020→0.028，云体更饱满
+ * - 整体亮度提升，alpha 上限提高
+ * - 总粒子上限 5200→7800
  */
 
 export type LifeCoreState = 'companion' | 'learning' | 'recalling' | 'growing';
@@ -368,28 +370,28 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
   // ═══ 生成粒子云 — 密集分布在分支路径上，通过密度勾勒出树状形态 ═══
   const cloudParticles: CloudParticle[] = [];
   for (const branch of branches) {
-    // 粒子密度：初级分支最多，深层递减 — 高密度确保树状形态清晰可见
-    const cloudCount = branch.level === 0 ? 75 + Math.floor(rand() * 30)
-      : branch.level === 1 ? 48 + Math.floor(rand() * 20)
-      : branch.level === 2 ? 28 + Math.floor(rand() * 14)
-      : 14 + Math.floor(rand() * 8);
+    // 粒子密度：初级分支最多，深层递减 — V13 加粗版，密度提升 ~50%
+    const cloudCount = branch.level === 0 ? 115 + Math.floor(rand() * 40)
+      : branch.level === 1 ? 72 + Math.floor(rand() * 28)
+      : branch.level === 2 ? 42 + Math.floor(rand() * 20)
+      : 22 + Math.floor(rand() * 12);
 
     for (let i = 0; i < cloudCount; i++) {
       // 沿分支进度分布，根部更密集（偏置分布）
       const rawT = rand();
       const progress = Math.pow(rawT, 0.7); // 偏向根部
 
-      // 散射宽度：根部宽、终端窄，模拟云团形态
-      const scatterWidth = branch.thickness * 0.020 * (1.0 - progress * 0.6);
+      // 散射宽度：根部宽、终端窄 — 加粗散射让云体更饱满
+      const scatterWidth = branch.thickness * 0.028 * (1.0 - progress * 0.55);
       // 高斯散射（Box-Muller 近似）
       const gauss = (rand() + rand() + rand() - 1.5) * 0.67;
       const offsetX = gauss * scatterWidth;
       const offsetY = (rand() - 0.5) * scatterWidth * 0.5;
       const offsetZ = (rand() - 0.5) * scatterWidth * 0.4;
 
-      // 亮度：根部更亮，终端更暗
+      // 亮度：根部更亮，终端更暗 — 整体亮度提升
       const distRatio = progress;
-      const brightness = (1.0 - distRatio * 0.55) * (0.6 + rand() * 0.4);
+      const brightness = (1.0 - distRatio * 0.50) * (0.72 + rand() * 0.28);
 
       cloudParticles.push({
         branchId: branch.id,
@@ -399,9 +401,10 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
         offsetX,
         offsetY,
         offsetZ,
-        baseSize: branch.level === 0 ? 1.0 + rand() * 0.8
-          : branch.level === 1 ? 0.7 + rand() * 0.6
-          : 0.5 + rand() * 0.5,
+        // 粒子尺寸 — V13 加粗：所有层级增大 ~40%
+        baseSize: branch.level === 0 ? 1.4 + rand() * 1.0
+          : branch.level === 1 ? 1.0 + rand() * 0.8
+          : 0.7 + rand() * 0.6,
         phase: rand() * Math.PI * 2,
         twinkleSpeed: 0.4 + rand() * 1.2,
         brightness,
@@ -414,8 +417,8 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     }
   }
 
-  // 限制总粒子云数量 — 提高上限以支持更高密度的树状形态
-  const maxCloud = 5200;
+  // 限制总粒子云数量 — V13 加粗版上限提升
+  const maxCloud = 7800;
   if (cloudParticles.length > maxCloud) {
     for (let i = cloudParticles.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
@@ -533,16 +536,17 @@ export function LifeCoreCanvas({
   const [glowSprite, setGlowSprite] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // 粒子光晕 — 翡翠绿
+    // 粒子光晕 — 翡翠绿 V13 加粗版（更大、更浓的光晕）
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d')!;
     const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.15, 'rgba(200,255,220,0.7)');
-    grad.addColorStop(0.4, 'rgba(0,210,106,0.2)');
-    grad.addColorStop(1, 'rgba(0,120,60,0)');
+    grad.addColorStop(0.12, 'rgba(200,255,220,0.85)');
+    grad.addColorStop(0.3, 'rgba(0,210,106,0.35)');
+    grad.addColorStop(0.55, 'rgba(0,160,80,0.15)');
+    grad.addColorStop(1, 'rgba(0,100,50,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     setParticleSprite(canvas);
@@ -779,16 +783,16 @@ export function LifeCoreCanvas({
       const alpha = cp.brightness * twinkle * pulseBrightness * breathFade * persp * burstAlpha;
       if (alpha < 0.01) continue;
 
-      // 外层光晕（sprite）
-      const spriteSize = cp.baseSize * 8 * persp * burstScale;
-      ctx.globalAlpha = Math.min(0.5, alpha * 0.4);
+      // 外层光晕（sprite）— V13 加粗：光晕放大 40%
+      const spriteSize = cp.baseSize * 11 * persp * burstScale;
+      ctx.globalAlpha = Math.min(0.65, alpha * 0.5);
       ctx.drawImage(particleSprite, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
 
-      // 核心亮点
-      ctx.globalAlpha = Math.min(0.9, alpha);
+      // 核心亮点 — V13 加粗：核心点放大 40%
+      ctx.globalAlpha = Math.min(0.95, alpha);
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.beginPath();
-      ctx.arc(sx, sy, Math.max(0.4, cp.baseSize * 0.7 * persp * burstScale), 0, Math.PI * 2);
+      ctx.arc(sx, sy, Math.max(0.5, cp.baseSize * 1.0 * persp * burstScale), 0, Math.PI * 2);
       ctx.fill();
     }
 
