@@ -4,16 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /**
- * SuiYan Life Core — 粒子星云神经元 V4
+ * SuiYan Life Core — 螺旋星系粒子云 V5
  * ─────────────────────────────────────────────────────────────
- * 概念：粒子星云神经元。
- * - 中心是一团柔和的星云光晕（胞体），不是亮白团
- * - 数百个微小发光粒子散布在星云中，密度从中心向外递减
- * - 粒子之间通过极细的微弱连线相连（神经网络）
- * - 底部一条纤细的轴突茎向下延伸
- * - 粒子有微弱的脉冲呼吸和缓慢漂移
- * - 信号脉冲偶尔沿连线传播
- * - 整体呈现深邃、有机、宇宙星云般的生命感
+ * 参考风格：BLUE YARD 粒子星系
+ * - 螺旋星系分布：超密核心 → 密集内环 → 螺旋臂 → 稀疏光晕
+ * - 无显式连线，通过粒子密度和加法混合暗示结构
+ * - 强发光粒子，重叠区域产生连续光晕体
+ * - 缓慢自转，粒子沿螺旋臂漂移
+ * - 中心白热，外围翡翠绿，保持品牌色彩
  *
  * 节点绑定四类数据（用颜色区分）：
  * - memory    长期记忆   记忆金
@@ -50,41 +48,24 @@ const NODE_COLOR: Record<NodeKind, [number, number, number]> = {
 
 interface Particle {
   kind: NodeKind;
-  // 归一化坐标（相对于星云中心，0~1尺度）
-  nx: number;
-  ny: number;
+  // 归一化极坐标（相对于星系中心）
+  r: number;        // 距离 0~1
+  theta: number;    // 角度 0~2π
+  // 螺旋臂偏移（用于自转时不同半径角速度不同）
+  armOffset: number;
   // 基础大小系数
   size: number;
   // 相位（用于脉冲动画）
   phase: number;
   // 脉冲速度
   pulseSpeed: number;
-  // 漂移速度
+  // 漂移幅度
   driftAmp: number;
-  driftPhaseX: number;
-  driftPhaseY: number;
+  driftPhase: number;
   // 激活度 0~1
   activation: number;
-  // 距中心距离（用于密度衰减）
-  dist: number;
-  // 连线邻居索引
-  neighbors: number[];
-}
-
-interface Connection {
-  a: number;
-  b: number;
-  // 连线强度
-  strength: number;
-}
-
-interface SignalPulse {
-  connectionIndex: number;
-  // 0~1 沿连线的位置
-  t: number;
-  speed: number;
-  color: [number, number, number];
-  life: number;
+  // 是否为核心粒子（白热）
+  isCore: boolean;
 }
 
 // 伪随机数生成器（seeded）
@@ -97,14 +78,21 @@ function mulberry32(seed: number) {
   };
 }
 
-function buildNebula(counts: LifeCoreCounts, level: number): {
+/**
+ * 构建螺旋星系粒子云
+ * 参考图分析：
+ * - 超密核心：极端集中的中心区域
+ * - 密集内环：环形高密度区
+ * - 螺旋臂：2-3 条不对称旋臂向外延伸
+ * - 稀疏光晕：边缘逐渐稀疏的粒子
+ */
+function buildGalaxy(counts: LifeCoreCounts, level: number): {
   particles: Particle[];
-  connections: Connection[];
   stemPoints: { x: number; y: number }[];
 } {
   const rand = mulberry32(42 + level * 7);
-  // 粒子上限从 420 降至 220 — 视觉效果几乎无损，GPU 负担减半
-  const total = Math.min(220, 100 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 4 + level * 6);
+  // 粒子数量：280 个，平衡视觉效果和性能
+  const total = Math.min(280, 120 + (counts.memory + counts.event + counts.knowledge + counts.agent) * 5 + level * 8);
 
   // 按比例分配粒子类型
   const kindPool: NodeKind[] = [];
@@ -131,88 +119,75 @@ function buildNebula(counts: LifeCoreCounts, level: number): {
 
   const particles: Particle[] = [];
 
-  // 生成粒子：大面积散布的星云，不是集中的一团
-  // 使用极坐标 + 有机变形，创建宽广的星云形状
+  // 螺旋臂数量和旋绕系数
+  const armCount = 3;
+  const winding = 2.8; // 旋绕程度：越大螺旋越紧
+
   for (let i = 0; i < total; i++) {
-    // 距中心距离：使用线性分布让粒子均匀散布，不是全挤在中心
-    const r = Math.pow(rand(), 0.45);
-    // 角度
-    const angle = rand() * Math.PI * 2;
-    // 有机变形：多个谐波让形状不规则，像真实星云
-    const organicR = r * (
-      0.85 +
-      Math.sin(angle * 2 + rand() * 0.5) * 0.12 +
-      Math.sin(angle * 3 + rand() * 0.3) * 0.08 +
-      Math.sin(angle * 5 + rand() * 0.7) * 0.06 +
-      rand() * 0.08
-    );
+    const randVal = rand();
 
-    // 转换为归一化坐标 — 大范围散布
-    const nx = Math.cos(angle) * organicR * 0.62;
-    const ny = Math.sin(angle) * organicR * 0.52 - 0.05;
+    let r: number;
+    let theta: number;
+    let isCore = false;
 
-    // 粒子大小：更均匀，中心略大但不悬殊
-    const coreFactor = Math.max(0.4, 1 - r * 0.5);
-    const size = 0.8 + coreFactor * 0.8 + rand() * 0.4;
+    if (randVal < 0.18) {
+      // 18% 粒子在超密核心（r < 0.12）
+      r = Math.pow(rand(), 2.0) * 0.12;
+      theta = rand() * Math.PI * 2;
+      isCore = true;
+    } else if (randVal < 0.40) {
+      // 22% 粒子在密集内环（r 0.12~0.30）
+      r = 0.12 + Math.pow(rand(), 0.7) * 0.18;
+      // 内环粒子也跟随螺旋臂，但偏移较小
+      const arm = Math.floor(rand() * armCount);
+      const armBase = (arm / armCount) * Math.PI * 2;
+      theta = armBase + r * winding + (rand() - 0.5) * 0.6;
+    } else if (randVal < 0.85) {
+      // 45% 粒子在螺旋臂（r 0.30~0.75）
+      r = 0.30 + Math.pow(rand(), 0.5) * 0.45;
+      const arm = Math.floor(rand() * armCount);
+      const armBase = (arm / armCount) * Math.PI * 2;
+      // 螺旋臂方程：theta = armBase + r * winding + 散射
+      const scatter = (rand() - 0.5) * 0.5 * (1 - r * 0.5); // 外围散射更大
+      theta = armBase + r * winding + scatter;
+    } else {
+      // 15% 粒子在稀疏光晕（r 0.75~1.0）
+      r = 0.75 + rand() * 0.25;
+      theta = rand() * Math.PI * 2;
+    }
+
+    // 粒子大小：核心区域更大更亮，外围更小
+    const sizeBase = isCore ? 1.4 : (r < 0.3 ? 1.1 : (r < 0.6 ? 0.9 : 0.7));
+    const size = sizeBase + rand() * 0.3;
 
     particles.push({
       kind: kindPool[i] || 'agent',
-      nx,
-      ny,
+      r,
+      theta,
+      armOffset: theta, // 记录初始角度，用于自转
       size,
       phase: rand() * Math.PI * 2,
-      pulseSpeed: 0.3 + rand() * 0.5,
-      driftAmp: 0.003 + rand() * 0.005,
-      driftPhaseX: rand() * Math.PI * 2,
-      driftPhaseY: rand() * Math.PI * 2,
+      pulseSpeed: 0.2 + rand() * 0.4,
+      driftAmp: 0.002 + rand() * 0.004,
+      driftPhase: rand() * Math.PI * 2,
       activation: 0.3 + rand() * 0.3,
-      dist: organicR,
-      neighbors: [],
+      isCore,
     });
   }
 
-  // 生成连线：连接距离较近的粒子
-  const connections: Connection[] = [];
-  const connectionDist = 0.12; // 归一化距离阈值（从 0.14 降低，减少连线数量）
-  const maxConnectionsPerParticle = 3;
-
-  for (let i = 0; i < particles.length; i++) {
-    const p = particles[i];
-    const near: { idx: number; dist: number }[] = [];
-    for (let j = i + 1; j < particles.length; j++) {
-      const q = particles[j];
-      const dx = p.nx - q.nx;
-      const dy = p.ny - q.ny;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < connectionDist) {
-        near.push({ idx: j, dist: d });
-      }
-    }
-    near.sort((a, b) => a.dist - b.dist);
-    const maxConn = Math.min(maxConnectionsPerParticle, near.length);
-    for (let k = 0; k < maxConn; k++) {
-      const j = near[k].idx;
-      if (particles[j].neighbors.length >= maxConnectionsPerParticle) continue;
-      const strength = 1 - near[k].dist / connectionDist;
-      p.neighbors.push(j);
-      particles[j].neighbors.push(i);
-      connections.push({ a: i, b: j, strength: strength * strength });
-    }
-  }
-
-  // 轴突茎：从星云底部向下延伸的一串点
+  // 轴突茎：从星系底部向下延伸（保留神经元概念，但更纤细）
   const stemPoints: { x: number; y: number }[] = [];
-  const stemSegments = 12;
+  const stemSegments = 10;
   for (let i = 0; i <= stemSegments; i++) {
     const t = i / stemSegments;
-    const curveX = Math.sin(t * 1.2) * 0.02 * (1 - t * 0.5);
+    const curveX = Math.sin(t * 1.5) * 0.015 * (1 - t * 0.5);
     stemPoints.push({
       x: curveX,
-      y: 0.20 + t * 0.50,
+      y: 0.15 + t * 0.45,
     });
   }
 
-  return { particles, connections, stemPoints };
+  return { particles, stemPoints };
 }
 
 export function LifeCoreCanvas({
@@ -227,19 +202,17 @@ export function LifeCoreCanvas({
   const reducedMotion = useReducedMotion();
   const [hoverInfo, setHoverInfo] = useState<{ kind: NodeKind; x: number; y: number } | null>(null);
 
-  const nebula = useMemo(() => buildNebula(counts, level), [counts, level]);
-  const nebulaRef = useRef(nebula);
-  nebulaRef.current = nebula;
-
-  const pulsesRef = useRef<SignalPulse[]>([]);
-  const lastPulseRef = useRef(0);
+  const galaxy = useMemo(() => buildGalaxy(counts, level), [counts, level]);
+  const galaxyRef = useRef(galaxy);
+  galaxyRef.current = galaxy;
 
   // 预渲染粒子sprite
   const [particleSprite, setParticleSprite] = useState<HTMLCanvasElement | null>(null);
+  const [coreSprite, setCoreSprite] = useState<HTMLCanvasElement | null>(null);
   const [nebulaGlowSprite, setNebulaGlowSprite] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // 创建粒子光晕sprite
+    // 标准粒子光晕sprite — 柔和的径向渐变
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -247,25 +220,40 @@ export function LifeCoreCanvas({
     const ctx = canvas.getContext('2d')!;
     const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.2, 'rgba(255,255,255,0.6)');
-    grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+    grad.addColorStop(0.15, 'rgba(255,255,255,0.7)');
+    grad.addColorStop(0.4, 'rgba(255,255,255,0.2)');
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     setParticleSprite(canvas);
 
-    // 创建星云背景光晕sprite（大而柔和）
-    const glowSize = 256;
+    // 核心粒子sprite — 更大更亮，白热中心
+    const coreSize = 128;
+    const coreCanvas = document.createElement('canvas');
+    coreCanvas.width = coreSize;
+    coreCanvas.height = coreSize;
+    const cctx = coreCanvas.getContext('2d')!;
+    const coreGrad = cctx.createRadialGradient(coreSize / 2, coreSize / 2, 0, coreSize / 2, coreSize / 2, coreSize / 2);
+    coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
+    coreGrad.addColorStop(0.1, 'rgba(220,255,240,0.8)');
+    coreGrad.addColorStop(0.25, 'rgba(150,255,200,0.4)');
+    coreGrad.addColorStop(0.5, 'rgba(0,210,106,0.15)');
+    coreGrad.addColorStop(1, 'rgba(0,210,106,0)');
+    cctx.fillStyle = coreGrad;
+    cctx.fillRect(0, 0, coreSize, coreSize);
+    setCoreSprite(coreCanvas);
+
+    // 星云背景光晕 — 大范围柔和翡翠绿辉光
+    const glowSize = 512;
     const glowCanvas = document.createElement('canvas');
     glowCanvas.width = glowSize;
     glowCanvas.height = glowSize;
     const gctx = glowCanvas.getContext('2d')!;
-    // 多层柔和光晕，翡翠绿中心光晕
     const glowGrad = gctx.createRadialGradient(glowSize / 2, glowSize / 2, 0, glowSize / 2, glowSize / 2, glowSize / 2);
-    glowGrad.addColorStop(0, 'rgba(0,210,106,0.20)');
-    glowGrad.addColorStop(0.25, 'rgba(0,210,106,0.12)');
-    glowGrad.addColorStop(0.5, 'rgba(0,180,90,0.06)');
-    glowGrad.addColorStop(0.75, 'rgba(0,140,80,0.03)');
+    glowGrad.addColorStop(0, 'rgba(0,210,106,0.18)');
+    glowGrad.addColorStop(0.15, 'rgba(0,210,106,0.12)');
+    glowGrad.addColorStop(0.35, 'rgba(0,180,90,0.06)');
+    glowGrad.addColorStop(0.65, 'rgba(0,140,80,0.02)');
     glowGrad.addColorStop(1, 'rgba(0,100,60,0)');
     gctx.fillStyle = glowGrad;
     gctx.fillRect(0, 0, glowSize, glowSize);
@@ -294,197 +282,143 @@ export function LifeCoreCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const { particles, connections, stemPoints } = nebulaRef.current;
-    if (!particles.length || !particleSprite || !nebulaGlowSprite) return;
+    const { particles, stemPoints } = galaxyRef.current;
+    if (!particles.length || !particleSprite || !coreSprite || !nebulaGlowSprite) return;
 
     const frame = performance.now() / 1000;
     const cx = width / 2;
-    const cy = height * 0.45;
-    const nebulaScale = Math.min(width, height) * 0.72;
+    const cy = height * 0.44;
+    const galaxyScale = Math.min(width, height) * 0.78;
 
-    // 星云整体呼吸
+    // 星系整体呼吸
     const breath = state === 'companion'
-      ? 0.95 + Math.sin(frame * 0.8) * 0.05
+      ? 0.96 + Math.sin(frame * 0.6) * 0.04
       : state === 'learning'
-      ? 1.0 + Math.sin(frame * 1.5) * 0.08
+      ? 1.0 + Math.sin(frame * 1.2) * 0.06
       : state === 'recalling'
-      ? 0.92 + Math.sin(frame * 2.0) * 0.10
-      : 1.05 + Math.sin(frame * 0.6) * 0.06;
+      ? 0.93 + Math.sin(frame * 1.6) * 0.08
+      : 1.04 + Math.sin(frame * 0.5) * 0.05;
 
-    const scale = nebulaScale * breath;
+    const scale = galaxyScale * breath;
 
-    // 1. 星云背景光晕（大而柔和，范围广，不是亮白）
+    // 缓慢自转角速度（参考图风格：极慢旋转）
+    // 内圈快、外圈慢（微分自转，类似真实星系）
+    const baseRotation = frame * 0.04;
+
+    // === 1. 星云背景光晕（大范围柔和辉光） ===
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.4;
-    const glowW = nebulaScale * 2.0;
-    const glowH = nebulaScale * 1.7;
+    ctx.globalAlpha = 0.5;
+    const glowW = scale * 2.2;
+    const glowH = scale * 1.9;
     ctx.drawImage(nebulaGlowSprite, cx - glowW / 2, cy - glowH / 2, glowW, glowH);
 
-    // 2. 轴突茎（从星云底部向下延伸）
+    // === 2. 轴突茎（纤细的向下延伸，保留神经元概念） ===
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = 'rgba(0, 210, 106, 0.3)';
-    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = 'rgba(0, 210, 106, 0.25)';
+    ctx.lineWidth = 1;
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (let i = 0; i < stemPoints.length; i++) {
       const sp = stemPoints[i];
-      const sx = cx + sp.x * scale + Math.sin(frame * 0.5 + i * 0.3) * 2;
+      const sx = cx + sp.x * scale + Math.sin(frame * 0.4 + i * 0.3) * 1.5;
       const sy = cy + sp.y * scale;
       if (i === 0) ctx.moveTo(sx, sy);
       else ctx.lineTo(sx, sy);
     }
     ctx.stroke();
 
-    // 茎上的粒子点
+    // 茎上微弱粒子点
+    ctx.globalCompositeOperation = 'lighter';
     for (let i = 1; i < stemPoints.length; i++) {
       const sp = stemPoints[i];
-      const sx = cx + sp.x * scale + Math.sin(frame * 0.5 + i * 0.3) * 2;
+      const sx = cx + sp.x * scale + Math.sin(frame * 0.4 + i * 0.3) * 1.5;
       const sy = cy + sp.y * scale;
-      const alpha = 0.2 + Math.sin(frame * 2 + i * 0.5) * 0.1;
+      const alpha = 0.15 + Math.sin(frame * 1.5 + i * 0.5) * 0.08;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(0, 210, 106, 0.8)';
+      ctx.fillStyle = 'rgba(0, 210, 106, 0.7)';
       ctx.beginPath();
-      ctx.arc(sx, sy, 1.5 - i * 0.08, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 1.2 - i * 0.06, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 3. 神经连线（极细极微弱）
+    // === 3. 粒子（螺旋星系核心渲染） ===
+    // 全部使用 lighter（加法混合），让重叠区域产生连续光晕
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    for (const conn of connections) {
-      const p = particles[conn.a];
-      const q = particles[conn.b];
-      if (!p || !q) continue;
 
-      const px = cx + p.nx * scale;
-      const py = cy + p.ny * scale;
-      const qx = cx + q.nx * scale;
-      const qy = cy + q.ny * scale;
-
-      // 连线透明度随距离衰减，且有微弱脉冲
-      const distFade = conn.strength * 0.12;
-      const pulse = 0.5 + Math.sin(frame * 1.5 + p.phase + q.phase) * 0.3;
-      const alpha = distFade * pulse;
-
-      if (alpha < 0.005) continue;
-
-      ctx.strokeStyle = `rgba(100, 200, 180, ${alpha.toFixed(3)})`;
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(qx, qy);
-      ctx.stroke();
-    }
-
-    // 4. 信号脉冲（沿连线传播的微光）
-    const pulses = pulsesRef.current;
-    // 定期发射新脉冲
-    if (frame - lastPulseRef.current > (state === 'companion' ? 2.5 : state === 'learning' ? 0.8 : 1.5)) {
-      lastPulseRef.current = frame;
-      if (pulses.length < 8) {
-        const ci = Math.floor(Math.random() * connections.length);
-        const conn = connections[ci];
-        if (conn) {
-          const kind = particles[conn.a]?.kind || 'agent';
-          pulses.push({
-            connectionIndex: ci,
-            t: 0,
-            speed: 0.3 + Math.random() * 0.3,
-            color: NODE_COLOR[kind],
-            life: 1,
-          });
-        }
-      }
-    }
-
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const pulse = pulses[i];
-      pulse.t += pulse.speed * 0.016;
-      pulse.life = 1 - pulse.t;
-      if (pulse.t >= 1) {
-        pulses.splice(i, 1);
-        continue;
-      }
-      const conn = connections[pulse.connectionIndex];
-      if (!conn) { pulses.splice(i, 1); continue; }
-      const p = particles[conn.a];
-      const q = particles[conn.b];
-      if (!p || !q) { pulses.splice(i, 1); continue; }
-
-      const px = cx + p.nx * scale;
-      const py = cy + p.ny * scale;
-      const qx = cx + q.nx * scale;
-      const qy = cy + q.ny * scale;
-      const sx = px + (qx - px) * pulse.t;
-      const sy = py + (qy - py) * pulse.t;
-
-      const [r, g, b] = pulse.color;
-      ctx.globalAlpha = pulse.life * 0.5;
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${pulse.life * 0.8})`;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 5. 粒子（微小发光点）
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
-      // 粒子漂移
-      const dx = Math.sin(frame * p.pulseSpeed * 0.3 + p.driftPhaseX) * p.driftAmp * scale;
-      const dy = Math.cos(frame * p.pulseSpeed * 0.3 + p.driftPhaseY) * p.driftAmp * scale;
-      const px = cx + p.nx * scale + dx;
-      const py = cy + p.ny * scale + dy;
 
-      // 脉冲
-      const pulse = 0.6 + Math.sin(frame * p.pulseSpeed + p.phase) * 0.4;
+      // 微分自转：内圈角速度更大
+      const angularVel = baseRotation * (1.0 / (0.3 + p.r * 0.7));
+      const currentTheta = p.armOffset + angularVel;
+
+      // 转换极坐标为屏幕坐标
+      const organicR = p.r * (1 + Math.sin(currentTheta * 3 + p.phase) * 0.03); // 微弱有机变形
+      const px = cx + Math.cos(currentTheta) * organicR * scale;
+      const py = cy + Math.sin(currentTheta) * organicR * scale * 0.82; // y轴压扁，形成椭圆星系
+
+      // 粒子漂移（微弱的径向呼吸）
+      const drift = Math.sin(frame * p.pulseSpeed + p.driftPhase) * p.driftAmp * scale;
+      const finalX = px + Math.cos(currentTheta) * drift;
+      const finalY = py + Math.sin(currentTheta) * drift * 0.82;
+
+      // 脉冲亮度
+      const pulse = 0.65 + Math.sin(frame * p.pulseSpeed + p.phase) * 0.35;
+
       const [r, g, b] = NODE_COLOR[p.kind];
 
-      // 外围粒子保持亮度，不再急剧衰减
-      const coreFactor = Math.max(0.5, 1 - p.dist * 0.35);
-      const size = p.size * (1.8 + pulse * 0.6) * coreFactor;
-      const alpha = (0.4 + p.activation * 0.4) * pulse * coreFactor;
+      if (p.isCore) {
+        // 核心粒子：白热光晕 + 大 sprite
+        const spriteSize = p.size * 14 * pulse;
+        ctx.globalAlpha = Math.min(0.9, (0.5 + p.activation * 0.3) * pulse);
+        ctx.drawImage(coreSprite, finalX - spriteSize / 2, finalY - spriteSize / 2, spriteSize, spriteSize);
 
-      ctx.globalAlpha = Math.min(1, alpha);
+        // 核心纯白点
+        ctx.globalAlpha = Math.min(1, pulse * 0.9);
+        ctx.fillStyle = `rgba(255, 255, 255, ${pulse})`;
+        ctx.beginPath();
+        ctx.arc(finalX, finalY, Math.max(0.8, p.size * 0.8), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // 普通粒子：彩色光晕
+        const brightness = Math.max(0.5, 1 - p.r * 0.4); // 外围粒子稍暗
+        const spriteSize = p.size * 8 * pulse * brightness;
+        const alpha = (0.35 + p.activation * 0.35) * pulse * brightness;
 
-      // 绘制粒子光晕（sprite 尺寸从 7x 降至 5x 减少 GPU overdraw）
-      const spriteSize = size * 5;
-      ctx.drawImage(
-        particleSprite,
-        px - spriteSize / 2,
-        py - spriteSize / 2,
-        spriteSize,
-        spriteSize,
-      );
+        ctx.globalAlpha = Math.min(0.85, alpha);
+        ctx.drawImage(particleSprite, finalX - spriteSize / 2, finalY - spriteSize / 2, spriteSize, spriteSize);
 
-      // 粒子核心（纯色小点）
-      ctx.globalAlpha = Math.min(1, alpha * 1.5);
-      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-      ctx.beginPath();
-      ctx.arc(px, py, Math.max(0.8, size * 0.7), 0, Math.PI * 2);
-      ctx.fill();
+        // 粒子核心点（彩色）
+        ctx.globalAlpha = Math.min(1, alpha * 1.8);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.beginPath();
+        ctx.arc(finalX, finalY, Math.max(0.6, p.size * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // 6. 中心胞体核心（微弱的亮心，不是亮白团）
+    // === 4. 中心胞体核心光晕 ===
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.2;
-    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.12);
-    coreGrad.addColorStop(0, 'rgba(0, 210, 106, 0.22)');
-    coreGrad.addColorStop(0.5, 'rgba(0, 180, 90, 0.08)');
+    ctx.globalAlpha = 0.25;
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.15);
+    coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+    coreGrad.addColorStop(0.2, 'rgba(0, 210, 106, 0.18)');
+    coreGrad.addColorStop(0.6, 'rgba(0, 180, 90, 0.06)');
     coreGrad.addColorStop(1, 'rgba(0, 140, 70, 0)');
     ctx.fillStyle = coreGrad;
     ctx.beginPath();
-    ctx.arc(cx, cy, scale * 0.12, 0, Math.PI * 2);
+    ctx.arc(cx, cy, scale * 0.15, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-  }, [state, particleSprite, nebulaGlowSprite]);
+  }, [state, particleSprite, coreSprite, nebulaGlowSprite]);
 
   useEffect(() => {
     let running = true;
     let lastFrame = 0;
-    // 节流到 ~30fps，减少 GPU 绘制调用一半
+    // 节流到 ~30fps
     const frameInterval = 1000 / 30;
     const loop = (now: number) => {
       if (!running) return;
@@ -517,15 +451,21 @@ export function LifeCoreCanvas({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const cx = rect.width / 2;
-    const cy = rect.height * 0.45;
-    const scale = Math.min(rect.width, rect.height) * 0.72;
+    const cy = rect.height * 0.44;
+    const scale = Math.min(rect.width, rect.height) * 0.78;
 
     // 找到最近的粒子
-    const { particles } = nebulaRef.current;
+    const { particles } = galaxyRef.current;
     let best: { kind: NodeKind; x: number; y: number; d: number } | null = null;
+    const frame = performance.now() / 1000;
+    const baseRotation = frame * 0.04;
+
     for (const p of particles) {
-      const px = cx + p.nx * scale;
-      const py = cy + p.ny * scale;
+      const angularVel = baseRotation * (1.0 / (0.3 + p.r * 0.7));
+      const currentTheta = p.armOffset + angularVel;
+      const organicR = p.r * (1 + Math.sin(currentTheta * 3 + p.phase) * 0.03);
+      const px = cx + Math.cos(currentTheta) * organicR * scale;
+      const py = cy + Math.sin(currentTheta) * organicR * scale * 0.82;
       const d = Math.hypot(x - px, y - py);
       if (d < 20 && (!best || d < best.d)) {
         best = { kind: p.kind, x: px, y: py, d };
@@ -539,21 +479,7 @@ export function LifeCoreCanvas({
   }, []);
 
   const handleClick = useCallback(() => {
-    // 点击时从中心发射一个脉冲波
-    const { connections, particles } = nebulaRef.current;
-    for (let k = 0; k < 5; k++) {
-      const ci = Math.floor(Math.random() * connections.length);
-      const conn = connections[ci];
-      if (conn) {
-        pulsesRef.current.push({
-          connectionIndex: ci,
-          t: 0,
-          speed: 0.5 + Math.random() * 0.3,
-          color: NODE_COLOR[particles[conn.a]?.kind || 'agent'],
-          life: 1,
-        });
-      }
-    }
+    // 点击时触发脉冲效果（未来可扩展）
   }, []);
 
   const kindLabels: Record<NodeKind, string> = {
