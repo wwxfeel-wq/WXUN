@@ -55,7 +55,9 @@ export class LlmAdapterService {
   /** Resolve the active provider's config (API URL, models) */
   private async resolveProvider() {
     const provider = await this.apiKeyService.getActiveProvider();
-    return this.apiKeyService.getProviderConfig(provider);
+    const cfg = this.apiKeyService.getProviderConfig(provider);
+    this.logger.log(`Active AI provider: ${provider} (${cfg.label}), API URL: ${cfg.apiUrl}, model: ${cfg.chatModel}`);
+    return cfg;
   }
 
   // ============================================================
@@ -335,13 +337,15 @@ export class LlmAdapterService {
       const cfg = this.apiKeyService.getProviderConfig(provider);
       this.logger.error(
         `No API key configured for ${provider} (${cfg.label}). ` +
-        `Set ${cfg.envKey} in .env.production or configure it via the admin settings page.`,
+        `Set ${cfg.envKey} in .env.production or configure it via the admin settings page. ` +
+        `Checked env: ${this.configService.get<string>(cfg.envKey) ? 'set' : 'not set'}`,
       );
       throw new Error(
         `AI 服务未正确配置：${cfg.label} 的 API Key 为空。` +
         `请在 .env.production 中设置 ${cfg.envKey}，或在管理后台 → AI 设置中配置。`,
       );
     }
+    this.logger.debug(`Using API key for ${provider}: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`);
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

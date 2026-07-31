@@ -95,6 +95,26 @@ jobs:
               echo "WARNING: Downloaded config contains HSTS, removing..."
               sed -i '/Strict-Transport-Security/d' infra/nginx/nginx.conf
             fi
+            echo "== 确保 DeepSeek API 配置 =="
+            # 更新或添加 DEEPSEEK_API_KEY
+            if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
+              sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}|" .env.production
+            else
+              echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env.production
+            fi
+            # 更新或添加 AI_ACTIVE_PROVIDER
+            if grep -q "^AI_ACTIVE_PROVIDER=" .env.production; then
+              sed -i "s|^AI_ACTIVE_PROVIDER=.*|AI_ACTIVE_PROVIDER=deepseek|" .env.production
+            else
+              echo "AI_ACTIVE_PROVIDER=deepseek" >> .env.production
+            fi
+            # 更新或添加 DEEPSEEK_API_URL
+            if grep -q "^DEEPSEEK_API_URL=" .env.production; then
+              sed -i "s|^DEEPSEEK_API_URL=.*|DEEPSEEK_API_URL=https://api.deepseek.com/v1|" .env.production
+            else
+              echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
+            fi
+            echo "DeepSeek API 配置已确保写入 .env.production"
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \

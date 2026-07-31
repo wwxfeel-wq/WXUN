@@ -7,10 +7,15 @@ const nextConfig = {
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },
   async rewrites() {
+    // In Docker, API_INTERNAL_URL is set to http://api:3001 (service name).
+    // In local dev, it falls back to http://localhost:3001.
+    // Note: In production with Nginx, /api/ requests bypass Next.js entirely
+    // and go directly to the API container. This rewrite only matters for SSR.
+    const apiTarget = process.env.API_INTERNAL_URL || 'http://localhost:3001';
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'http://localhost:3001/api/v1/:path*',
+        destination: `${apiTarget}/api/v1/:path*`,
       },
     ];
   },

@@ -86,9 +86,16 @@ export class ApiKeyService {
     private readonly configService: ConfigService,
   ) {}
 
-  /** Get the provider config for a given provider. */
+  /** Get the provider config for a given provider, with env overrides. */
   getProviderConfig(provider: ApiKeyProvider): ProviderConfig {
-    return PROVIDER_CONFIGS[provider];
+    const base = PROVIDER_CONFIGS[provider];
+    // Allow env variable to override the hardcoded API URL
+    const envUrlKey = `${provider.toUpperCase()}_API_URL`;
+    const envUrl = this.configService.get<string>(envUrlKey);
+    if (envUrl) {
+      return { ...base, apiUrl: envUrl };
+    }
+    return base;
   }
 
   /** Get all provider configs. */
