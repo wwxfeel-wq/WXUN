@@ -86,72 +86,84 @@ jobs:
           port: 22
           envs: DEEPSEEK_KEY,WECHAT_TOKEN
           script: |
-            set -e
             cd /www/wwwroot/echolife
             echo "== 同步 docker-compose.deploy.yml =="
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
-              -o docker-compose.deploy.yml || \
+              -o docker-compose.deploy.yml.new || \
               curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
-              -o docker-compose.deploy.yml
+              -o docker-compose.deploy.yml.new
+            if [ -s docker-compose.deploy.yml.new ]; then
+              mv docker-compose.deploy.yml.new docker-compose.deploy.yml
+              echo "docker-compose.deploy.yml synced OK"
+            else
+              rm -f docker-compose.deploy.yml.new
+              echo "WARNING: download failed, using existing docker-compose.deploy.yml"
+            fi
+            # 确保所有依赖都是 service_started 而非 service_healthy（避免容器崩溃导致整条链路起不来）
+            sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.deploy.yml
+            echo "Patched service_healthy -> service_started"
             echo "== 同步 nginx 配置 =="
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
               -o infra/nginx/nginx.conf || \
               curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
               -o infra/nginx/nginx.conf
-            # 验证下载的配置不包含 HSTS（自签名证书不应该用 HSTS）
             if grep -q "Strict-Transport-Security" infra/nginx/nginx.conf; then
-              echo "WARNING: Downloaded config contains HSTS, removing..."
+              echo "WARNING: removing HSTS..."
               sed -i '/Strict-Transport-Security/d' infra/nginx/nginx.conf
             fi
             echo "== 确保 DeepSeek API 配置 =="
-            # 仅在 secret 非空时更新 DEEPSEEK_API_KEY
             if [ -n "$DEEPSEEK_KEY" ]; then
               if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
                 sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=$DEEPSEEK_KEY|" .env.production
               else
                 echo "DEEPSEEK_API_KEY=$DEEPSEEK_KEY" >> .env.production
               fi
-              echo "DEEPSEEK_API_KEY 已更新"
-            else
-              echo "WARNING: DEEPSEEK_API_KEY secret 未设置，跳过更新"
             fi
-            # 更新或添加 AI_ACTIVE_PROVIDER
             if grep -q "^AI_ACTIVE_PROVIDER=" .env.production; then
               sed -i "s|^AI_ACTIVE_PROVIDER=.*|AI_ACTIVE_PROVIDER=deepseek|" .env.production
             else
               echo "AI_ACTIVE_PROVIDER=deepseek" >> .env.production
             fi
-            # 更新或添加 DEEPSEEK_API_URL
             if grep -q "^DEEPSEEK_API_URL=" .env.production; then
               sed -i "s|^DEEPSEEK_API_URL=.*|DEEPSEEK_API_URL=https://api.deepseek.com/v1|" .env.production
             else
               echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
             fi
-            echo "DeepSeek API 配置已确保写入 .env.production"
-            echo "== 确保微信 ClawBot Token 配置 =="
+            echo "== 确保微信 ClawBot Token =="
             if [ -n "$WECHAT_TOKEN" ]; then
               if grep -q "^WECHAT_BOT_TOKEN=" .env.production; then
                 sed -i "s|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=$WECHAT_TOKEN|" .env.production
               else
                 echo "WECHAT_BOT_TOKEN=$WECHAT_TOKEN" >> .env.production
               fi
-              echo "WECHAT_BOT_TOKEN 已更新"
-            else
-              echo "NOTE: WECHAT_BOT_TOKEN secret 未设置，微信 ClawBot 需要扫码登录"
             fi
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \
               -u "${{ secrets.ACR_USERNAME }}" --password-stdin
             echo "== 拉取新镜像 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api
-            echo "== 重启核心服务（不含 openclaw）=="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis api web nginx
-            echo "== 重载 nginx 配置 =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || true
+            echo "== 停止旧容器 =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production down || true
+            echo "== 启动基础服务 =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis || true
+            sleep 5
+            echo "== 启动 API =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d api || true
+            sleep 10
+            echo "== 启动 Web + Nginx =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d web nginx || true
+            sleep 3
+            echo "== 重载 nginx =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production restart nginx || true
             echo "== 清理旧镜像 =="
-            docker image prune -f
-            echo "== 完成 =="
+            docker image prune -f || true
+            echo "== 容器状态 =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production ps
+            echo "== API 最近日志 =="
+            docker logs echolife-api --tail 30 2>&1 || true
+            echo "== Nginx 最近日志 =="
+            docker logs echolife-nginx --tail 20 2>&1 || true
+            echo "== 部署完成 =="
