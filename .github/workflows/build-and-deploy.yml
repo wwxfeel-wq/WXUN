@@ -192,6 +192,7 @@ jobs:
             echo "== 部署完成 ==" | tee -a /tmp/deploy_diag.txt
 
       - name: Download diagnostic
+        continue-on-error: true
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -203,8 +204,11 @@ jobs:
           overwrite: true
 
       - name: Upload diagnostic artifact
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: deploy-diagnostic
           path: deploy_diag.txt
           retention-days: 7
+          if-no-files-found: ignore
