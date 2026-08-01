@@ -4,12 +4,14 @@ import { KnowledgeModule } from '../../knowledge/knowledge.module';
 import { NotificationModule } from '../../notification/notification.module';
 import { AiModule } from '../../ai/ai.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
+import { KindnessModule } from '../../kindness/kindness.module';
 import { MemoryTools } from './tools/memory.tools';
 import { KnowledgeTools } from './tools/knowledge.tools';
 import { NotificationTools } from './tools/notification.tools';
 import { FamilyTools } from './tools/family.tools';
 import { WebBrowseTools } from './tools/web-browse.tools';
 import { ResearchTools } from './tools/research.tools';
+import { KindnessTools } from './tools/kindness.tools';
 import { McpToolRegistry } from './mcp-tool-registry.service';
 
 /**
@@ -27,8 +29,9 @@ import { McpToolRegistry } from './mcp-tool-registry.service';
     KnowledgeModule,
     NotificationModule,
     AiModule,
+    KindnessModule,
   ],
-  providers: [MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools, McpToolRegistry],
-  exports: [McpToolRegistry, MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools],
+  providers: [MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools, KindnessTools, McpToolRegistry],
+  exports: [McpToolRegistry, MemoryTools, KnowledgeTools, NotificationTools, FamilyTools, WebBrowseTools, ResearchTools, KindnessTools],
 })
 export class ToolRegistryModule {}

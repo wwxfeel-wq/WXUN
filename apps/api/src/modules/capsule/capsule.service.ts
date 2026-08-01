@@ -7,11 +7,14 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+import { LlmAdapterService, ChatMessage } from '../ai/services/llm-adapter.service';
 import { CreateCapsuleDto } from './dto/create-capsule.dto';
 import {
   ERROR_CODES,
   CapsuleStatus,
   CapsuleType,
+  SHIMO_PERSONA,
+  KindnessLevel,
 } from '@echolife/shared';
 import type { PaginatedResponse } from '@echolife/shared';
 
@@ -29,6 +32,7 @@ export class CapsuleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly llmAdapter: LlmAdapterService,
   ) {}
 
   // ============================================================
@@ -37,6 +41,9 @@ export class CapsuleService {
 
   /**
    * Create a new time capsule sealed until the specified openAt date.
+   *
+   * 童忆引擎扩展：支持媒体附件（照片、语音、文字）和温暖等级，
+   * 存储在 metadata 中，开启时由 AI 重新讲述。
    */
   async create(userId: string, dto: CreateCapsuleDto) {
     // Validate the openAt is in the future
@@ -47,6 +54,17 @@ export class CapsuleService {
       });
     }
 
+    // 将媒体附件和温暖等级合并到 metadata
+    const metadata: Record<string, unknown> = {
+      ...(dto.metadata ?? {}),
+    };
+    if (dto.media && dto.media.length > 0) {
+      metadata.media = dto.media;
+    }
+    if (dto.kindnessLevel) {
+      metadata.kindnessLevel = dto.kindnessLevel;
+    }
+
     const capsule = await this.prisma.timeCapsule.create({
       data: {
         userId,
@@ -55,7 +73,7 @@ export class CapsuleService {
         type: dto.type ?? CapsuleType.PERSONAL,
         status: CapsuleStatus.SEALED,
         openAt: dto.openAt,
-        metadata: (dto.metadata ?? undefined) as Prisma.InputJsonValue,
+        metadata: Object.keys(metadata).length > 0 ? (metadata as Prisma.InputJsonValue) : undefined,
       },
     });
 
@@ -155,6 +173,9 @@ export class CapsuleService {
   /**
    * Open a sealed time capsule. Only succeeds if the current date is
    * on or after the openAt date. Marks the capsule as opened.
+   *
+   * 童忆引擎扩展：开启时由时墨 AI 重新讲述胶囊内容，
+   * 像多年后重新看到小时候电视里的那种温暖感觉。
    */
   async open(userId: string, id: string) {
     const capsule = await this.prisma.timeCapsule.findFirst({
@@ -196,7 +217,81 @@ export class CapsuleService {
 
     this.logger.log(`Time capsule opened: ${id} by user: ${userId}`);
 
-    return opened;
+    // 异步生成 AI 温暖重述
+    const aiNarrative = await this.generateAiNarrative(capsule).catch((err) => {
+      this.logger.warn(`AI narrative generation failed for capsule ${id}: ${(err as Error).message}`);
+      return null;
+    });
+
+    return { ...opened, aiNarrative };
+  }
+
+  /**
+   * 童忆引擎：AI 重新讲述时间胶囊 — 像公益广告结尾的旁白
+   */
+  private async generateAiNarrative(capsule: {
+    id: string;
+    title: string;
+    content: string;
+    type: string;
+    sealedAt: Date;
+    openAt: Date;
+    metadata?: Prisma.JsonValue;
+  }): Promise<string | null> {
+    // 从 metadata 提取媒体和温暖等级
+    const metadata = (capsule.metadata ?? {}) as Record<string, unknown>;
+    const media = Array.isArray(metadata.media) ? metadata.media : [];
+    const kindnessLevel = (metadata.kindnessLevel as string) ?? KindnessLevel.WARM;
+
+    // 计算封存天数
+    const sealedDays = Math.floor(
+      (Date.now() - capsule.sealedAt.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    const mediaDesc = media.length > 0
+      ? `\n附件：${media.map((m: { type?: string; description?: string }) => `${m.type}(${m.description ?? '无描述'})`).join('、')}`
+      : '';
+
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: `你是「${SHIMO_PERSONA.NAME}」${SHIMO_PERSONA.AVATAR}，${SHIMO_PERSONA.ROLE}。
+用户刚刚打开了一个封存了 ${sealedDays} 天的时间胶囊。请像小时候电视里的公益广告结尾旁白一样，重新讲述这段记忆。
+
+风格要求：
+- 短、温暖、有画面感，像公益广告的最后几十秒
+- 3-5 句话
+- 不要复述原文，而是重新讲述，带一点时间的距离感
+- 最后一句轻轻点题
+- 用中文`,
+      },
+      {
+        role: 'user',
+        content: `时间胶囊标题：${capsule.title}
+封存时间：${capsule.sealedAt.toLocaleDateString('zh-CN')}
+开启时间：${new Date().toLocaleDateString('zh-CN')}
+封存天数：${sealedDays} 天
+温暖等级：${kindnessLevel}
+
+内容：
+${capsule.content}${mediaDesc}
+
+请重新讲述这段记忆。`,
+      },
+    ];
+
+    try {
+      const result = await this.llmAdapter.chatComplete(messages, {
+        temperature: 0.85,
+        maxTokens: 300,
+      });
+
+      this.logger.log(`AI narrative generated for capsule: ${capsule.id}`);
+      return result.content;
+    } catch (error) {
+      this.logger.warn(`AI narrative failed: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   /**

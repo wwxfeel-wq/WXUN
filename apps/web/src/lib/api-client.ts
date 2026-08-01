@@ -332,6 +332,91 @@ export function createSSEStream(
   };
 }
 
+// ============================================================
+// 童忆引擎 Kindness API
+// ============================================================
+
+/** 温暖瞬间创建参数 */
+export interface CreateKindnessParams {
+  title: string;
+  content: string;
+  type?: string;
+  importance?: string;
+  people?: string[];
+  event: string;
+  emotion?: string;
+  emotionScore?: number;
+  location?: string;
+  media?: { type: string; url?: string; description?: string }[];
+  familyId?: string;
+  occurredAt?: string;
+}
+
+/** 温暖瞬间查询参数 */
+export interface QueryKindnessParams {
+  page?: number;
+  pageSize?: number;
+  type?: string;
+  importance?: string;
+  emotion?: string;
+  familyId?: string;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  startDate?: string;
+  endDate?: string;
+}
+
+export const kindnessApi = {
+  /** 获取温暖瞬间列表 */
+  list: (params?: QueryKindnessParams) =>
+    apiClient.get('/kindness', params as QueryParams),
+
+  /** 创建温暖瞬间 */
+  create: (data: CreateKindnessParams) =>
+    apiClient.post('/kindness', data),
+
+  /** 获取温暖瞬间详情 */
+  getById: (id: string) =>
+    apiClient.get(`/kindness/${id}`),
+
+  /** 删除温暖瞬间 */
+  delete: (id: string) =>
+    apiClient.delete(`/kindness/${id}`),
+
+  /** 获取温暖统计 */
+  getStats: () =>
+    apiClient.get('/kindness/stats'),
+
+  /** 获取 Kindness Network 节点（供 Life Core 粒子云渲染） */
+  getNodes: (limit?: number) =>
+    apiClient.get('/kindness/nodes', limit ? { limit } : undefined),
+
+  /** AI 重新讲述温暖瞬间（Memory Story Reconstruction） */
+  reconstructStory: (id: string) =>
+    apiClient.post(`/kindness/${id}/story`),
+
+  /** 从文本识别家庭温暖行为（Family Kindness Moments） */
+  detect: (text: string) =>
+    apiClient.post('/kindness/detect', { text }),
+
+  /** 生成每日温暖提醒（Daily Warm Reminder） */
+  generateDailyReminder: () =>
+    apiClient.post('/kindness/reminder/daily'),
+
+  /** 获取待发送的温暖提醒 */
+  getPendingReminders: () =>
+    apiClient.get('/kindness/reminders/pending'),
+
+  /** 生成家庭短故事（Family Short Story Generator） */
+  generateShortStory: (period?: 'daily' | 'weekly') =>
+    apiClient.post(`/kindness/story/generate${period ? `?period=${period}` : ''}`),
+
+  /** 获取历史家庭短故事 */
+  getShortStories: (page?: number, pageSize?: number) =>
+    apiClient.get('/kindness/stories', { page, pageSize }),
+};
+
 /** Parse a single raw SSE event block and dispatch to the relevant callback. */
 function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
   let eventType = 'message';

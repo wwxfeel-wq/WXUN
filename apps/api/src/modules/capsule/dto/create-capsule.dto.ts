@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsIn,
   IsNotEmpty,
@@ -9,8 +10,27 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { CapsuleType } from '@echolife/shared';
+import { CapsuleType, KindnessLevel } from '@echolife/shared';
+
+/** 媒体附件 — 童忆引擎 Memory Capsule 支持 */
+export class CapsuleMediaDto {
+  @ApiProperty({ example: 'photo', description: '媒体类型：photo / voice / text' })
+  @IsString()
+  @IsNotEmpty()
+  type!: string;
+
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/photo.jpg', description: '媒体 URL' })
+  @IsString()
+  @IsOptional()
+  url?: string;
+
+  @ApiPropertyOptional({ example: '春节全家福', description: '媒体描述' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+}
 
 export class CreateCapsuleDto {
   @ApiProperty({ example: '给十年后的自己', description: '时间胶囊标题' })
@@ -48,4 +68,25 @@ export class CreateCapsuleDto {
   @IsObject()
   @IsOptional()
   metadata?: Record<string, unknown>;
+
+  // ─── 童忆引擎扩展字段 ────────────────────────────
+
+  @ApiPropertyOptional({
+    type: [CapsuleMediaDto],
+    description: '媒体附件（照片、语音、文字）— 童忆引擎 Memory Capsule',
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CapsuleMediaDto)
+  @IsOptional()
+  media?: CapsuleMediaDto[];
+
+  @ApiPropertyOptional({
+    enum: KindnessLevel,
+    description: '温暖等级 — 影响开启时 AI 叙事风格',
+    default: KindnessLevel.WARM,
+  })
+  @IsIn(Object.values(KindnessLevel))
+  @IsOptional()
+  kindnessLevel?: KindnessLevel;
 }

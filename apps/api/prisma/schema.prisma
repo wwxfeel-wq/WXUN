@@ -43,6 +43,9 @@ model User {
   familyMembers   FamilyMember[]
   auditLogs       AuditLog[]     @relation("AuditLogUser")
   auditLogsBy     AuditLog[]     @relation("AuditLogBy")
+  kindnessMemories KindnessMemory[]
+  familyShortStories FamilyShortStory[] @relation("UserShortStories")
+  warmReminders  WarmReminder[] @relation("UserWarmReminders")
 
   @@index([status])
   @@index([createdAt])
@@ -179,6 +182,7 @@ model Memory {
   entities      MemoryEntity[]
   lifeTreeNode  LifeTreeNode?    @relation("LifeTreeMemory")
   familyMemories FamilyMemory[]
+  kindnessMemories KindnessMemory[]
 
   @@index([userId, type])
   @@index([userId, visibility])
@@ -322,6 +326,8 @@ model Family {
 
   members     FamilyMember[]
   familyMemories FamilyMemory[]
+  kindnessMemories KindnessMemory[]
+  familyShortStories FamilyShortStory[]
 
   @@map("families")
 }
@@ -651,7 +657,84 @@ model Announcement {
 }
 
 // ============================================================
-// Domain 7: Agent Runtime & Skills
+// Domain 7: Childhood Memory Engine (童忆引擎)
+// ============================================================
+
+/// 家庭温暖瞬间 — 核心数据结构，所有数据进入 Family Memory Graph
+model KindnessMemory {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId      String?   @map("family_id") @db.Uuid
+  family        Family?   @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  memoryId      String?   @map("memory_id") @db.Uuid
+  memory        Memory?   @relation(fields: [memoryId], references: [id], onDelete: SetNull)
+  title         String    @db.VarChar(200)
+  content       String    @db.Text
+  type          String    @default("companionship") @db.VarChar(30)
+  importance    String    @default("warm") @db.VarChar(20)
+  people        String[]  @default([])
+  event         String    @db.VarChar(500)
+  emotion       String    @default("love") @db.VarChar(50)
+  emotionScore  Float?    @map("emotion_score")
+  location      String?   @db.VarChar(255)
+  media         Json?
+  story         String?   @db.Text
+  visibility    String    @default("family") @db.VarChar(20)
+  occurredAt    DateTime? @map("occurred_at")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@index([userId, occurredAt])
+  @@index([userId, createdAt])
+  @@index([userId, type])
+  @@index([userId, importance])
+  @@index([familyId])
+  @@index([emotion])
+  @@map("kindness_memories")
+}
+
+/// 家庭短故事 — AI 生成的温暖叙事（每天/每周）
+model FamilyShortStory {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  user              User     @relation("UserShortStories", fields: [userId], references: [id], onDelete: Cascade)
+  familyId          String?  @map("family_id") @db.Uuid
+  family            Family?  @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  title             String   @db.VarChar(200)
+  content           String   @db.Text
+  period            String   @default("daily") @db.VarChar(20)
+  periodStart       DateTime @map("period_start")
+  periodEnd         DateTime @map("period_end")
+  kindnessMemoryIds String[] @default([]) @map("kindness_memory_ids")
+  emotion           String?  @db.VarChar(50)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([userId, period, periodStart])
+  @@index([familyId])
+  @@map("family_short_stories")
+}
+
+/// 每日温暖提醒 — 像童年公益广告一样的短暂陪伴
+model WarmReminder {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  user         User      @relation("UserWarmReminders", fields: [userId], references: [id], onDelete: Cascade)
+  message      String    @db.Text
+  context      String?   @db.Text
+  scheduledFor DateTime  @map("scheduled_for")
+  deliveredAt  DateTime? @map("delivered_at")
+  status       String    @default("pending") @db.VarChar(20)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, status, scheduledFor])
+  @@map("warm_reminders")
+}
+
+// ============================================================
+// Domain 8: Agent Runtime & Skills
 // ============================================================
 
 /// A runtime agent instance visible on the home dashboard.

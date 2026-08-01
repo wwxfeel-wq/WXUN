@@ -169,3 +169,41 @@ export enum AICallStatus {
   TIMEOUT = 'timeout',
   RATE_LIMITED = 'rate_limited',
 }
+
+// ─── Childhood Memory Engine (童忆引擎) ──────────────────────
+
+/** 温暖瞬间类型 — 家庭陪伴行为的分类 */
+export enum KindnessType {
+  /** 陪伴行为（一起吃饭、旅行、散步） */
+  COMPANIONSHIP = 'companionship',
+  /** 关心行为（准备早餐、叮嘱添衣、照顾生病） */
+  CARE = 'care',
+  /** 庆祝时刻（生日、节日、纪念日） */
+  CELEBRATION = 'celebration',
+  /** 成长记录（孩子第一次走路、获奖、毕业） */
+  GROWTH = 'growth',
+  /** 情感支持（安慰、鼓励、倾听） */
+  SUPPORT = 'support',
+}
+
+/** 温暖瞬间重要度等级 — 影响 Life Core 粒子颜色 */
+export enum KindnessLevel {
+  /** 普通温暖节点 — 暖黄色 */
+  WARM = 'warm',
+  /** 家庭事件 — 绿色 */
+  FAMILY = 'family',
+  /** 童年温暖节点 — 暖黄色 */
+  CHILDHOOD = 'childhood',
+  /** 重要家庭瞬间 — 金色核心 */
+  GOLDEN = 'golden',
+}
+
+/** 童忆引擎 Agent 类型 */
+export enum KindnessAgentType {
+  /** 记忆故事 Agent — 整理家庭故事 */
+  MEMORY_STORY = 'memory_story',
+  /** 温暖发现 Agent — 发现家庭温暖行为 */
+  KINDNESS = 'kindness',
+  /** 陪伴提醒 Agent — 主动陪伴提醒 */
+  COMPANION = 'companion',
+}

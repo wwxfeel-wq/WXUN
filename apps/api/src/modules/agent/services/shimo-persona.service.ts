@@ -62,6 +62,12 @@ ${ctx.formattedRecentMessages}
       case 'story':
         return `你正在帮用户把回忆整理成一段温暖、有细节的叙事故事。
 保留细节、渲染情感、串联记忆。直接返回故事正文，不要加标题。`;
+      case 'kindness':
+        return `${SHIMO_PERSONA.KINDNESS_NARRATIVE_STYLE.map((s) => `- ${s}`).join('\n')}
+
+当用户提到家人、陪伴、温暖的瞬间时，用这种风格回应。
+不要像总结机器一样说「今天上传3张照片」，
+而是说「今天多了一段家庭记忆。这些照片记录的不只是画面，而是一家人在一起的时间。」`;
       case 'chat':
       default:
         return `像一个认识很久的人在深夜聊天：句子不长，语气平静真诚。

@@ -78,12 +78,13 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WECHAT_TOKEN: ${{ secrets.WECHAT_BOT_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
-          envs: DEEPSEEK_KEY
+          envs: DEEPSEEK_KEY,WECHAT_TOKEN
           script: |
             set -e
             cd /www/wwwroot/echolife
@@ -123,6 +124,17 @@ jobs:
               echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
             fi
             echo "DeepSeek API 配置已确保写入 .env.production"
+            echo "== 确保微信 ClawBot Token 配置 =="
+            if [ -n "$WECHAT_TOKEN" ]; then
+              if grep -q "^WECHAT_BOT_TOKEN=" .env.production; then
+                sed -i "s|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=$WECHAT_TOKEN|" .env.production
+              else
+                echo "WECHAT_BOT_TOKEN=$WECHAT_TOKEN" >> .env.production
+              fi
+              echo "WECHAT_BOT_TOKEN 已更新"
+            else
+              echo "NOTE: WECHAT_BOT_TOKEN secret 未设置，微信 ClawBot 需要扫码登录"
+            fi
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \

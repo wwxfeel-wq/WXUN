@@ -5,6 +5,7 @@ import { NotificationTools } from './tools/notification.tools';
 import { FamilyTools } from './tools/family.tools';
 import { WebBrowseTools } from './tools/web-browse.tools';
 import { ResearchTools } from './tools/research.tools';
+import { KindnessTools } from './tools/kindness.tools';
 import type {
   McpToolContext,
   McpToolDefinition,
@@ -38,6 +39,7 @@ export class McpToolRegistry {
     private readonly familyTools: FamilyTools,
     private readonly webBrowseTools: WebBrowseTools,
     private readonly researchTools: ResearchTools,
+    private readonly kindnessTools: KindnessTools,
   ) {
     this.registerBuiltInTools();
   }
@@ -156,6 +158,7 @@ export class McpToolRegistry {
     this.registerMany(this.familyTools.getDefinitions());
     this.registerMany(this.webBrowseTools.getDefinitions());
     this.registerMany(this.researchTools.getDefinitions());
+    this.registerMany(this.kindnessTools.getDefinitions());
   }
 
   private toSchema(tool: McpToolDefinition): McpToolSchema {

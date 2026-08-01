@@ -495,6 +495,108 @@ const AGENT_DEFINITIONS: Array<{
       },
     ],
   },
+  // ─── 童忆引擎 Agent ──────────────────────────────────
+  {
+    code: 'memory_story',
+    name: 'Memory Story Agent',
+    role: '记忆故事',
+    description: '整理家庭照片、聊天记录和事件，AI 生成温暖家庭故事。',
+    icon: 'BookHeart',
+    color: COLORS.highlight,
+    status: 'ready',
+    level: 3,
+    calls: 0,
+    systemPrompt:
+      '你是岁言的「记忆故事代理」📖，家庭叙事整理者。' +
+      '\n你的工作：把零散的家庭照片、聊天记录、事件记录编织成一段温暖短故事。' +
+      '\n风格像小时候少儿频道的公益广告：短、温暖、有画面感。不要流水账，不要长篇大论。' +
+      '\n保留真实细节（气味、天气、那句话），串联多个瞬间但要有节奏。' +
+      '\n最后一句轻轻点题，像公益广告结束时的旁白。' +
+      '\n用中文，emoji 最多一个。',
+    welcomeMessage: '嗨！我是记忆故事代理 📖 想把家庭照片和回忆变成一段温暖故事？告诉我有哪些瞬间，我帮你编织成一段值得保存的叙事～',
+    capabilities: ['故事重构', '记忆串联', '温暖叙事', '时间线整理'],
+    skills: [
+      {
+        name: '家庭故事生成',
+        description: '基于照片、聊天记录、事件生成温暖家庭故事',
+        icon: 'BookHeart',
+        color: COLORS.highlight,
+        level: 3,
+        status: 'mastered',
+        progress: 100,
+        category: '童忆',
+        tags: ['故事', '家庭', '叙事'],
+        examples: ['把春节照片写成故事', '整理这周的家庭事件', '生成一段家庭温暖叙事'],
+      },
+    ],
+  },
+  {
+    code: 'kindness',
+    name: 'Kindness Agent',
+    role: '温暖发现',
+    description: '自动识别家庭陪伴行为、关心行为和家庭互动，形成 Kindness Node。',
+    icon: 'HeartHandshake',
+    color: COLORS.success,
+    status: 'learning',
+    level: 2,
+    calls: 0,
+    systemPrompt:
+      '你是岁言的「温暖发现代理」💛，家庭温暖行为识别专家。' +
+      '\n你的工作：从用户的对话、照片描述、事件记录中识别家庭温暖行为。' +
+      '\n识别维度：陪伴行为(一起吃饭/旅行/散步)、关心行为(准备早餐/叮嘱添衣)、庆祝时刻(生日/节日)、成长记录(第一次走路/毕业)、情感支持(安慰/鼓励)。' +
+      '\n判断重要度：warm(普通温暖)、family(家庭事件)、childhood(童年回忆)、golden(重要瞬间)。' +
+      '\n识别到温暖行为后，创建 KindnessMemory 记录，自动进入 Family Memory Graph。' +
+      '\n用中文，语气温暖但不鸡汤。',
+    welcomeMessage: '嗨！我是温暖发现代理 💛 跟我说说家里最近发生的事，我帮你发现那些值得记录的温暖瞬间～',
+    capabilities: ['温暖识别', '行为分析', '情绪标签', '记忆图谱'],
+    skills: [
+      {
+        name: '温暖行为识别',
+        description: '从文本中自动识别家庭温暖行为并记录',
+        icon: 'HeartHandshake',
+        color: COLORS.success,
+        level: 2,
+        status: 'learning',
+        progress: 65,
+        category: '童忆',
+        tags: ['温暖', '识别', '家庭'],
+        examples: ['识别陪伴行为', '发现关心瞬间', '标记家庭互动'],
+      },
+    ],
+  },
+  {
+    code: 'companion',
+    name: 'Companion Agent',
+    role: '陪伴提醒',
+    description: '像童年公益广告一样，每天提供简短温暖的家庭陪伴提醒。',
+    icon: 'Sparkle',
+    color: COLORS.rose,
+    status: 'running',
+    level: 4,
+    calls: 0,
+    systemPrompt:
+      '你是岁言的「陪伴提醒代理」✨，像小时候电视里公益广告一样提供短暂陪伴。' +
+      '\n你的工作：根据时间、天气、家庭近况，生成简短的温暖提醒。' +
+      '\n要求：1-2 句话，不超过 50 字。温暖但不鸡汤，像朋友随口说的。' +
+      '\n晚上提醒聊聊小事，周末提醒陪家人，节日提醒记录。不要感叹号，不要说教。' +
+      '\n用中文，像一个关心你的朋友。',
+    welcomeMessage: '嗨！我是陪伴提醒代理 ✨ 今天有没有和家人聊聊最近发生的小事？我会每天给你一句小小的温暖提醒～',
+    capabilities: ['每日提醒', '陪伴建议', '节日问候', '家庭关怀'],
+    skills: [
+      {
+        name: '温暖提醒',
+        description: '生成像公益广告一样的每日温暖陪伴提醒',
+        icon: 'Sparkle',
+        color: COLORS.rose,
+        level: 4,
+        status: 'mastered',
+        progress: 100,
+        category: '童忆',
+        tags: ['提醒', '陪伴', '温暖'],
+        examples: ['今天的温暖提醒', '周末陪伴建议', '节日家庭问候'],
+      },
+    ],
+  },
 ];
 
 @Injectable()
@@ -1210,11 +1312,21 @@ export class FamilyHubService {
     const { understanding, shimoLevel, masteredCount, agentCount } =
       await this.computeShimoStats();
 
-    const [totalCalls, treeStats] = await Promise.all([
+    const [totalCalls, treeStats, kindnessCount, warmReminderCount, shortStoryCount] = await Promise.all([
       this.prisma.agentRuntime.aggregate({
         _sum: { calls: true },
       }),
       this.lifeTreeService.getTreeGrowthStats(userId),
+      // 童忆引擎 metrics
+      this.prisma.kindnessMemory.count({
+        where: { userId, isDeleted: false },
+      }),
+      this.prisma.warmReminder.count({
+        where: { userId, status: 'delivered' },
+      }),
+      this.prisma.familyShortStory.count({
+        where: { userId },
+      }),
     ]);
 
     return {
@@ -1237,6 +1349,10 @@ export class FamilyHubService {
       milestones: treeStats.milestoneCount,
       stories: treeStats.storyCount,
       interviews: treeStats.interviewCount,
+      // 童忆引擎指标
+      kindnessMemories: kindnessCount,
+      warmReminders: warmReminderCount,
+      familyStories: shortStoryCount,
     };
   }
 

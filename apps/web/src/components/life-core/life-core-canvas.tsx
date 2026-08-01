@@ -18,13 +18,14 @@ import { useReducedMotion } from 'framer-motion';
 
 export type LifeCoreState = 'companion' | 'learning' | 'recalling' | 'growing';
 
-export type NodeKind = 'memory' | 'event' | 'knowledge' | 'agent';
+export type NodeKind = 'memory' | 'event' | 'knowledge' | 'agent' | 'kindness_warm' | 'kindness_family' | 'kindness_childhood' | 'kindness_golden';
 
 export interface LifeCoreCounts {
   memory: number;
   event: number;
   knowledge: number;
   agent: number;
+  kindness?: number;
 }
 
 interface LifeCoreCanvasProps {
@@ -179,6 +180,18 @@ function kindColor(kind: NodeKind, r: number): [number, number, number] {
     case 'knowledge':
       // 偏黄绿
       return [clamp(cr + 30, 0, 255), clamp(cg + 10, 0, 255), clamp(cb - 10, 0, 255)];
+    case 'kindness_warm':
+      // 暖黄色 — 普通温暖节点
+      return [clamp(255, 0, 255), clamp(200 + r * 20, 0, 255), clamp(100 + r * 30, 0, 255)];
+    case 'kindness_family':
+      // 绿色 — 家庭事件
+      return [clamp(100 + r * 30, 0, 255), clamp(200 + r * 20, 0, 255), clamp(120 + r * 20, 0, 255)];
+    case 'kindness_childhood':
+      // 深暖黄色 — 童年温暖节点
+      return [clamp(255, 0, 255), clamp(180 + r * 20, 0, 255), clamp(80 + r * 20, 0, 255)];
+    case 'kindness_golden':
+      // 金色核心 — 重要家庭瞬间
+      return [clamp(255, 0, 255), clamp(215 + r * 15, 0, 255), clamp(r * 30, 0, 255)];
     default:
       return [cr, cg, cb];
   }
@@ -197,7 +210,7 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
 } {
   const rand = mulberry32(42 + level * 7);
 
-  const totalCount = counts.memory + counts.event + counts.knowledge + counts.agent;
+  const totalCount = counts.memory + counts.event + counts.knowledge + counts.agent + (counts.kindness ?? 0);
   const kinds: NodeKind[] = [];
   if (totalCount === 0) {
     for (let i = 0; i < 24; i++) kinds.push('agent');
@@ -207,8 +220,13 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
       memory: Math.max(0.1, counts.memory / Math.max(1, totalCount)),
       event: Math.max(0.1, counts.event / Math.max(1, totalCount)),
       knowledge: Math.max(0.1, counts.knowledge / Math.max(1, totalCount)),
+      kindness_warm: Math.max(0.05, (counts.kindness ?? 0) / Math.max(1, totalCount) * 0.5),
+      kindness_family: Math.max(0.05, (counts.kindness ?? 0) / Math.max(1, totalCount) * 0.2),
+      kindness_childhood: Math.max(0.05, (counts.kindness ?? 0) / Math.max(1, totalCount) * 0.15),
+      kindness_golden: Math.max(0.05, (counts.kindness ?? 0) / Math.max(1, totalCount) * 0.15),
     };
-    const sum = ratios.agent + ratios.memory + ratios.event + ratios.knowledge;
+    const sum = ratios.agent + ratios.memory + ratios.event + ratios.knowledge
+      + ratios.kindness_warm + ratios.kindness_family + ratios.kindness_childhood + ratios.kindness_golden;
     for (let i = 0; i < 24; i++) {
       const r = rand() * sum;
       let acc = 0;

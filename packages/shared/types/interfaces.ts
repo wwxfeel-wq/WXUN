@@ -2,7 +2,7 @@
  * EchoLife Shared Domain Interfaces
  * Core domain models shared between frontend and backend
  */
-import { MemoryType, MemoryVisibility, AgentType, EntityType } from './enums';
+import { MemoryType, MemoryVisibility, AgentType, EntityType, KindnessType, KindnessLevel } from './enums';
 
 /** Authenticated user context (from JWT) */
 export interface AuthUser {
@@ -121,7 +121,7 @@ export interface AgentRuntimeInput {
   message: string;
   interviewId?: string;
   /** Explicit mode hint; runtime may override after planning */
-  mode?: 'chat' | 'digital-life' | 'story';
+  mode?: 'chat' | 'digital-life' | 'story' | 'kindness';
   /** Optional persona override for digital-life mode */
   persona?: string;
 }
@@ -168,7 +168,7 @@ export interface AgentRuntimeContext {
   userId: string;
   message: string;
   interviewId?: string;
-  mode: 'chat' | 'digital-life' | 'story';
+  mode: 'chat' | 'digital-life' | 'story' | 'kindness';
   persona?: string;
   plan?: AgentPlan;
   retrievedMemories?: MemoryWithScore[];
@@ -357,4 +357,102 @@ export interface SkillAbilityResult {
   skillProgress?: number;
   leveledUp?: boolean;
   expGained?: number;
+}
+
+// ─── Childhood Memory Engine (童忆引擎) ──────────────────────
+
+/** 媒体附件 — 照片、语音、文字 */
+export interface KindnessMedia {
+  type: 'photo' | 'voice' | 'text';
+  url?: string;
+  description?: string;
+}
+
+/** 温暖瞬间 — 家庭陪伴行为的结构化记录 */
+export interface KindnessMemory {
+  id: string;
+  familyId?: string;
+  memoryId?: string;
+  timestamp: string;
+  people: string[];
+  event: string;
+  emotion: string;
+  emotionScore?: number;
+  location?: string;
+  media?: KindnessMedia[];
+  story?: string;
+  importance: KindnessLevel;
+  type: KindnessType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 每日温暖提醒 — 像童年公益广告一样的短暂陪伴 */
+export interface WarmReminder {
+  id: string;
+  userId: string;
+  message: string;
+  context?: string;
+  scheduledFor: string;
+  deliveredAt?: string;
+  status: 'pending' | 'delivered' | 'snoozed';
+  createdAt: string;
+}
+
+/** 家庭短故事 — AI 生成的温暖叙事 */
+export interface FamilyShortStory {
+  id: string;
+  userId: string;
+  familyId?: string;
+  title: string;
+  content: string;
+  period: 'daily' | 'weekly';
+  periodStart: string;
+  periodEnd: string;
+  kindnessMemoryIds?: string[];
+  createdAt: string;
+}
+
+/** 记忆胶囊 — 升级版 Time Capsule，支持媒体和 AI 重述 */
+export interface MemoryCapsule {
+  id: string;
+  userId: string;
+  title: string;
+  content: string;
+  media?: KindnessMedia[];
+  type: string;
+  status: string;
+  sealedAt: string;
+  openAt: string;
+  openedAt?: string;
+  aiNarrative?: string;
+  kindnessLevel?: KindnessLevel;
+  createdAt: string;
+}
+
+/** Kindness Network 节点 — 用于 Life Core 粒子云可视化 */
+export interface KindnessNode {
+  id: string;
+  kind: KindnessLevel;
+  type: KindnessType;
+  label: string;
+  timestamp: string;
+  people: string[];
+  emotion: string;
+  connections?: { nodeId: string; relation: string }[];
+}
+
+/** 温暖瞬间统计 */
+export interface KindnessStats {
+  total: number;
+  byType: Record<string, number>;
+  byLevel: Record<string, number>;
+  byEmotion: Record<string, number>;
+  recentCount: number;
+  streakDays: number;
+  topPeople: { name: string; count: number }[];
+  dateRange: {
+    earliest: string | null;
+    latest: string | null;
+  };
 }

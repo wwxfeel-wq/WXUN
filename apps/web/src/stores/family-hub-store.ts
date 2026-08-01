@@ -26,6 +26,10 @@ export interface FamilyMetrics {
   milestones: number;
   stories: number;
   interviews: number;
+  // 童忆引擎指标
+  kindnessMemories?: number;
+  warmReminders?: number;
+  familyStories?: number;
 }
 
 export type ShimoStatus =

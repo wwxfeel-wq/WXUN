@@ -60,12 +60,13 @@ export function SpatialHome() {
     return 'companion';
   }, [shimoCore.status]);
 
-  // 四类节点数量
+  // 四类节点数量（含童忆引擎温暖节点）
   const lifeCounts: LifeCoreCounts = useMemo(() => ({
     memory: metrics.longTermMemories,
     event: metrics.milestones + metrics.timeCapsules,
     knowledge: metrics.knowledgeDocs,
     agent: metrics.activeAgents,
+    kindness: metrics.kindnessMemories ?? 0,
   }), [metrics]);
 
   const submit = async (event: FormEvent) => {

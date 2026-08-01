@@ -1,6 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import Wechat4u, { Wechat4uContact, Wechat4uMessage } from 'wechat4u';
 import {
   SSEEventType,
   MemoryType,
@@ -18,6 +17,8 @@ import { GenerateSummaryDto } from '../summary/dto/generate-summary.dto';
 import { CapsuleService } from '../capsule/capsule.service';
 import { CreateCapsuleDto } from '../capsule/dto/create-capsule.dto';
 import { NotificationService, CreateNotificationPayload } from '../notification/notification.service';
+import { ILinkClient } from './ilink-client';
+import { ILinkInboundMessage } from './ilink.types';
 
 export interface WechatStatus {
   connected: boolean;
@@ -72,20 +73,37 @@ export interface AgentActivityEvent {
   timestamp: number;
 }
 
+/** context_token 缓存条目 — 每个用户的最新 context_token */
+interface ContextTokenEntry {
+  token: string;
+  updatedAt: number;
+}
+
+/** 扫码状态轮询间隔 */
+const QR_POLL_INTERVAL_MS = 2000;
+/** 扫码超时（5 分钟） */
+const QR_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+/** 长轮询错误后重试延迟 */
+const POLL_RETRY_DELAY_MS = 3000;
+/** context_token 缓存有效期（30 分钟） */
+const CONTEXT_TOKEN_TTL_MS = 30 * 60 * 1000;
+
 /**
- * WechatService - Manages a real WeChat web connection via wechat4u.
+ * WechatService - 微信官方 ClawBot iLink 协议集成
  *
- * Phase 7 refactor:
- *  - Incoming messages flow into the AgentRuntime pipeline (时墨).
- *  - Family members are identified by WeChat id / nickname bound to FamilyMember.
- *  - Messages and contacts are persisted in PostgreSQL / Redis instead of memory.
- *  - Proactive services (reminders, summaries, time capsules) are triggered
- *    from WeChat content when appropriate.
+ * 2026 迁移: 从 wechat4u (模拟网页版) 迁移到官方 iLink Bot API
+ *  - 扫码登录通过 get_bot_qrcode + get_qrcode_status 实现
+ *  - 消息接收通过 getupdates 长轮询（35s hold）
+ *  - 消息回复通过 sendmessage，必须带 context_token
+ *  - 收到的消息流入 AgentRuntime pipeline (时墨)
+ *  - 家庭成员通过微信 ID 绑定识别
+ *  - 消息和联系人持久化到 PostgreSQL / Redis
+ *  - 主动服务（提醒、总结、时间胶囊）根据消息内容触发
  */
 @Injectable()
 export class WechatService implements OnModuleDestroy {
   private readonly logger = new Logger(WechatService.name);
-  private bot: Wechat4u | null = null;
+  private readonly ilink = new ILinkClient();
 
   private qrCodeUrl: string | null = null;
   private loggedIn = false;
@@ -93,27 +111,41 @@ export class WechatService implements OnModuleDestroy {
   private phase: WechatStatus['phase'] = 'idle';
   private lastError: string | null = null;
 
+  /** 长轮询游标 */
+  private updateCursor = '';
+  /** 长轮询是否正在运行 */
+  private isPolling = false;
+  /** 长轮询停止标志 */
+  private shouldStopPolling = false;
+  /** 扫码轮询是否正在运行 */
+  private isQrPolling = false;
+
+  /** bot_token（登录后获得，可用于重连） */
+  private botToken: string | null = null;
+  /** bot_id (xxx@im.bot) */
+  private botId: string | null = null;
+
+  /** context_token 缓存：userId → { token, updatedAt } */
+  private contextTokenCache = new Map<string, ContextTokenEntry>();
+
   /** Auto-reconnect state */
   private syncFailCount = 0;
-  private maxSyncRetries = 5;
-  private reconnectDelay = 5000;
+  private readonly maxSyncRetries = 5;
   private isReconnecting = false;
-  private botData: any = null;
-  /** 自动重连的时间窗口起点（毫秒时间戳），用于限制最大重连时长 */
+  /** 自动重连的时间窗口起点 */
   private reconnectStartedAt: number | null = null;
-  /** 自动重连的最大时间窗口（5 分钟），超过即放弃并标记为 error */
   private readonly maxReconnectWindowMs = 5 * 60 * 1000;
 
   /** Callbacks for incoming messages (used by controller for SSE push) */
   private messageListeners: Array<(msg: WechatMessageDto) => void> = [];
 
-  /** Callbacks for agent real-time activity events (thinking / tool_call / observation / token / done / error) */
+  /** Callbacks for agent real-time activity events */
   private agentActivityListeners: Array<(event: AgentActivityEvent) => void> = [];
 
-  /** 当前正在处理的 agent 请求计数，用于 healthCheck 的 agentActive 字段 */
+  /** 当前正在处理的 agent 请求计数 */
   private activeAgentCount = 0;
 
-  /** 排队中（已接收但尚未完成处理）的消息数，用于 healthCheck 的 pendingMessages 字段 */
+  /** 排队中的消息数 */
   private pendingMessages = 0;
 
   constructor(
@@ -124,178 +156,241 @@ export class WechatService implements OnModuleDestroy {
     private readonly summaryService: SummaryService,
     private readonly capsuleService: CapsuleService,
     private readonly notificationService: NotificationService,
-  ) {}
+  ) {
+    // 尝试从环境变量加载已有 token（支持服务器重启后自动恢复）
+    const envToken = process.env.WECHAT_BOT_TOKEN;
+    if (envToken) {
+      this.botToken = envToken;
+      this.ilink.setBotToken(envToken);
+      this.logger.log('Found WECHAT_BOT_TOKEN in env, will attempt auto-reconnect');
+    }
+  }
+
+  // ============================================================
+  // 登录流程
+  // ============================================================
 
   /**
-   * Start the WeChat login process. Generates a QR code URL.
+   * 启动微信 ClawBot 登录流程
+   * 1. 调用 get_bot_qrcode 获取二维码
+   * 2. 异步轮询 get_qrcode_status 等待扫码确认
+   * 3. 确认后保存 bot_token，启动长轮询
    */
   async startLogin(): Promise<{ qrCodeUrl: string }> {
-    if (this.loggedIn && this.bot) {
+    // 如果已有 token 且已登录，直接返回
+    if (this.loggedIn && this.botToken) {
       return { qrCodeUrl: '' };
     }
 
-    if (this.bot) {
-      try {
-        this.bot.logout();
-      } catch {
-        // ignore
-      }
-      this.bot = null;
+    // 如果已有 token（从 env 或之前的登录），尝试直接启动长轮询
+    if (this.botToken && this.ilink.hasToken && !this.loggedIn) {
+      this.logger.log('Attempting to start polling with existing bot_token...');
+      this.phase = 'logged_in';
+      this.loggedIn = true;
+      this.userNickName = 'ClawBot';
+      this.startPollingLoop();
+      return { qrCodeUrl: '' };
     }
 
+    // 重置状态
     this.phase = 'idle';
     this.qrCodeUrl = null;
     this.lastError = null;
 
-    let startFailed = false;
+    try {
+      // Step 1: 获取二维码
+      const qrResponse = await this.ilink.getBotQrCode();
 
-    this.bot = new Wechat4u();
-
-    this.bot.on('uuid', (uuid: string) => {
-      this.qrCodeUrl = `https://login.weixin.qq.com/qrcode/${uuid}`;
+      this.qrCodeUrl = qrResponse.qrcode_url;
       this.phase = 'waiting_scan';
-      this.logger.log('WeChat QR code generated, waiting for scan...');
-    });
+      this.logger.log('iLink QR code generated, waiting for scan...');
 
-    this.bot.on('scan', () => {
-      this.phase = 'waiting_scan';
-      this.logger.log('WeChat QR code scanned, waiting for confirm...');
-    });
-
-    this.bot.on('confirm', () => {
-      this.phase = 'waiting_confirm';
-      this.logger.log('WeChat login confirmed, connecting...');
-    });
-
-    this.bot.on('login', async () => {
-      this.loggedIn = true;
-      this.phase = 'logged_in';
-      this.syncFailCount = 0;
-      // 登录成功（含重连后的重新登录）：重置自动重连状态
-      this.isReconnecting = false;
-      this.reconnectStartedAt = null;
-      this.userNickName = this.bot?.user?.NickName || 'Unknown';
-      this.logger.log(`WeChat logged in: ${this.userNickName}`);
-
-      try {
-        this.botData = this.bot?.botData;
-      } catch {
-        // ignore
-      }
-
-      try {
-        await this.bot?.updateContacts();
-        await this.syncContactsToDb();
-      } catch (err) {
-        this.logger.warn(`Failed to fetch/sync contacts: ${(err as Error).message}`);
-      }
-    });
-
-    this.bot.on('contacts-updated', async () => {
-      if (this.loggedIn) {
-        try {
-          await this.syncContactsToDb();
-          this.logger.debug('WeChat contacts synchronized to database');
-        } catch (err) {
-          this.logger.warn(`Failed to sync contacts: ${(err as Error).message}`);
-        }
-      }
-    });
-
-    this.bot.on('logout', () => {
-      const wasLoggedIn = this.loggedIn;
-      this.loggedIn = false;
-      this.phase = 'logged_out';
-      this.qrCodeUrl = null;
-      this.userNickName = null;
-      this.logger.log('WeChat logged out');
-
-      if (wasLoggedIn && !this.isReconnecting) {
-        this.scheduleReconnect();
-      }
-    });
-
-    this.bot.on('message', (msg: Wechat4uMessage) => {
-      this.handleIncomingMessage(msg).catch((err) => {
-        this.logger.error(`Failed to handle WeChat message: ${(err as Error).message}`);
-      });
-    });
-
-    this.bot.on('error', (err: Error) => {
-      const errMsg = err.message || '';
-      const errTips = (err as any).tips || '';
-      this.logger.error(`WeChat error: ${errMsg}${errTips ? ` (tips: ${errTips})` : ''}`);
-
-      // 1102 / 同步失败 是 wechat4u 中常见的同步中断错误，属于非致命错误。
-      // 处理原则（降级模式）：保持 logged_in 状态，不立即设置 phase = 'error'，
-      // 让 AI 管家在前端继续可用，同时触发自动重连恢复消息通道。
-      const isSyncError =
-        errMsg.includes('1102') ||
-        errMsg.includes('同步失败') ||
-        errMsg.includes('同步') ||
-        errTips.includes('同步失败');
-
-      if (isSyncError) {
-        this.syncFailCount++;
-        this.lastError = `微信消息同步异常（1102），已自动重连 ${this.syncFailCount}/${this.maxSyncRetries} 次，AI 管家不受影响`;
-        this.logger.warn(
-          `WeChat 同步失败 (1102)：第 ${this.syncFailCount}/${this.maxSyncRetries} 次，保持登录态并触发自动重连`,
-        );
-
-        // 未达重连上限且当前没有正在重连时，触发自动重连
-        if (this.syncFailCount < this.maxSyncRetries && !this.isReconnecting) {
-          this.scheduleReconnect();
-        } else if (this.syncFailCount >= this.maxSyncRetries) {
-          this.lastError = `微信同步持续失败（1102），已尝试 ${this.syncFailCount} 次，建议稍后手动重新登录；AI 管家可正常使用`;
-          this.logger.warn('WeChat 同步失败次数已达上限，交由 scheduleReconnect 的时间窗口处理');
-        }
-      } else if (!this.loggedIn) {
-        // 仅在未登录状态下才把错误视为致命错误
-        this.lastError = errMsg;
-        this.phase = 'error';
-        startFailed = true;
+      // Step 2: 异步轮询扫码状态
+      const sessionId = qrResponse.session_id || '';
+      if (sessionId) {
+        void this.pollQrCodeStatus(sessionId);
       } else {
-        // 已登录后的其他非致命错误，仅记录不中断会话
-        this.logger.warn(`Non-fatal WeChat error after login: ${errMsg}`);
-        this.lastError = errMsg;
+        // 如果没有 session_id，尝试直接用 qrcode_url 启动
+        this.logger.warn('No session_id in QR response, polling may not work');
       }
-    });
 
-    this.bot.start();
-
-    // QR 码生成可能需要较长时间（网络抖动/微信服务端延迟），等待最多 30 秒。
-    // 同时检查 startFailed：如果 wechat4u 在 start() 过程中报错，
-    // 应立即退出循环，而不是傻等满 30 秒。
-    const maxWait = 30000;
-    const interval = 200;
-    const startTime = Date.now();
-    this.logger.log('Waiting for WeChat QR code (max 30s)...');
-    while (!this.qrCodeUrl && !startFailed && Date.now() - startTime < maxWait) {
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
-
-    if (startFailed) {
-      const errMsg = this.lastError || '微信登录启动失败';
-      this.logger.error(`WeChat start failed before QR code: ${errMsg}`);
-      throw new Error(errMsg);
-    }
-
-    if (!this.qrCodeUrl) {
-      const waited = Math.round((Date.now() - startTime) / 1000);
-      this.logger.error(`WeChat QR code generation timed out after ${waited}s`);
+      return { qrCodeUrl: this.qrCodeUrl };
+    } catch (err) {
+      const errMsg = (err as Error).message;
+      this.logger.error(`iLink login failed: ${errMsg}`);
       this.phase = 'error';
-      this.lastError = '二维码生成超时，请重试';
-      throw new Error('Failed to generate WeChat QR code. Please try again.');
+      this.lastError = errMsg;
+      throw new Error(`微信 ClawBot 登录失败: ${errMsg}`);
     }
-
-    const waitedSec = Math.round((Date.now() - startTime) / 1000);
-    this.logger.log(`WeChat QR code ready after ${waitedSec}s`);
-
-    return { qrCodeUrl: this.qrCodeUrl };
   }
 
   /**
-   * Get current WeChat connection status.
+   * 轮询扫码状态，直到确认登录或超时
+   */
+  private async pollQrCodeStatus(sessionId: string): Promise<void> {
+    if (this.isQrPolling) return;
+    this.isQrPolling = true;
+
+    const startTime = Date.now();
+
+    try {
+      while (
+        !this.shouldStopPolling &&
+        !this.loggedIn &&
+        Date.now() - startTime < QR_POLL_TIMEOUT_MS
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, QR_POLL_INTERVAL_MS));
+
+        if (this.shouldStopPolling || this.loggedIn) break;
+
+        try {
+          const status = await this.ilink.getQrCodeStatus(sessionId);
+
+          switch (status.status) {
+            case 'waiting':
+              // 仍在等待扫码
+              break;
+
+            case 'scanned':
+              this.phase = 'waiting_confirm';
+              this.userNickName = status.nickname || 'ClawBot User';
+              this.logger.log(`QR code scanned by ${this.userNickName}, waiting for confirm...`);
+              break;
+
+            case 'confirmed':
+              // 登录成功！
+              if (status.bot_token) {
+                this.botToken = status.bot_token;
+                this.botId = status.bot_id || null;
+                this.ilink.setBotToken(status.bot_token);
+                this.loggedIn = true;
+                this.phase = 'logged_in';
+                this.syncFailCount = 0;
+                this.isReconnecting = false;
+                this.reconnectStartedAt = null;
+                this.userNickName = status.nickname || this.userNickName || 'ClawBot';
+
+                this.logger.log(`iLink login confirmed! Bot ID: ${this.botId}, Nickname: ${this.userNickName}`);
+
+                // 启动长轮询接收消息
+                this.startPollingLoop();
+              } else {
+                this.logger.error('Login confirmed but no bot_token received');
+                this.phase = 'error';
+                this.lastError = '登录确认但未收到 bot_token';
+              }
+              return;
+
+            case 'expired':
+              this.phase = 'error';
+              this.lastError = '二维码已过期，请重新扫码';
+              this.logger.warn('iLink QR code expired');
+              return;
+          }
+        } catch (err) {
+          this.logger.warn(`QR status poll error: ${(err as Error).message}`);
+          // 继续轮询，不因单次错误中断
+        }
+      }
+
+      // 超时
+      if (!this.loggedIn && !this.shouldStopPolling) {
+        this.phase = 'error';
+        this.lastError = '扫码超时，请重新登录';
+        this.logger.warn('iLink QR code scan timed out');
+      }
+    } finally {
+      this.isQrPolling = false;
+    }
+  }
+
+  // ============================================================
+  // 长轮询消息接收
+  // ============================================================
+
+  /**
+   * 启动长轮询循环
+   * 服务器会 hold 住最多 35 秒，直到有新消息才返回
+   */
+  private startPollingLoop(): void {
+    if (this.isPolling) {
+      this.logger.warn('Polling loop already running');
+      return;
+    }
+
+    this.isPolling = true;
+    this.shouldStopPolling = false;
+    this.logger.log('Starting iLink long-polling loop...');
+
+    void this.pollingLoop();
+  }
+
+  /**
+   * 长轮询主循环
+   */
+  private async pollingLoop(): Promise<void> {
+    while (!this.shouldStopPolling && this.loggedIn) {
+      try {
+        const response = await this.ilink.getUpdates(this.updateCursor);
+
+        // 更新游标
+        if (response.get_updates_buf) {
+          this.updateCursor = response.get_updates_buf;
+        }
+
+        // 处理收到的消息
+        if (response.messages && response.messages.length > 0) {
+          this.logger.log(`Received ${response.messages.length} message(s) from iLink`);
+
+          for (const msg of response.messages) {
+            try {
+              await this.handleIncomingMessage(msg);
+            } catch (err) {
+              this.logger.error(
+                `Failed to handle iLink message: ${(err as Error).message}`,
+              );
+            }
+          }
+        }
+
+        // 重置同步失败计数
+        this.syncFailCount = 0;
+      } catch (err) {
+        const errMsg = (err as Error).message;
+
+        // 网络超时是正常的（长轮询 35s hold），不算错误
+        if (errMsg.includes('timeout') || errMsg.includes('TimeoutError') || errMsg.includes('abort')) {
+          this.logger.debug('Long poll timeout (normal), retrying...');
+          continue;
+        }
+
+        this.syncFailCount++;
+        this.logger.warn(
+          `iLink poll error (${this.syncFailCount}/${this.maxSyncRetries}): ${errMsg}`,
+        );
+
+        if (this.syncFailCount >= this.maxSyncRetries) {
+          this.lastError = `iLink 消息接收连续失败 ${this.syncFailCount} 次`;
+          this.logger.error('iLink polling failed too many times, triggering reconnect...');
+          this.scheduleReconnect();
+          break;
+        }
+
+        // 等待后重试
+        await new Promise((resolve) => setTimeout(resolve, POLL_RETRY_DELAY_MS));
+      }
+    }
+
+    this.isPolling = false;
+    this.logger.log('iLink polling loop stopped');
+  }
+
+  // ============================================================
+  // 状态查询
+  // ============================================================
+
+  /**
+   * 获取当前微信连接状态
    */
   async getStatus(): Promise<WechatStatus> {
     const contactCount = await this.prisma.wechatContact.count({
@@ -314,7 +409,7 @@ export class WechatService implements OnModuleDestroy {
   }
 
   /**
-   * Get the WeChat contacts list.
+   * 获取微信联系人列表
    */
   async getContacts(): Promise<WechatContactDto[]> {
     const contacts = await this.prisma.wechatContact.findMany({
@@ -334,7 +429,7 @@ export class WechatService implements OnModuleDestroy {
   }
 
   /**
-   * Get messages for a specific contact.
+   * 获取与某联系人的聊天记录
    */
   async getMessages(contactId: string, limit = 50): Promise<WechatMessageDto[]> {
     const messages = await this.prisma.wechatMessage.findMany({
@@ -346,18 +441,38 @@ export class WechatService implements OnModuleDestroy {
     return messages.reverse().map((m) => this.toMessageDto(m));
   }
 
+  // ============================================================
+  // 消息发送
+  // ============================================================
+
   /**
-   * Send a text message to a WeChat contact.
+   * 发送文本消息给微信联系人
+   * 使用缓存的 context_token 进行回复
    */
   async sendMessage(toId: string, content: string): Promise<{ success: boolean }> {
-    if (!this.loggedIn || !this.bot) {
-      throw new Error('WeChat is not logged in');
+    if (!this.loggedIn || !this.botToken) {
+      throw new Error('WeChat ClawBot is not logged in');
     }
 
-    await this.bot.sendMsg(content, toId);
+    // 从缓存获取 context_token
+    const contextEntry = this.contextTokenCache.get(toId);
+    if (!contextEntry) {
+      throw new Error(
+        `No context_token for ${toId}. Reply impossible without prior inbound message.`,
+      );
+    }
 
-    const fromId = this.bot.user?.UserName || 'self';
-    const fromName = this.userNickName || 'Me';
+    // 检查 token 是否过期
+    if (Date.now() - contextEntry.updatedAt > CONTEXT_TOKEN_TTL_MS) {
+      this.contextTokenCache.delete(toId);
+      throw new Error(`context_token expired for ${toId}, please ask the user to send a new message`);
+    }
+
+    // 调用 iLink API 发送消息
+    await this.ilink.sendTextMessage(toId, contextEntry.token, content);
+
+    const fromId = this.botId || 'bot';
+    const fromName = this.userNickName || 'ClawBot';
     const toName = await this.getContactName(toId);
 
     const saved = await this.prisma.wechatMessage.create({
@@ -380,16 +495,17 @@ export class WechatService implements OnModuleDestroy {
       try {
         listener(dto);
       } catch {
-        // ignore listener errors
+        // ignore
       }
     });
 
     return { success: true };
   }
 
-  /**
-   * Register a listener for incoming messages (used for SSE push).
-   */
+  // ============================================================
+  // 监听器注册
+  // ============================================================
+
   onMessage(listener: (msg: WechatMessageDto) => void): () => void {
     this.messageListeners.push(listener);
     return () => {
@@ -397,10 +513,6 @@ export class WechatService implements OnModuleDestroy {
     };
   }
 
-  /**
-   * Register a listener for agent real-time activity events (used for SSE push).
-   * Returns an unsubscribe function.
-   */
   onAgentActivity(listener: (event: AgentActivityEvent) => void): () => void {
     this.agentActivityListeners.push(listener);
     return () => {
@@ -408,47 +520,57 @@ export class WechatService implements OnModuleDestroy {
     };
   }
 
-  /**
-   * Broadcast an agent activity event to all registered listeners.
-   */
   private broadcastAgentActivity(event: AgentActivityEvent): void {
     this.agentActivityListeners.forEach((listener) => {
       try {
         listener(event);
       } catch {
-        // ignore listener errors
+        // ignore
       }
     });
   }
 
+  // ============================================================
+  // 登出 & 生命周期
+  // ============================================================
+
   /**
-   * Logout from WeChat.
+   * 退出微信登录
    */
   async logout(): Promise<void> {
+    this.shouldStopPolling = true;
     this.isReconnecting = true;
 
-    if (this.bot) {
-      try {
-        this.bot.logout();
-      } catch {
-        // ignore
-      }
+    // 等待轮询循环停止
+    if (this.isPolling) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     this.loggedIn = false;
     this.phase = 'logged_out';
     this.qrCodeUrl = null;
     this.userNickName = null;
+    this.botToken = null;
+    this.botId = null;
+    this.updateCursor = '';
+    this.contextTokenCache.clear();
     this.syncFailCount = 0;
     this.reconnectStartedAt = null;
-    this.botData = null;
     this.isReconnecting = false;
-    this.logger.log('WeChat logged out (manual)');
+    this.logger.log('WeChat ClawBot logged out (manual)');
   }
 
   /**
-   * Bind a WeChat identity to a family member.
+   * 模块销毁时清理
    */
+  onModuleDestroy() {
+    this.shouldStopPolling = true;
+  }
+
+  // ============================================================
+  // 家庭成员绑定
+  // ============================================================
+
   async bindFamilyMember(payload: BindFamilyMemberPayload): Promise<void> {
     const member = await this.prisma.familyMember.findUnique({
       where: { id: payload.familyMemberId },
@@ -473,25 +595,12 @@ export class WechatService implements OnModuleDestroy {
     );
   }
 
-  /**
-   * Clean up on module destroy.
-   */
-  onModuleDestroy() {
-    if (this.bot) {
-      try {
-        this.bot.logout();
-      } catch {
-        // ignore
-      }
-    }
-  }
-
   // ============================================================
-  // Agent pipeline integration
+  // Agent pipeline 集成
   // ============================================================
 
   /**
-   * Resolve the bound family member from a WeChat identity.
+   * 通过微信 ID / 昵称解析绑定的家庭成员
    */
   private async resolveFamilyMember(
     wechatId: string,
@@ -514,11 +623,8 @@ export class WechatService implements OnModuleDestroy {
   }
 
   /**
-   * Run a single message through the AgentRuntime pipeline and return the reply text.
-   *
-   * 除了收集最终回复文本，还会遍历 agent runtime 产生的所有 SSE 事件类型
-   * (reasoning/thinking、tool_call、observation、token、done、error)，
-   * 对每种事件通过 agentActivityListeners 向前端实时广播。
+   * 将消息送入 AgentRuntime pipeline 并返回回复文本
+   * 同时将 agent 产生的 SSE 事件广播给前端
    */
   private async runAgentPipeline(
     userId: string,
@@ -593,7 +699,6 @@ export class WechatService implements OnModuleDestroy {
             });
             break;
           default:
-            // 忽略其他事件类型 (action / workflow_step / emotion / entities / skill_*)
             break;
         }
       }
@@ -614,11 +719,10 @@ export class WechatService implements OnModuleDestroy {
     return reply.trim();
   }
 
-  /**
-   * Persist an incoming family/private WeChat message as a long-term memory.
-   * Family group messages are stored with family visibility and linked to the
-   * family memory pool.
-   */
+  // ============================================================
+  // 消息持久化 & 记忆
+  // ============================================================
+
   private async persistChatAsMemory(
     member: { id: string; userId: string; familyId: string },
     content: string,
@@ -649,7 +753,6 @@ export class WechatService implements OnModuleDestroy {
         },
       });
 
-      // Link group messages to the shared family memory pool
       if (isGroup) {
         try {
           await this.prisma.familyMemory.create({
@@ -669,12 +772,9 @@ export class WechatService implements OnModuleDestroy {
   }
 
   // ============================================================
-  // Proactive services
+  // 主动服务
   // ============================================================
 
-  /**
-   * Detect proactive intents in a WeChat message and trigger side effects.
-   */
   private async handleProactiveActions(
     message: string,
     reply: string,
@@ -684,7 +784,6 @@ export class WechatService implements OnModuleDestroy {
   ): Promise<void> {
     const text = message.trim();
 
-    // Reminder / todo
     if (/提醒我|待办|别忘了|记住这件事/.test(text)) {
       try {
         const reminder = await this.memoryService.create(userId, {
@@ -702,7 +801,6 @@ export class WechatService implements OnModuleDestroy {
       }
     }
 
-    // Summary request
     if (/总结一下|生成总结|周报|月报|日报|年报/.test(text)) {
       try {
         await this.createProactiveSummary(userId, text);
@@ -711,7 +809,6 @@ export class WechatService implements OnModuleDestroy {
       }
     }
 
-    // Time capsule request
     if (/时间胶囊|封存|留给未来|写给.*年后的自己/.test(text)) {
       try {
         await this.createProactiveCapsule(userId, text, fromName);
@@ -837,54 +934,71 @@ export class WechatService implements OnModuleDestroy {
   }
 
   // ============================================================
-  // Message & contact persistence
+  // 消息处理（iLink → Agent pipeline）
   // ============================================================
 
-  private async handleIncomingMessage(msg: Wechat4uMessage): Promise<void> {
-    if (!this.bot) return;
+  /**
+   * 处理收到的 iLink 消息
+   * 1. 缓存 context_token（用于后续回复）
+   * 2. 持久化到数据库
+   * 3. 识别家庭成员
+   * 4. 送入 AgentRuntime pipeline
+   * 5. 回复用户
+   * 6. 触发主动服务
+   */
+  private async handleIncomingMessage(msg: ILinkInboundMessage): Promise<void> {
+    // 提取文本内容
+    const content = ILinkClient.extractText(msg);
+    const isGroup = ILinkClient.isGroupMessage(msg);
+    const fromId = msg.from_user_id;
+    const toId = msg.to_user_id;
+    const isSelf = toId === fromId; // bot 发给自己的消息
 
-    const fromId = msg.FromUserName;
-    const toId = msg.ToUserName;
-    const isSelf = fromId === this.bot.user?.UserName;
-    const isGroup = fromId.startsWith('@@');
+    // 判断消息类型
+    const msgType = msg.message_type;
+    if (msgType !== 1 && msgType !== 2) return; // 只处理文本和图片
 
-    let content = msg.Content;
-    let senderName = this.getContactName(fromId);
-    let senderWechatId: string | undefined;
+    const displayContent = msgType === 2 ? '[图片]' : content;
+    if (!displayContent.trim()) return;
 
-    // Group messages: "senderId:\ncontent"
-    if (isGroup && content.includes(':\n')) {
-      const colonIdx = content.indexOf(':\n');
-      senderWechatId = content.substring(0, colonIdx);
-      content = content.substring(colonIdx + 2);
-      senderName = this.getContactName(senderWechatId) || senderName;
+    // 确定 contactId（对话另一方的 ID）
+    const otherId = isSelf ? toId : fromId;
+    const senderName = msg.sender_nickname || fromId;
+    const senderWechatId = isGroup ? fromId : undefined;
+
+    // ⚠️ 关键：缓存 context_token，后续回复必须带上
+    if (msg.context_token) {
+      this.contextTokenCache.set(otherId, {
+        token: msg.context_token,
+        updatedAt: Date.now(),
+      });
+      this.logger.debug(`Cached context_token for ${otherId}`);
     }
 
-    // Only process text / image messages
-    if (msg.MsgType !== 1 && msg.MsgType !== 3) return;
-
-    const displayContent = msg.MsgType === 3 ? '[图片]' : content;
-    const otherId = isSelf ? toId : fromId;
-
+    // 持久化消息
     const saved = await this.prisma.wechatMessage.create({
       data: {
         contactId: otherId,
         fromId,
         fromName: senderName,
         toId,
-        toName: isSelf ? this.getContactName(toId) : this.userNickName || 'Me',
+        toName: isSelf ? this.userNickName || 'Bot' : 'Bot',
         content: displayContent,
-        msgType: msg.MsgType,
+        msgType,
         isSelf,
-        senderWechatId,
-        timestamp: new Date(msg.CreateTime * 1000),
-        metadata: { rawMsgId: msg.MsgId } as Prisma.InputJsonValue,
+        senderWechatId: senderWechatId ?? null,
+        timestamp: new Date((msg.create_time ?? Math.floor(Date.now() / 1000)) * 1000),
+        metadata: {
+          rawMsgId: msg.msg_id,
+          contextToken: msg.context_token,
+          source: 'ilink',
+        } as Prisma.InputJsonValue,
       },
     });
 
     const dto = this.toMessageDto(saved);
 
-    // Notify SSE listeners
+    // 通知 SSE 监听器
     this.messageListeners.forEach((listener) => {
       try {
         listener(dto);
@@ -893,27 +1007,31 @@ export class WechatService implements OnModuleDestroy {
       }
     });
 
-    this.logger.debug(`WeChat message from ${senderName}: ${displayContent.substring(0, 50)}`);
+    this.logger.debug(
+      `iLink message from ${senderName}: ${displayContent.substring(0, 50)}`,
+    );
 
-    // Do not reply to our own messages
+    // 不回复自己发的消息
     if (isSelf) return;
 
-    // Identify family member from the sender
-    const lookupId = senderWechatId || fromId;
-    const member = await this.resolveFamilyMember(lookupId, senderName);
+    // 同步联系人信息到数据库
+    await this.syncContactFromMessage(otherId, senderName, isGroup);
+
+    // 识别家庭成员
+    const member = await this.resolveFamilyMember(fromId, senderName);
 
     if (!member) {
-      this.logger.debug(`No family member binding for WeChat identity ${lookupId}`);
+      this.logger.debug(`No family member binding for WeChat identity ${fromId}`);
       return;
     }
 
-    // Mark the message with the identified family member
+    // 标记消息关联的家庭成员
     await this.prisma.wechatMessage.update({
       where: { id: saved.id },
       data: { familyMemberId: member.id },
     });
 
-    // Persist the family/private chat message into long-term Memory
+    // 持久化到长期记忆
     await this.persistChatAsMemory(
       member,
       displayContent,
@@ -921,13 +1039,13 @@ export class WechatService implements OnModuleDestroy {
       otherId,
       senderName,
       isGroup,
-      new Date(msg.CreateTime * 1000),
+      new Date((msg.create_time ?? Math.floor(Date.now() / 1000)) * 1000),
     );
 
-    // Run the message through the AgentRuntime pipeline
+    // 送入 AgentRuntime pipeline
     this.pendingMessages++;
 
-    // 广播 thinking 事件，通知前端 agent 已开始处理
+    // 广播 thinking 事件
     this.broadcastAgentActivity({
       type: 'thinking',
       contactId: otherId,
@@ -935,6 +1053,11 @@ export class WechatService implements OnModuleDestroy {
       content: '正在思考你的消息...',
       timestamp: Date.now(),
     });
+
+    // 发送"正在输入"状态
+    if (msg.context_token) {
+      await this.ilink.sendTyping(otherId, msg.context_token);
+    }
 
     try {
       const reply = await this.runAgentPipeline(
@@ -944,7 +1067,7 @@ export class WechatService implements OnModuleDestroy {
         senderName,
       );
 
-      // 广播 done 事件，通知前端 agent 处理完成
+      // 广播 done 事件
       this.broadcastAgentActivity({
         type: 'done',
         contactId: otherId,
@@ -953,80 +1076,70 @@ export class WechatService implements OnModuleDestroy {
         timestamp: Date.now(),
       });
 
+      // 回复用户
       if (reply) {
         try {
           await this.sendMessage(otherId, reply);
         } catch (err) {
-          this.logger.error(`Failed to send WeChat reply: ${(err as Error).message}`);
+          this.logger.error(`Failed to send iLink reply: ${(err as Error).message}`);
         }
       }
 
-      // Trigger proactive services based on message content
+      // 触发主动服务
       await this.handleProactiveActions(displayContent, reply, member.userId, otherId, senderName);
     } finally {
       this.pendingMessages--;
     }
   }
 
-  private async syncContactsToDb(): Promise<void> {
-    if (!this.bot?.contacts) return;
+  // ============================================================
+  // 联系人管理
+  // ============================================================
 
-    const contacts = Object.values(this.bot.contacts).filter((c) => {
-      if (!c.NickName && !c.RemarkName) return false;
-      if (c.UserName.startsWith('fmessage')) return false;
-      if (c.UserName === 'filehelper') return false;
-      return true;
-    });
+  /**
+   * 从收到的消息中同步联系人信息
+   * iLink API 没有 getContacts 接口，联系人通过消息积累
+   */
+  private async syncContactFromMessage(
+    userId: string,
+    nickname: string,
+    isGroup: boolean,
+  ): Promise<void> {
+    if (!nickname || !userId) return;
 
-    for (const c of contacts) {
-      const type = this.getContactType(c);
+    try {
       await this.prisma.wechatContact.upsert({
-        where: { userName: c.UserName },
+        where: { userName: userId },
         update: {
-          nickName: c.NickName,
-          remarkName: c.RemarkName,
-          alias: c.Alias,
-          type,
-          isStar: c.StarFriend === 1,
-          signature: c.Signature || '',
+          nickName: nickname,
+          type: isGroup ? 'group' : 'friend',
           status: 'active',
         },
         create: {
-          userName: c.UserName,
-          nickName: c.NickName,
-          remarkName: c.RemarkName,
-          alias: c.Alias,
-          type,
-          isStar: c.StarFriend === 1,
-          signature: c.Signature || '',
+          userName: userId,
+          nickName: nickname,
+          remarkName: '',
+          type: isGroup ? 'group' : 'friend',
+          isStar: false,
+          signature: '',
           status: 'active',
         },
       });
-    }
-
-    // Soft-delete contacts that no longer appear in the bot list
-    const activeUserNames = contacts.map((c) => c.UserName);
-    if (activeUserNames.length > 0) {
-      await this.prisma.wechatContact.updateMany({
-        where: { userName: { notIn: activeUserNames }, status: 'active' },
-        data: { status: 'inactive' },
-      });
+    } catch (err) {
+      this.logger.warn(`Failed to sync contact from message: ${(err as Error).message}`);
     }
   }
 
-  private getContactType(c: Wechat4uContact): WechatContactDto['type'] {
-    if (c.UserName.startsWith('@@')) return 'group';
-    if (c.VerifyFlag & 8) return 'official';
-    if (c.UserName.startsWith('gh_')) return 'official';
-    if (c.Special) return 'special';
-    return 'friend';
-  }
+  private async getContactName(id: string): Promise<string> {
+    const contact = await this.prisma.wechatContact.findUnique({
+      where: { userName: id },
+      select: { remarkName: true, nickName: true },
+    });
 
-  private getContactName(id: string): string {
-    if (!this.bot?.contacts) return id;
-    const c = this.bot.contacts[id];
-    if (!c) return id;
-    return c.RemarkName || c.NickName || c.Alias || id;
+    if (contact) {
+      return contact.remarkName || contact.nickName || id;
+    }
+    return id;
   }
 
   private toMessageDto(m: {
@@ -1052,22 +1165,24 @@ export class WechatService implements OnModuleDestroy {
       content: m.content,
       timestamp: m.timestamp.getTime(),
       isSelf: m.isSelf,
-      type: m.msgType === 1 ? 'text' : m.msgType === 3 ? 'image' : 'other',
+      type: m.msgType === 1 ? 'text' : m.msgType === 2 ? 'image' : 'other',
       senderWechatId: m.senderWechatId ?? undefined,
     };
   }
 
+  // ============================================================
+  // 自动重连
+  // ============================================================
+
   /**
-   * 自动重连：wechat4u 没有可靠的 restart 方法，因此采用「完全销毁旧实例 + 重新创建」的策略。
-   * - 限制最大重连时间窗口（maxReconnectWindowMs），超过即放弃并标记 phase = 'error'。
-   * - 重连失败时正确设置 phase = 'error'，避免前端误以为仍在连接中。
-   * - 全程输出详细日志，便于排查。
+   * 自动重连：重新走扫码登录流程
+   * - 限制最大重连时间窗口
+   * - 超过窗口则放弃并标记 phase = 'error'
    */
   private async scheduleReconnect() {
     if (this.isReconnecting) return;
     this.isReconnecting = true;
 
-    // 最大重连时间限制：超过窗口则放弃自动重连
     if (!this.reconnectStartedAt) {
       this.reconnectStartedAt = Date.now();
     }
@@ -1078,15 +1193,15 @@ export class WechatService implements OnModuleDestroy {
       this.lastError = '重连超时，已停止自动重连，请手动重新登录；AI 管家可正常使用';
       this.reconnectStartedAt = null;
       this.logger.error(
-        `WeChat 重连时间窗口（${this.maxReconnectWindowMs / 1000}s）已超，放弃自动重连。`,
+        `iLink 重连时间窗口（${this.maxReconnectWindowMs / 1000}s）已超，放弃自动重连。`,
       );
       return;
     }
 
     const attempt = this.syncFailCount + 1;
-    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.syncFailCount), 60000);
+    const delay = Math.min(3000 * Math.pow(2, this.syncFailCount), 60000);
     this.logger.log(
-      `WeChat 重连计划：第 ${attempt} 次尝试，${delay / 1000}s 后执行（累计耗时 ${Math.round(elapsed / 1000)}s）`,
+      `iLink 重连计划：第 ${attempt} 次尝试，${delay / 1000}s 后执行（累计耗时 ${Math.round(elapsed / 1000)}s）`,
     );
 
     await new Promise((resolve) => setTimeout(resolve, delay));
@@ -1094,63 +1209,64 @@ export class WechatService implements OnModuleDestroy {
     this.syncFailCount++;
 
     try {
-      // wechat4u 没有 restart 方法，必须完全销毁旧实例后重新创建，
-      // 否则旧实例的定时器/监听器会残留，导致状态混乱。
-      this.logger.log('WeChat 重连：销毁旧 bot 实例...');
-      if (this.bot) {
-        try {
-          // 移除所有事件监听器，避免旧实例回调污染新流程
-          (this.bot as any).removeAllListeners?.();
-          this.bot.logout();
-        } catch (err) {
-          this.logger.warn(
-            `销毁旧 bot 实例时出错（可忽略）：${(err as Error).message}`,
-          );
-        }
-        this.bot = null;
+      this.logger.log('iLink 重连：停止旧轮询，重新发起登录流程...');
+
+      // 停止旧轮询
+      this.shouldStopPolling = true;
+      if (this.isPolling) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      // 清理登录态，准备重新走扫码登录流程
+      // 清理登录态
       this.loggedIn = false;
       this.qrCodeUrl = null;
       this.lastError = '正在重连微信，请稍候...';
+      this.updateCursor = '';
 
-      this.logger.log('WeChat 重连：发起新的登录流程...');
+      // 如果有 bot_token，尝试直接恢复
+      if (this.botToken) {
+        this.logger.log('iLink 重连：尝试用已有 token 恢复...');
+        this.ilink.setBotToken(this.botToken);
+        this.loggedIn = true;
+        this.phase = 'logged_in';
+        this.isReconnecting = false;
+        this.reconnectStartedAt = null;
+        this.startPollingLoop();
+        this.logger.log('iLink 重连：已用已有 token 恢复轮询');
+        return;
+      }
+
+      // 没有 token，需要重新扫码
+      this.logger.log('iLink 重连：发起新的扫码登录流程...');
       await this.startLogin();
-      this.logger.log(`WeChat 重连流程已启动：第 ${attempt} 次尝试已生成新二维码，等待扫码`);
-      // 重连流程已发起（等待用户扫码），重置时间窗口；登录成功后由 login 事件重置计数
       this.reconnectStartedAt = null;
-      // 释放锁：本次重连动作已完成，后续若再次失败可重新进入
       this.isReconnecting = false;
     } catch (err) {
       const errMsg = (err as Error).message;
-      this.logger.error(`WeChat 重连失败：${errMsg}`);
+      this.logger.error(`iLink 重连失败：${errMsg}`);
       this.lastError = `重连失败：${errMsg}`;
 
-      // 判断是否还能继续重试：未超时间窗口且未超次数上限
       const stillWithinWindow =
         Date.now() - (this.reconnectStartedAt ?? Date.now()) < this.maxReconnectWindowMs;
       if (stillWithinWindow && this.syncFailCount < this.maxSyncRetries + 3) {
-        this.logger.log('WeChat 将继续尝试重连...');
-        // 递归前释放锁，让下一次 scheduleReconnect 能正常进入
+        this.logger.log('iLink 将继续尝试重连...');
         this.isReconnecting = false;
         void this.scheduleReconnect();
         return;
       }
 
-      // 达到上限：标记为错误状态，前端可据此提示手动重新登录
       this.isReconnecting = false;
       this.phase = 'error';
       this.reconnectStartedAt = null;
       this.lastError = '重连次数/时间已达上限，请手动重新登录；AI 管家可正常使用';
-      this.logger.error('WeChat 重连次数/时间已达上限，需要手动重新登录。');
+      this.logger.error('iLink 重连次数/时间已达上限，需要手动重新登录。');
     }
   }
 
-  /**
-   * 健康检查：返回当前微信连接的健康状态与可读建议。
-   * 用于前端/运维快速判断是否需要干预，以及降级模式是否生效。
-   */
+  // ============================================================
+  // 健康检查
+  // ============================================================
+
   async healthCheck(): Promise<{
     healthy: boolean;
     phase: string;
@@ -1164,25 +1280,18 @@ export class WechatService implements OnModuleDestroy {
     const hasSyncIssue =
       loggedIn &&
       !!this.lastError &&
-      (this.lastError.includes('同步') || this.lastError.includes('1102'));
+      this.lastError.includes('失败');
 
-    // healthy：已登录、处于 logged_in 阶段、且无同步异常
     const healthy = loggedIn && phase === 'logged_in' && !hasSyncIssue;
-
-    // canRetry：当前未在重连且未进入不可恢复的 error 阶段
     const canRetry = !this.isReconnecting && phase !== 'error';
-
-    // agentActive：当前是否有 agent 正在处理消息
     const agentActive = this.activeAgentCount > 0;
-
-    // pendingMessages：排队中（已接收但尚未完成处理）的消息数
     const pendingMessages = this.pendingMessages;
 
     let suggestion: string;
     if (healthy) {
-      suggestion = '微信连接正常';
+      suggestion = '微信 ClawBot 连接正常';
     } else if (hasSyncIssue) {
-      suggestion = '消息同步异常，后端正在自动重连，AI 管家可正常使用（降级模式）';
+      suggestion = '消息接收异常，后端正在自动重连，AI 管家可正常使用（降级模式）';
     } else if (phase === 'error') {
       suggestion = '微信连接异常，请手动重新扫码登录；AI 管家不受影响';
     } else if (phase === 'waiting_scan' || phase === 'waiting_confirm') {
