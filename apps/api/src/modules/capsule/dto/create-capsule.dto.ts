@@ -58,8 +58,7 @@ export class CreateCapsuleDto {
 
   @ApiProperty({ example: '2034-07-01T00:00:00.000Z', description: '开启时间（到期后才能打开）' })
   @IsDateString({}, { message: '开启时间格式不正确' })
-  @Type(() => Date)
-  openAt!: Date;
+  openAt!: string;
 
   @ApiPropertyOptional({
     example: { recipients: ['家人'], attachments: [] },

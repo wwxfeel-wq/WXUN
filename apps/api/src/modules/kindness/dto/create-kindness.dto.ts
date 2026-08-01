@@ -91,8 +91,7 @@ export class CreateKindnessDto {
   @ApiPropertyOptional({ example: '2025-02-10T00:00:00.000Z', description: '发生时间' })
   @IsDateString({}, { message: '发生时间格式不正确' })
   @IsOptional()
-  @Type(() => Date)
-  occurredAt?: Date;
+  occurredAt?: string;
 
   @ApiPropertyOptional({ example: 'xxx-xxx', description: '关联家庭 ID' })
   @IsString()

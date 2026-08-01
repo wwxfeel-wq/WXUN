@@ -47,7 +47,8 @@ export class CapsuleService {
    */
   async create(userId: string, dto: CreateCapsuleDto) {
     // Validate the openAt is in the future
-    if (dto.openAt <= new Date()) {
+    const openAtDate = new Date(dto.openAt);
+    if (openAtDate <= new Date()) {
       throw new BadRequestException({
         code: ERROR_CODES.INVALID_PARAMS,
         message: '开启时间必须晚于当前时间',
@@ -77,7 +78,7 @@ export class CapsuleService {
       },
     });
 
-    this.logger.log(`Time capsule created: ${capsule.id} for user: ${userId}, opens at: ${dto.openAt.toISOString()}`);
+    this.logger.log(`Time capsule created: ${capsule.id} for user: ${userId}, opens at: ${openAtDate.toISOString()}`);
 
     return capsule;
   }

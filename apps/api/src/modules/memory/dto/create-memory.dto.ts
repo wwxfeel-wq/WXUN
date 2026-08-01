@@ -85,8 +85,7 @@ export class CreateMemoryDto {
   @ApiPropertyOptional({ example: '2024-06-15T00:00:00.000Z', description: '事件发生时间' })
   @IsDateString({}, { message: '发生时间格式不正确' })
   @IsOptional()
-  @Type(() => Date)
-  occurredAt?: Date;
+  occurredAt?: string;
 
   @ApiPropertyOptional({
     example: { location: '老家院子', people: ['父亲', '母亲'] },
