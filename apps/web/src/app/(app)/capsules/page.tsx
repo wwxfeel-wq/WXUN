@@ -85,6 +85,7 @@ export default function CapsulesPage() {
 
   return (
     <PageTransition>
+      <div className="px-4 sm:px-8 lg:px-16 pt-8" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-2xl))' }}>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -143,6 +144,7 @@ export default function CapsulesPage() {
       >
         {openedCapsule && <CapsuleDetail capsule={openedCapsule} />}
       </Modal>
+    </div>
     </PageTransition>
   );
 }

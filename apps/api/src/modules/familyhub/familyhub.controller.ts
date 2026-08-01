@@ -45,8 +45,8 @@ export class FamilyHubController implements OnModuleInit {
 
   @Get('shimo-core')
   @ApiOperation({ summary: '时墨核心状态' })
-  async getShimoCore() {
-    return this.service.getShimoCore();
+  async getShimoCore(@CurrentUser('userId') userId: string) {
+    return this.service.getShimoCore(userId);
   }
 
   @Get('agents')
@@ -95,8 +95,8 @@ export class FamilyHubController implements OnModuleInit {
 
   @Get('timeline')
   @ApiOperation({ summary: '学习时间线' })
-  async getTimeline() {
-    return this.service.getTimeline();
+  async getTimeline(@CurrentUser('userId') userId: string) {
+    return this.service.getTimeline(userId);
   }
 
   @Get('execution-logs')

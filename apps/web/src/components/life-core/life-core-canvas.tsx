@@ -201,7 +201,7 @@ function kindColor(kind: NodeKind, r: number): [number, number, number] {
 // 构建神经元分支树 — 更真实的神经元形态
 // ═══════════════════════════════════════════
 
-function buildNeuronTree(counts: LifeCoreCounts, level: number): {
+function buildNeuronTree(counts: LifeCoreCounts, level: number, mobileQuality = false): {
   branches: NeuronBranch[];
   particles: NeuronParticle[];
   cloudParticles: CloudParticle[];
@@ -385,12 +385,14 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
 
   // ═══ 生成粒子云 — 密集分布在分支路径上，通过密度勾勒出树状形态 ═══
   const cloudParticles: CloudParticle[] = [];
+  // 移动端质量降低：粒子数减半以保持流畅帧率
+  const mobileMult = mobileQuality ? 0.4 : 1;
   for (const branch of branches) {
     // 粒子密度：初级分支最多，深层递减 — V14 细密版，数量翻倍
-    const cloudCount = branch.level === 0 ? 200 + Math.floor(rand() * 60)
+    const cloudCount = Math.floor((branch.level === 0 ? 200 + Math.floor(rand() * 60)
       : branch.level === 1 ? 130 + Math.floor(rand() * 45)
       : branch.level === 2 ? 75 + Math.floor(rand() * 30)
-      : 38 + Math.floor(rand() * 16);
+      : 38 + Math.floor(rand() * 16)) * mobileMult);
 
     for (let i = 0; i < cloudCount; i++) {
       // 沿分支进度分布，根部更密集（偏置分布）
@@ -433,8 +435,8 @@ function buildNeuronTree(counts: LifeCoreCounts, level: number): {
     }
   }
 
-  // 限制总粒子云数量 — V14 细密版上限大幅提升
-  const maxCloud = 12000;
+  // 限制总粒子云数量 — V14 细密版上限大幅提升；移动端降低上限
+  const maxCloud = mobileQuality ? 5000 : 12000;
   if (cloudParticles.length > maxCloud) {
     for (let i = cloudParticles.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
@@ -525,7 +527,18 @@ export function LifeCoreCanvas({
   const [isDragging, setIsDragging] = useState(false);
   const [showHint, setShowHint] = useState(true);
 
-  const neuron = useMemo(() => buildNeuronTree(counts, level), [counts, level]);
+  // 移动端检测 — 降低粒子密度和帧率以保持流畅
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(window.innerWidth < 768 || ('ontouchstart' in window && navigator.maxTouchPoints > 0 && window.innerWidth < 1024));
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const neuron = useMemo(() => buildNeuronTree(counts, level, isMobile), [counts, level, isMobile]);
   const neuronRef = useRef(neuron);
   neuronRef.current = neuron;
 
@@ -1028,11 +1041,11 @@ export function LifeCoreCanvas({
     ctx.globalAlpha = 1;
   }, [state, particleSprite, coreSprite, glowSprite, reducedMotion]);
 
-  // 动画循环 30fps
+  // 动画循环 — 桌面 30fps，移动端 24fps 以节省电量
   useEffect(() => {
     let running = true;
     let lastFrame = 0;
-    const frameInterval = 1000 / 30;
+    const frameInterval = isMobile ? 1000 / 24 : 1000 / 30;
     const loop = (now: number) => {
       if (!running) return;
       if (now - lastFrame >= frameInterval) {
@@ -1046,7 +1059,7 @@ export function LifeCoreCanvas({
       running = false;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [draw]);
+  }, [draw, isMobile]);
 
   // Resize
   useEffect(() => {
@@ -1218,8 +1231,8 @@ export function LifeCoreCanvas({
         </div>
       )}
       {showHint && (
-        <div className="life-core__drag-hint pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-3 py-1 text-xs text-[var(--color-text-tertiary)] backdrop-blur-glass">
-          拖拽旋转 · 滚轮/双指缩放 · 双击重置 ✦
+        <div className="life-core__drag-hint pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-3 py-1.5 text-xs text-[var(--color-text-tertiary)] backdrop-blur-glass">
+          拖拽旋转 · 双指缩放 · 双击重置
         </div>
       )}
     </div>

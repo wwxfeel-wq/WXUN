@@ -204,7 +204,7 @@ export default function FamilyPage() {
 
   return (
     <PageTransition>
-      <div className="pb-[var(--home-dock-clearance)]">
+      <div className="pb-safe" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-lg))' }}>
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-text">{family?.name ?? '家庭记忆'}</h1>
@@ -301,7 +301,7 @@ function FamilyDetail({ familyId }: { familyId: string }) {
                 <GlassLayer
                   asChild
                   intensity="default"
-                  className="flex items-center gap-3 p-3"
+                  className="flex items-center gap-3 p-3 min-h-11"
                   key={m.id}
                 >
                   <motion.div
@@ -418,7 +418,7 @@ function SharedMemoryRow({
     <GlassLayer
       asChild
       intensity="default"
-      className="flex items-center gap-3 p-4"
+      className="flex items-center gap-3 p-4 min-h-14"
     >
       <motion.div
         whileHover={{ y: -2, scale: 1.005 }}

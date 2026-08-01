@@ -1256,49 +1256,75 @@ export class FamilyHubService {
   }
 
   /**
-   * Compute 时墨 (ShiMo) core stats from the database.
+   * Compute 时墨 (ShiMo) core stats — per-user, from actual activity.
    *
-   * Shared by {@link getMetrics} and {@link getShimoCore} so the
-   * understanding/level numbers stay consistent across endpoints.
+   * AgentRuntime / Skill are global system templates (no userId).
+   * Per-user metrics come from AgentExecutionLog, so a brand-new user
+   * with zero interactions sees all-zero stats instead of global data.
    *
-   * 计算口径：
-   * - understanding：基础 40 + 掌握率 * 40 + 平均技能等级 * 2，上限 100
-   * - shimoLevel：所有技能平均等级 + 已掌握技能数 * 0.5，上限 20
+   * 计算口径（基于用户真实活动）：
+   * - understanding：每次成功调用 +2，上限 100（50 次调用 = 满分）
+   * - shimoLevel：已交互 Agent 的平均等级 + 交互 Agent 数 * 0.5，上限 20
+   * - masteredCount：调用次数 ≥ 5 的 Agent 数量
    */
-  private async computeShimoStats() {
-    const [agents, skills] = await Promise.all([
-      this.prisma.agentRuntime.findMany(),
-      this.prisma.skill.findMany(),
+  private async computeShimoStats(userId: string) {
+    const [allAgents, userLogs] = await Promise.all([
+      this.prisma.agentRuntime.findMany({
+        select: { code: true, status: true, level: true },
+      }),
+      this.prisma.agentExecutionLog.findMany({
+        where: { userId },
+        select: { agentCode: true, status: true },
+      }),
     ]);
 
-    const learningAgents = agents.filter((a) => a.status === 'learning').length;
-    const activeAgents = agents.filter(
+    // 用户实际交互过的 Agent code 集合
+    const userAgentCodes = new Set(userLogs.map((l) => l.agentCode));
+    // 每个 Agent 的调用次数
+    const callCountByCode = new Map<string, number>();
+    for (const log of userLogs) {
+      callCountByCode.set(
+        log.agentCode,
+        (callCountByCode.get(log.agentCode) ?? 0) + 1,
+      );
+    }
+
+    // 只统计用户交互过的 Agent
+    const userAgents = allAgents.filter((a) => userAgentCodes.has(a.code));
+    const learningAgents = userAgents.filter(
+      (a) => a.status === 'learning',
+    ).length;
+    const activeAgents = userAgents.filter(
       (a) => a.status === 'running' || a.status === 'thinking',
     ).length;
-    const masteredSkills = skills.filter((s) => s.status === 'mastered');
+
+    // 掌握的技能 = 调用次数 ≥ 5 的 Agent
+    const masteredCount = userAgents.filter(
+      (a) => (callCountByCode.get(a.code) ?? 0) >= 5,
+    ).length;
+
+    const successCalls = userLogs.filter((l) => l.status === 'success').length;
     const avgSkillLevel =
-      skills.length > 0
-        ? Math.round(skills.reduce((sum, s) => sum + s.level, 0) / skills.length)
+      userAgents.length > 0
+        ? Math.round(
+            userAgents.reduce((sum, a) => sum + a.level, 0) / userAgents.length,
+          )
         : 0;
 
-    // 计算理解程度：基于技能掌握率和平均等级
-    const masteryRate =
-      skills.length > 0 ? masteredSkills.length / skills.length : 0;
-    const understanding = Math.round(
-      Math.min(100, 40 + masteryRate * 40 + avgSkillLevel * 2),
-    );
+    // 理解程度：基于用户真实交互次数
+    const understanding = Math.round(Math.min(100, successCalls * 2));
 
-    // 时墨等级 = 所有技能平均等级 + 掌握数量加成
+    // 时墨等级 = 已交互 Agent 平均等级 + 交互 Agent 数 * 0.5
     const shimoLevel = Math.min(
       20,
-      Math.floor(avgSkillLevel + masteredSkills.length * 0.5),
+      Math.floor(avgSkillLevel + userAgents.length * 0.5),
     );
 
     return {
-      agentCount: agents.length,
+      agentCount: userAgents.length,
       learningAgents,
       activeAgents,
-      masteredCount: masteredSkills.length,
+      masteredCount,
       avgSkillLevel,
       understanding,
       shimoLevel,
@@ -1310,11 +1336,11 @@ export class FamilyHubService {
    */
   async getMetrics(userId: string) {
     const { understanding, shimoLevel, masteredCount, agentCount } =
-      await this.computeShimoStats();
+      await this.computeShimoStats(userId);
 
-    const [totalCalls, treeStats, kindnessCount, warmReminderCount, shortStoryCount] = await Promise.all([
-      this.prisma.agentRuntime.aggregate({
-        _sum: { calls: true },
+    const [userCallCount, treeStats, kindnessCount, warmReminderCount, shortStoryCount] = await Promise.all([
+      this.prisma.agentExecutionLog.count({
+        where: { userId, status: 'success' },
       }),
       this.lifeTreeService.getTreeGrowthStats(userId),
       // 童忆引擎 metrics
@@ -1344,7 +1370,7 @@ export class FamilyHubService {
       wechatSync: 'connected',
       knowledgeDocs: treeStats.knowledgeRootCount,
       growthValue: Math.round(treeStats.treeGrowth * 100),
-      totalAgentCalls: totalCalls._sum.calls ?? 0,
+      totalAgentCalls: userCallCount,
       timeCapsules: treeStats.timeCapsuleCount,
       milestones: treeStats.milestoneCount,
       stories: treeStats.storyCount,
@@ -1359,16 +1385,25 @@ export class FamilyHubService {
   /**
    * Get ShiMo Core status.
    */
-  async getShimoCore() {
+  async getShimoCore(userId: string) {
     const { agentCount, learningAgents, activeAgents, understanding, shimoLevel } =
-      await this.computeShimoStats();
+      await this.computeShimoStats(userId);
 
-    // 最近学习内容：从最近更新的技能中取
-    const recentSkills = await this.prisma.skill.findMany({
-      orderBy: { updatedAt: 'desc' },
+    // 最近学习内容：从用户最近的执行日志中取
+    const recentLogs = await this.prisma.agentExecutionLog.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
       take: 3,
+      select: { agentCode: true },
     });
-    const recentLearning = recentSkills.map((s) => s.name);
+    const agentCodeToName = new Map(
+      (await this.prisma.agentRuntime.findMany({
+        select: { code: true, name: true },
+      })).map((a) => [a.code, a.name]),
+    );
+    const recentLearning = recentLogs
+      .map((l) => agentCodeToName.get(l.agentCode))
+      .filter((n): n is string => !!n);
 
     return {
       status: activeAgents > 0 ? 'online' : 'idle',
@@ -1384,17 +1419,26 @@ export class FamilyHubService {
   /**
    * Get learning timeline from recent agent/skill activity.
    */
-  async getTimeline() {
-    const recentAgents = await this.prisma.agentRuntime.findMany({
-      orderBy: { updatedAt: 'desc' },
-      take: 5,
+  async getTimeline(userId: string) {
+    // 从用户自己的执行日志中生成时间线
+    const recentLogs = await this.prisma.agentExecutionLog.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      select: {
+        id: true,
+        agentCode: true,
+        message: true,
+        status: true,
+        createdAt: true,
+      },
     });
 
-    const recentSkills = await this.prisma.skill.findMany({
-      orderBy: { updatedAt: 'desc' },
-      take: 5,
-      include: { agent: true },
-    });
+    const agentCodeToName = new Map(
+      (await this.prisma.agentRuntime.findMany({
+        select: { code: true, name: true, role: true },
+      })).map((a) => [a.code, { name: a.name, role: a.role }]),
+    );
 
     const timeline: Array<{
       id: string;
@@ -1404,27 +1448,20 @@ export class FamilyHubService {
       type: string;
     }> = [];
 
-    for (const a of recentAgents) {
+    for (const log of recentLogs) {
+      const agentInfo = agentCodeToName.get(log.agentCode);
+      const agentName = agentInfo?.name ?? log.agentCode;
+      const agentRole = agentInfo?.role ?? '';
       timeline.push({
-        id: `agent-${a.id}`,
-        date: a.updatedAt.toISOString().slice(5, 10).replace('-', '-'),
-        title: `${a.name} 活动`,
-        detail: `${a.role} · 调用 ${a.calls} 次`,
+        id: `log-${log.id}`,
+        date: log.createdAt.toISOString().slice(5, 10).replace('-', '-'),
+        title: `${agentName} 对话`,
+        detail: `${agentRole} · ${log.status === 'success' ? '成功' : '失败'} · ${log.message.slice(0, 30)}`,
         type: 'agent',
       });
     }
 
-    for (const s of recentSkills) {
-      timeline.push({
-        id: `skill-${s.id}`,
-        date: s.updatedAt.toISOString().slice(5, 10).replace('-', '-'),
-        title: s.status === 'mastered' ? `掌握：${s.name}` : `学习：${s.name}`,
-        detail: `Lv.${s.level} · 进度 ${s.progress}%`,
-        type: 'skill',
-      });
-    }
-
-    return timeline.slice(0, 8);
+    return timeline;
   }
 
   /**

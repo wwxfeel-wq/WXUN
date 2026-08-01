@@ -80,7 +80,7 @@ export default function InterviewPage() {
 
   return (
     <PageTransition>
-      <div className="flex h-dvh-minus-4rem flex-col px-3 sm:px-6 pb-2">
+      <div className="flex h-dvh-minus-4rem flex-col px-3 sm:px-6 pb-2" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom))' }}>
         <h1 className="sr-only">家庭访谈</h1>
         {/* Immersive liquid glass chat container */}
         <GlassLayer
@@ -202,7 +202,7 @@ export default function InterviewPage() {
                   aria-label="访谈输入"
                   rows={1}
                   disabled={isStreaming}
-                  className="min-h-11 w-full flex-1 resize-none bg-transparent px-4 py-3 text-sm text-text placeholder:text-text-muted/60 outline-none disabled:opacity-[var(--state-disabled-opacity)]"
+                  className="min-h-11 w-full flex-1 resize-none bg-transparent px-4 py-3 text-sm sm:text-base text-text placeholder:text-text-muted/60 outline-none disabled:opacity-[var(--state-disabled-opacity)]"
                 />
               </div>
               <motion.button

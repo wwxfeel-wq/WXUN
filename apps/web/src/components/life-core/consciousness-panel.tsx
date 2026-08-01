@@ -10,10 +10,10 @@ import type { LifeCoreState } from './life-core-canvas';
  * V7: 真实心电图节奏 — 大段平坦基线 + 瞬间心跳脉冲
  *
  * 波形图以真实心电图形式呈现时墨当前的心情：
- * - 温柔陪伴：58 BPM（温柔、安定）
- * - 好奇探索：72 BPM（好奇、轻快）
- * - 怀旧回忆：50 BPM（怀念、沉浸）
- * - 欣喜成长：65 BPM（欣喜、温暖）
+ * - 温柔陪伴：52 BPM（温柔、安定）
+ * - 好奇探索：65 BPM（好奇、轻快）
+ * - 怀旧回忆：45 BPM（怀念、沉浸）
+ * - 欣喜成长：58 BPM（欣喜、温暖）
  *
  * 真实 ECG 的 90% 是平坦基线，只在心跳瞬间有尖锐的 P-QRS-T 脉冲。
  * P 波极小，R 波尖锐狭窄，T 波柔和 — 不再是密集的正弦波。
@@ -79,22 +79,22 @@ const ECG_PROFILE: Record<LifeCoreState, {
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 58, rAmp: 1.0, pAmp: 0.12, tAmp: 0.22,
+    bpm: 52, rAmp: 1.3, pAmp: 0.12, tAmp: 0.35,
     pCenter: 0.20, pWidth: 0.020, rCenter: 0.28, rWidth: 0.004, tCenter: 0.42, tWidth: 0.035,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 72, rAmp: 1.2, pAmp: 0.14, tAmp: 0.28,
+    bpm: 65, rAmp: 1.5, pAmp: 0.14, tAmp: 0.40,
     pCenter: 0.18, pWidth: 0.018, rCenter: 0.26, rWidth: 0.0035, tCenter: 0.40, tWidth: 0.030,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 50, rAmp: 0.85, pAmp: 0.10, tAmp: 0.18,
+    bpm: 45, rAmp: 1.1, pAmp: 0.10, tAmp: 0.30,
     pCenter: 0.22, pWidth: 0.025, rCenter: 0.30, rWidth: 0.005, tCenter: 0.46, tWidth: 0.045,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 65, rAmp: 1.1, pAmp: 0.13, tAmp: 0.25,
+    bpm: 58, rAmp: 1.4, pAmp: 0.13, tAmp: 0.38,
     pCenter: 0.19, pWidth: 0.020, rCenter: 0.27, rWidth: 0.004, tCenter: 0.41, tWidth: 0.032,
     color: [232, 134, 174],
   },
@@ -219,7 +219,8 @@ export default function ConsciousnessPanel({
 
     const draw = () => {
       const now = performance.now() / 1000;
-      const t = now - startTime;
+      // prefers-reduced-motion 时冻结时间 — 波形静止展示，不做滚动/呼吸动画
+      const t = reduceMotion ? 0 : now - startTime;
       const { profile: p, activity: act, moodOffset: mo } = stateRef.current;
 
       ctx.clearRect(0, 0, W, H);
@@ -245,17 +246,16 @@ export default function ConsciousnessPanel({
       const bpm = p.bpm * (0.95 + actNorm * 0.10);
       const beatDuration = 60 / bpm;
 
-      // 滚动速度 — 像素/秒，模拟真实心电图纸 25mm/s 的视觉节奏
-      // 每个心跳周期占屏幕约 1/3 到 1/4 宽度
-      const scrollSpeed = W * 0.08;
+      // 滚动速度 — 像素/秒，更缓慢的视觉节奏，模拟真实心电图纸的从容移动
+      const scrollSpeed = W * 0.05;
 
       // 呼吸感叠加 — 慢呼吸让基线微微起伏
       const breathCycle = 5.5;
       const breathPhase = (t % breathCycle) / breathCycle;
       const breathWave = Math.sin(breathPhase * Math.PI * 2) * 0.05;
 
-      // 振幅缩放 — R 波尖峰要明显，但整体不太夸张
-      const ampScale = (H * 0.38) * (0.75 + actNorm * 0.25);
+      // 振幅缩放 — 略大振幅让心跳脉冲更明显，但整体保持温和
+      const ampScale = (H * 0.42) * (0.75 + actNorm * 0.25);
 
       // ═══ 采样 ECG 波形 ═══
       const samples = Math.max(150, Math.floor(W / 1.5));

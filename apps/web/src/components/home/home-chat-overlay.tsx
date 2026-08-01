@@ -70,7 +70,7 @@ export default function HomeChatOverlay({
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 40, scale: 0.98, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="w-full sm:max-w-lg h-75vh flex flex-col"
+            className="w-full sm:max-w-lg h-[85dvh] sm:h-75vh flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <GlassLayer
@@ -89,7 +89,7 @@ export default function HomeChatOverlay({
                 <button
                   onClick={onClose}
                   aria-label="关闭"
-                  className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-glass-hover transition-colors flex-shrink-0 focus-ring"
+                  className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-glass-hover transition-colors flex-shrink-0 focus-ring min-w-11 min-h-11 flex items-center justify-center"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -141,7 +141,12 @@ export default function HomeChatOverlay({
               )}
 
               {/* Input */}
-              <div className="p-3 border-t border-border flex-shrink-0">
+              <div
+                className="p-3 border-t border-border flex-shrink-0"
+                style={{
+                  paddingBottom: "calc(var(--space-md) + var(--safe-bottom))",
+                }}
+              >
                 <div className="chat-input-shell">
                   <textarea
                     value={input}

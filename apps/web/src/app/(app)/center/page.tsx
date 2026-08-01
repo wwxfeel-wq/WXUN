@@ -126,7 +126,7 @@ export default function DigitalLifeCenter() {
 
   return (
     <PageTransition>
-      <div className="w-full min-h-screen px-4 sm:px-8 lg:px-16 py-8 sm:py-10 pb-32">
+      <div className="w-full min-h-screen px-4 sm:px-8 lg:px-16 py-8 sm:py-10" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-2xl))' }}>
         <div className="max-w-6xl mx-auto">
           {/* ===== Hero Section ===== */}
           <motion.div

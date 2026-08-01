@@ -281,6 +281,21 @@
     transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
+  /* 移动端：发送按钮触控目标增大到 44px */
+  @media (max-width: 767px) {
+    .chat-input-shell {
+      padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+    }
+    .chat-input-shell__send {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+    .chat-input-shell__textarea {
+      font-size: var(--text-base); /* 16px — 防止 iOS 聚焦缩放 */
+      min-height: 2.75rem;
+    }
+  }
+
   .chat-input-shell__send:hover:not(:disabled) {
     background: var(--color-primary-hover);
     transform: scale(1.08);
@@ -959,19 +974,30 @@
   position: relative;
   isolation: isolate;
   min-height: calc(100dvh - var(--safe-top));
-  padding: var(--space-lg) var(--space-sm) calc(var(--home-dock-clearance) + 5rem);
+  /* 移动端底部需留出 dock（~80px）+ 输入框（~48px）+ 间距 的空间 */
+  padding: var(--space-lg) var(--space-sm) calc(var(--home-mobile-dock-clearance) + 6rem);
   display: grid;
   grid-template-columns: 1fr;
   grid-template-areas:
     "top"
     "left"
-    "core"
     "right";
   gap: var(--space-md);
   align-items: start;
   max-width: 100rem;
   margin: 0 auto;
   z-index: 1;
+}
+
+/* 移动端隐藏中心空占位区（粒子背景已全屏覆盖），减少无效滚动空间 */
+.spatial-home__core {
+  grid-area: auto;
+}
+
+@media (max-width: 767px) {
+  .spatial-home__core {
+    display: none;
+  }
 }
 
 @media (min-width: 64rem) {
@@ -1000,6 +1026,7 @@
 
   .spatial-home__core {
     align-self: center;
+    display: flex;
   }
 }
 
@@ -1111,6 +1138,20 @@
   min-height: 3rem;
 }
 
+/* 移动端：缩小卡片内边距，确保 2 列卡片不拥挤 */
+@media (max-width: 767px) {
+  .spatial-card--compact {
+    padding: var(--space-sm) var(--space-md);
+    min-height: 2.75rem;
+    gap: var(--space-sm);
+  }
+  .spatial-card--compact > :first-child:not(div) {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+  }
+}
+
 .spatial-card > div {
   display: flex;
   flex-direction: column;
@@ -1135,6 +1176,22 @@
   font-weight: 600;
   color: var(--color-text-primary);
   line-height: 1.2;
+}
+
+/* 移动端：确保卡片文字不低于 14px 最小可读字号 */
+@media (max-width: 767px) {
+  .spatial-card small {
+    font-size: var(--text-sm); /* 14px */
+  }
+  .spatial-card strong {
+    font-size: var(--text-lg); /* 18px */
+  }
+  .spatial-nav__item strong {
+    font-size: var(--text-sm); /* 14px */
+  }
+  .spatial-nav__item small {
+    font-size: var(--text-xs); /* 12px 辅助提示文字 */
+  }
 }
 
 /* 左侧家庭入口 */
@@ -1169,6 +1226,8 @@
   color: var(--color-text-secondary);
   text-decoration: none;
   transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease;
+  /* 触控目标最小 44px 高 */
+  min-height: 2.75rem;
 }
 
 .spatial-nav__item:hover {
@@ -1340,12 +1399,29 @@
   color: var(--color-text-tertiary);
 }
 
+/* 移动端：面板列表文字不低于 14px */
+@media (max-width: 767px) {
+  .panel-list__row {
+    font-size: var(--text-sm); /* 14px */
+    min-height: 2.75rem; /* 44px 触控目标 */
+  }
+  .panel-list__row > small {
+    font-size: var(--text-sm); /* 14px */
+  }
+  .panel-title {
+    font-size: var(--text-sm); /* 14px */
+  }
+  .panel-title small {
+    font-size: var(--text-xs); /* 12px 辅助文字 */
+  }
+}
+
 /* 输入框 — 位于全局 dock 上方，留出清晰呼吸间隙 */
 .spatial-home__input {
   position: fixed;
   left: var(--space-sm);
   right: var(--space-sm);
-  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-lg));
+  bottom: calc(var(--home-mobile-dock-clearance) + var(--space-lg) + var(--safe-bottom));
   max-width: 48rem;
   margin: 0 auto;
   z-index: 20;
@@ -1444,14 +1520,24 @@
   padding: var(--space-xs) 0;
 }
 
+/* 移动端：输入框 16px 防止 iOS 聚焦缩放 */
+@media (max-width: 767px) {
+  .spatial-input-shell > input {
+    font-size: 1rem; /* 16px */
+  }
+  .spatial-input-shell {
+    min-height: 3.25rem; /* 52px — 匹配增大的按钮 */
+  }
+}
+
 .spatial-input-shell > input::placeholder {
   color: var(--color-text-tertiary);
 }
 
 .spatial-input-shell > button {
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-text-inverse);

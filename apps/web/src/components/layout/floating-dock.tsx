@@ -123,7 +123,7 @@ export default function FloatingDock() {
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.6, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="floating-dock flex items-end w-full no-scrollbar gap-0.5 sm:gap-1 px-3 sm:px-5 pt-2 sm:pt-4 pb-2 sm:pb-2.5"
+            className="floating-dock flex items-end w-full no-scrollbar gap-1 sm:gap-1 px-2 sm:px-5 pt-2 sm:pt-4 pb-2 sm:pb-2.5"
           >
             {dockItems.map((item, index) => {
             const Icon = item.icon;
@@ -163,7 +163,7 @@ export default function FloatingDock() {
                 )}
 
                 <motion.span
-                  className="text-3xs sm:text-4xs text-text-subtle mt-0.5 whitespace-nowrap"
+                  className="text-2xs sm:text-3xs text-text-subtle mt-0.5 whitespace-nowrap"
                   animate={{ opacity: scale > 1.15 ? 1 : 0.6 }}
                 >
                   {item.label}
@@ -185,10 +185,10 @@ export default function FloatingDock() {
             style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
             whileTap={isTouchDevice ? { scale: 0.88 } : undefined}
           >
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-accent/15 flex items-center justify-center text-accent text-sm sm:text-xs font-medium">
+            <div className="w-11 h-11 sm:w-11 sm:h-11 rounded-xl sm:rounded-xl bg-accent/15 flex items-center justify-center text-accent text-sm sm:text-xs font-medium">
               {user?.profile?.nickname?.charAt(0) || 'U'}
             </div>
-            <span className="text-3xs sm:text-4xs text-text-subtle mt-0.5 opacity-60">
+            <span className="text-2xs sm:text-3xs text-text-subtle mt-0.5 opacity-60">
               我
             </span>
           </motion.button>
@@ -200,7 +200,7 @@ export default function FloatingDock() {
         {showUserDropdown && (
           <GlassLayer
             intensity="default"
-            className="fixed right-4 sm:right-6 z-popover p-4 w-52 sm:w-56"
+            className="fixed right-3 sm:right-6 z-popover p-3 sm:p-4 w-56 sm:w-56"
             style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
           >
             <motion.div
@@ -220,16 +220,16 @@ export default function FloatingDock() {
             </div>
             <button
               onClick={() => { handleNavigate('/settings'); setShowUserDropdown(false); }}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-text-muted hover:bg-surface hover:text-text transition-colors focus-ring"
+              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm text-text-muted hover:bg-surface hover:text-text transition-colors focus-ring min-h-11"
             >
-              <Settings size={15} />
+              <Settings size={16} />
               设置
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-error hover:bg-error-bg transition-colors focus-ring"
+              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm text-error hover:bg-error-bg transition-colors focus-ring min-h-11"
             >
-              <LogOut size={15} />
+              <LogOut size={16} />
               退出登录
             </button>
             </motion.div>

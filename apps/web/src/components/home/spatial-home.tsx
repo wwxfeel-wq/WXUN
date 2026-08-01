@@ -21,6 +21,7 @@ import {
 import { GlassLayer } from '@/components/glass';
 import LifeCoreCanvas, { type LifeCoreState, type LifeCoreCounts } from '@/components/life-core/life-core-canvas';
 import ConsciousnessPanel from '@/components/life-core/consciousness-panel';
+import { WelcomeGuide } from '@/components/onboarding/welcome-guide';
 import HomeChatOverlay from './home-chat-overlay';
 import { useFamilyHubStore } from '@/stores/family-hub-store';
 
@@ -70,6 +71,10 @@ export function SpatialHome() {
     agent: metrics.activeAgents,
     kindness: metrics.kindnessMemories ?? 0,
   }), [metrics]);
+
+  // 新用户引导：家庭理解度与成员数均为 0 时展示三步引导卡片
+  const showWelcomeGuide =
+    metrics.understandingPercent === 0 && metrics.familyMembers === 0;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -253,6 +258,16 @@ export function SpatialHome() {
           </button>
         </div>
       </motion.form>
+
+      {/* 新用户引导 — 家庭理解度与成员数均为 0 时展示三步引导卡片 */}
+      <WelcomeGuide
+        show={showWelcomeGuide}
+        onStartChat={() => {
+          // 复用首页聊天浮层：空消息仅打开面板，不自动发送
+          setChatMessage('');
+          setChatOpen(true);
+        }}
+      />
 
       {/* 时墨浮动聊天面板 — 用户发送消息后弹出，展示流式回复 */}
       <HomeChatOverlay

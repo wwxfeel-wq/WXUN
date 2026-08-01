@@ -151,7 +151,7 @@ export default function EvolutionPage() {
 
   return (
     <PageTransition>
-      <div className="w-full min-h-screen px-6 sm:px-12 lg:px-20 py-8 pb-32">
+      <div className="w-full min-h-screen px-6 sm:px-12 lg:px-20 py-8" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-2xl))' }}>
         <div className="max-w-5xl mx-auto">
           {/* Header */}
           <motion.div
