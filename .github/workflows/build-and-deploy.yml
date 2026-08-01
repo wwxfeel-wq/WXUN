@@ -178,11 +178,33 @@ jobs:
             echo "nginx started: $?"
             sleep 3
             echo "== 容器状态 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production ps
-            echo "== API 日志（最后30行）=="
-            docker logs echolife-api --tail 30 2>&1 || echo "No API logs"
-            echo "== Nginx 日志（最后20行）=="
-            docker logs echolife-nginx --tail 20 2>&1 || echo "No nginx logs"
-            echo "== Docker 磁盘使用 =="
-            docker system df
-            echo "== 部署完成 =="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
+            echo "== API 日志（最后30行）==" | tee -a /tmp/deploy_diag.txt
+            docker logs echolife-api --tail 30 2>&1 | tee -a /tmp/deploy_diag.txt
+            echo "== Nginx 日志（最后20行）==" | tee -a /tmp/deploy_diag.txt
+            docker logs echolife-nginx --tail 20 2>&1 | tee -a /tmp/deploy_diag.txt
+            echo "== Docker 磁盘使用 ==" | tee -a /tmp/deploy_diag.txt
+            docker system df 2>&1 | tee -a /tmp/deploy_diag.txt
+            echo "== docker ps -a ==" | tee -a /tmp/deploy_diag.txt
+            docker ps -a 2>&1 | tee -a /tmp/deploy_diag.txt
+            echo "== 端口检查 ==" | tee -a /tmp/deploy_diag.txt
+            ss -tlnp 2>&1 | tee -a /tmp/deploy_diag.txt
+            echo "== 部署完成 ==" | tee -a /tmp/deploy_diag.txt
+
+      - name: Download diagnostic
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          source: /tmp/deploy_diag.txt
+          target: deploy_diag.txt
+          strip_components: 2
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-diagnostic
+          path: deploy_diag.txt
+          retention-days: 7
