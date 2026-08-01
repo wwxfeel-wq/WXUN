@@ -8,6 +8,7 @@ import {
   BookOpen,
   BrainCircuit,
   GraduationCap,
+  Heart,
   Hourglass,
   MessageCircle,
   MessagesSquare,
@@ -28,6 +29,7 @@ import { useFamilyHubStore } from '@/stores/family-hub-store';
 const familyEntries = [
   { href: '/family', icon: Users, label: '家人', hint: '成员与关系' },
   { href: '/center', icon: Sparkles, label: '回忆', hint: '家庭记忆库' },
+  { href: '/kindness', icon: Heart, label: '童忆', hint: '温暖瞬间与家庭故事' },
   { href: '/capsules', icon: Hourglass, label: '时间胶囊', hint: '写给未来' },
   { href: '/wechat-bot', icon: MessageCircle, label: '微信 Bot', hint: '扫码连接家庭群' },
   { href: '/skills', icon: GraduationCap, label: '能力', hint: '时墨的成长' },

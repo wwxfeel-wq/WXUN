@@ -1603,7 +1603,7 @@
 /* V3: 心情波形容器 — 背景透明，让心情颜色自由表达 */
 .consciousness__wave-container {
   position: relative;
-  height: 4.5rem;
+  height: 6.5rem;
   overflow: hidden;
   border-radius: var(--radius-md);
   background: transparent;

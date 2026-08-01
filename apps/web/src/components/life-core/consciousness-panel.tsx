@@ -74,22 +74,22 @@ const ECG_PROFILE: Record<LifeCoreState, {
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 62, qrsAmp: 0.70, pAmp: 0.15, tAmp: 0.30,
+    bpm: 62, qrsAmp: 1.15, pAmp: 0.28, tAmp: 0.50,
     pCenter: 0.12, pWidth: 0.035, rCenter: 0.25, tCenter: 0.45, tWidth: 0.06,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 92, qrsAmp: 0.90, pAmp: 0.18, tAmp: 0.35,
+    bpm: 92, qrsAmp: 1.45, pAmp: 0.32, tAmp: 0.58,
     pCenter: 0.10, pWidth: 0.030, rCenter: 0.22, tCenter: 0.42, tWidth: 0.05,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 54, qrsAmp: 0.65, pAmp: 0.14, tAmp: 0.28,
+    bpm: 54, qrsAmp: 1.05, pAmp: 0.25, tAmp: 0.46,
     pCenter: 0.13, pWidth: 0.040, rCenter: 0.26, tCenter: 0.48, tWidth: 0.08,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 80, qrsAmp: 0.85, pAmp: 0.17, tAmp: 0.40,
+    bpm: 80, qrsAmp: 1.35, pAmp: 0.30, tAmp: 0.62,
     pCenter: 0.11, pWidth: 0.032, rCenter: 0.24, tCenter: 0.44, tWidth: 0.055,
     color: [232, 134, 174],
   },
@@ -242,8 +242,8 @@ export default function ConsciousnessPanel({
       // 滚动速度 — 像素/秒
       const scrollSpeed = W * 0.12;
 
-      // 振幅缩放
-      const ampScale = (H * 0.22) * (0.65 + actNorm * 0.35);
+      // 振幅缩放 — 增大幅值让心电图起伏更明显
+      const ampScale = (H * 0.40) * (0.75 + actNorm * 0.25);
 
       // ═══ 采样 ECG 波形 ═══
       const samples = Math.max(150, Math.floor(W / 1.5));
