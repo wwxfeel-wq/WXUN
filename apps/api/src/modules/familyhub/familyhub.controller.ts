@@ -29,7 +29,12 @@ export class FamilyHubController implements OnModuleInit {
 
   /** Auto-seed agents and skills on first startup. */
   async onModuleInit() {
-    await this.service.seedIfEmpty();
+    try {
+      await this.service.seedIfEmpty();
+    } catch (err) {
+      // seedIfEmpty 失败不应阻止 API 启动
+      console.error('[FamilyHub] seedIfEmpty failed (non-fatal):', err);
+    }
   }
 
   @Get('metrics')
