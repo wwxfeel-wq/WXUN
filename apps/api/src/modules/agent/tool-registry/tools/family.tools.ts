@@ -618,7 +618,7 @@ export class FamilyTools {
         type: MemoryType.EVENT,
         visibility: MemoryVisibility.PRIVATE,
         importance: 0.8,
-        occurredAt: new Date(date),
+        occurredAt: new Date(date).toISOString(),
         metadata: {
           agentCode: ctx.agentCode,
           kind: 'anniversary',

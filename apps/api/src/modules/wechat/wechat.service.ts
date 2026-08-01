@@ -892,7 +892,7 @@ export class WechatService implements OnModuleDestroy {
         type: MemoryType.DAILY,
         visibility: isGroup ? MemoryVisibility.FAMILY : MemoryVisibility.PRIVATE,
         importance: 0.6,
-        occurredAt,
+        occurredAt: occurredAt.toISOString(),
         metadata: {
           source: 'wechat',
           messageId,
@@ -1023,7 +1023,7 @@ export class WechatService implements OnModuleDestroy {
       title: `来自微信的时间胶囊：${title}`,
       content: text,
       type: CapsuleType.PERSONAL,
-      openAt,
+      openAt: openAt.toISOString(),
       metadata: { source: 'wechat', senderName: fromName },
     } as CreateCapsuleDto);
 

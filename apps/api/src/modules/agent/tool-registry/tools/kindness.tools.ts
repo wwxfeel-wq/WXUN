@@ -263,7 +263,7 @@ export class KindnessTools {
         people: Array.isArray(args.people) ? args.people.filter((p): p is string => typeof p === 'string') : [],
         emotion: typeof args.emotion === 'string' ? args.emotion : 'love',
         location: typeof args.location === 'string' ? args.location : undefined,
-        occurredAt: typeof args.occurredAt === 'string' ? new Date(args.occurredAt) : undefined,
+        occurredAt: typeof args.occurredAt === 'string' ? args.occurredAt : undefined,
         familyId: typeof args.familyId === 'string' ? args.familyId : undefined,
       };
 
