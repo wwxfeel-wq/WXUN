@@ -333,8 +333,8 @@ export class KindnessTools {
 
       const summary = result.items
         .slice(0, 3)
-        .map((k: { title: string; event: string; occurredAt: string | null }) =>
-          `- ${k.title}：${k.event}（${k.occurredAt?.split('T')[0] ?? '最近'}）`)
+        .map((k: { title: string; event: string; occurredAt: Date | null }) =>
+          `- ${k.title}：${k.event}（${k.occurredAt ? new Date(k.occurredAt).toISOString().split('T')[0] : '最近'}）`)
         .join('\n');
 
       return {

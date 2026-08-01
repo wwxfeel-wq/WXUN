@@ -307,9 +307,9 @@ ${kindness.content}
         type: parsed.type as KindnessType,
         importance: parsed.importance as KindnessLevel,
         people: Array.isArray(parsed.people) ? parsed.people : [],
-        event: parsed.event ?? text.slice(0, 100),
-        emotion: parsed.emotion ?? 'love',
-        summary: parsed.summary,
+        event: (parsed.event as string) ?? text.slice(0, 100),
+        emotion: (parsed.emotion as string) ?? 'love',
+        summary: parsed.summary as string | undefined,
       };
     } catch (error) {
       this.logger.warn(`Kindness detection failed: ${(error as Error).message}`);
