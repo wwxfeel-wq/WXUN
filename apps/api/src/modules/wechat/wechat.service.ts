@@ -79,6 +79,13 @@ interface ContextTokenEntry {
   updatedAt: number;
 }
 
+/** typing_ticket 缓存条目 — 每个用户的最新 typing_ticket */
+interface TypingTicketEntry {
+  ticket: string;
+  contextToken: string;
+  updatedAt: number;
+}
+
 /** 扫码状态轮询间隔 */
 const QR_POLL_INTERVAL_MS = 2000;
 /** 扫码超时（5 分钟） */
@@ -124,9 +131,16 @@ export class WechatService implements OnModuleDestroy {
   private botToken: string | null = null;
   /** bot_id (xxx@im.bot) */
   private botId: string | null = null;
+  /** 扫码人的微信 ID (xxx@im.wechat) */
+  private botUserId: string | null = null;
+  /** 二维码 key（用于轮询扫码状态） */
+  private qrCodeKey: string | null = null;
 
   /** context_token 缓存：userId → { token, updatedAt } */
   private contextTokenCache = new Map<string, ContextTokenEntry>();
+
+  /** typing_ticket 缓存：userId → { ticket, contextToken, updatedAt } */
+  private typingTicketCache = new Map<string, TypingTicketEntry>();
 
   /** Auto-reconnect state */
   private syncFailCount = 0;
@@ -201,17 +215,17 @@ export class WechatService implements OnModuleDestroy {
       // Step 1: 获取二维码
       const qrResponse = await this.ilink.getBotQrCode();
 
-      this.qrCodeUrl = qrResponse.qrcode_url;
+      this.qrCodeUrl = qrResponse.qrcode_img_content;
+      this.qrCodeKey = qrResponse.qrcode;
       this.phase = 'waiting_scan';
       this.logger.log('iLink QR code generated, waiting for scan...');
 
       // Step 2: 异步轮询扫码状态
-      const sessionId = qrResponse.session_id || '';
-      if (sessionId) {
-        void this.pollQrCodeStatus(sessionId);
+      if (this.qrCodeKey) {
+        void this.pollQrCodeStatus(this.qrCodeKey);
       } else {
-        // 如果没有 session_id，尝试直接用 qrcode_url 启动
-        this.logger.warn('No session_id in QR response, polling may not work');
+        // 如果没有 qrcode key，无法轮询
+        this.logger.warn('No qrcode key in QR response, polling may not work');
       }
 
       return { qrCodeUrl: this.qrCodeUrl };
@@ -226,8 +240,10 @@ export class WechatService implements OnModuleDestroy {
 
   /**
    * 轮询扫码状态，直到确认登录或超时
+   * 官方协议状态值: scaned(已扫码) / confirmed(已确认) / expired(已过期)
+   * 注意: get_qrcode_status 是长轮询，超时是正常行为
    */
-  private async pollQrCodeStatus(sessionId: string): Promise<void> {
+  private async pollQrCodeStatus(qrcodeKey: string): Promise<void> {
     if (this.isQrPolling) return;
     this.isQrPolling = true;
 
@@ -239,38 +255,35 @@ export class WechatService implements OnModuleDestroy {
         !this.loggedIn &&
         Date.now() - startTime < QR_POLL_TIMEOUT_MS
       ) {
-        await new Promise((resolve) => setTimeout(resolve, QR_POLL_INTERVAL_MS));
-
         if (this.shouldStopPolling || this.loggedIn) break;
 
         try {
-          const status = await this.ilink.getQrCodeStatus(sessionId);
+          const status = await this.ilink.getQrCodeStatus(qrcodeKey);
 
           switch (status.status) {
-            case 'waiting':
-              // 仍在等待扫码
-              break;
-
-            case 'scanned':
+            case 'scaned':
+              // 已扫码，等待手机确认
               this.phase = 'waiting_confirm';
-              this.userNickName = status.nickname || 'ClawBot User';
-              this.logger.log(`QR code scanned by ${this.userNickName}, waiting for confirm...`);
+              this.logger.log('QR code scanned, waiting for confirm on phone...');
               break;
 
             case 'confirmed':
               // 登录成功！
               if (status.bot_token) {
                 this.botToken = status.bot_token;
-                this.botId = status.bot_id || null;
+                this.botId = status.ilink_bot_id || null;
+                this.botUserId = status.ilink_user_id || null;
                 this.ilink.setBotToken(status.bot_token);
                 this.loggedIn = true;
                 this.phase = 'logged_in';
                 this.syncFailCount = 0;
                 this.isReconnecting = false;
                 this.reconnectStartedAt = null;
-                this.userNickName = status.nickname || this.userNickName || 'ClawBot';
+                this.userNickName = 'ClawBot';
 
-                this.logger.log(`iLink login confirmed! Bot ID: ${this.botId}, Nickname: ${this.userNickName}`);
+                this.logger.log(
+                  `iLink login confirmed! Bot ID: ${this.botId}, User ID: ${this.botUserId}`,
+                );
 
                 // 启动长轮询接收消息
                 this.startPollingLoop();
@@ -288,8 +301,15 @@ export class WechatService implements OnModuleDestroy {
               return;
           }
         } catch (err) {
-          this.logger.warn(`QR status poll error: ${(err as Error).message}`);
+          // get_qrcode_status 是长轮询，超时是正常行为
+          const msg = (err as Error).message;
+          if (msg.includes('timeout') || msg.includes('TimeoutError') || msg.includes('abort')) {
+            this.logger.debug('QR status long-poll timeout (normal), retrying...');
+            continue;
+          }
+          this.logger.warn(`QR status poll error: ${msg}`);
           // 继续轮询，不因单次错误中断
+          await new Promise((resolve) => setTimeout(resolve, QR_POLL_INTERVAL_MS));
         }
       }
 
@@ -339,10 +359,10 @@ export class WechatService implements OnModuleDestroy {
         }
 
         // 处理收到的消息
-        if (response.messages && response.messages.length > 0) {
-          this.logger.log(`Received ${response.messages.length} message(s) from iLink`);
+        if (response.msgs && response.msgs.length > 0) {
+          this.logger.log(`Received ${response.msgs.length} message(s) from iLink`);
 
-          for (const msg of response.messages) {
+          for (const msg of response.msgs) {
             try {
               await this.handleIncomingMessage(msg);
             } catch (err) {
@@ -554,6 +574,7 @@ export class WechatService implements OnModuleDestroy {
     this.botId = null;
     this.updateCursor = '';
     this.contextTokenCache.clear();
+    this.typingTicketCache.clear();
     this.syncFailCount = 0;
     this.reconnectStartedAt = null;
     this.isReconnecting = false;
@@ -717,6 +738,57 @@ export class WechatService implements OnModuleDestroy {
     }
 
     return reply.trim();
+  }
+
+  /**
+   * 发送"正在输入"状态给微信用户
+   * iLink 协议要求：先调 getConfig 获取 typing_ticket，再调 sendTyping
+   * typing_ticket 会缓存 30 分钟，避免每次都请求 getConfig
+   */
+  private async sendTypingIndicator(userId: string, contextToken: string): Promise<void> {
+    if (!contextToken || !this.botUserId) return;
+
+    try {
+      // 检查缓存中是否有有效的 typing_ticket
+      let ticketEntry = this.typingTicketCache.get(userId);
+      const now = Date.now();
+
+      if (!ticketEntry || now - ticketEntry.updatedAt > CONTEXT_TOKEN_TTL_MS) {
+        // 需要重新获取 typing_ticket
+        const config = await this.ilink.getConfig(userId, contextToken);
+        if (config.typing_ticket) {
+          ticketEntry = {
+            ticket: config.typing_ticket,
+            contextToken,
+            updatedAt: now,
+          };
+          this.typingTicketCache.set(userId, ticketEntry);
+        } else {
+          this.logger.debug(`No typing_ticket returned from getConfig for ${userId}`);
+          return;
+        }
+      }
+
+      // 发送"正在输入"状态 (status=1)
+      await this.ilink.sendTyping(userId, ticketEntry.ticket, true);
+    } catch (err) {
+      // typing 状态失败不影响主流程
+      this.logger.debug(`sendTypingIndicator failed (non-critical): ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * 取消"正在输入"状态（回复发送后调用）
+   */
+  private async cancelTypingIndicator(userId: string): Promise<void> {
+    const ticketEntry = this.typingTicketCache.get(userId);
+    if (!ticketEntry) return;
+
+    try {
+      await this.ilink.sendTyping(userId, ticketEntry.ticket, false);
+    } catch {
+      // ignore
+    }
   }
 
   // ============================================================
@@ -949,33 +1021,36 @@ export class WechatService implements OnModuleDestroy {
   private async handleIncomingMessage(msg: ILinkInboundMessage): Promise<void> {
     // 提取文本内容
     const content = ILinkClient.extractText(msg);
-    const isGroup = ILinkClient.isGroupMessage(msg);
-    const fromId = msg.from_user_id;
-    const toId = msg.to_user_id;
-    const isSelf = toId === fromId; // bot 发给自己的消息
+    const itemType = ILinkClient.getItemType(msg); // 1=TEXT, 2=IMAGE...
+    const fromId = msg.from_user_id ?? '';
+    const toId = msg.to_user_id ?? '';
 
-    // 判断消息类型
-    const msgType = msg.message_type;
-    if (msgType !== 1 && msgType !== 2) return; // 只处理文本和图片
+    // message_type: 1=USER, 2=BOT（是发送者类型，不是内容类型！）
+    const isBot = ILinkClient.isBotMessage(msg);
+    const isSelf = isBot; // Bot 自己发的消息
 
-    const displayContent = msgType === 2 ? '[图片]' : content;
+    // 只处理文本和图片
+    if (itemType !== 1 && itemType !== 2) return;
+
+    const displayContent = itemType === 2 ? '[图片]' : content;
     if (!displayContent.trim()) return;
 
-    // 确定 contactId（对话另一方的 ID）
-    const otherId = isSelf ? toId : fromId;
-    const senderName = msg.sender_nickname || fromId;
-    const senderWechatId = isGroup ? fromId : undefined;
+    // ilink 只支持 direct chat，对话另一方就是发送者
+    const otherId = fromId;
+    const senderName = fromId;
 
     // ⚠️ 关键：缓存 context_token，后续回复必须带上
-    if (msg.context_token) {
+    const contextToken = msg.context_token ?? '';
+    if (contextToken) {
       this.contextTokenCache.set(otherId, {
-        token: msg.context_token,
+        token: contextToken,
         updatedAt: Date.now(),
       });
       this.logger.debug(`Cached context_token for ${otherId}`);
     }
 
     // 持久化消息
+    const msgTimestamp = msg.create_time_ms ?? Date.now();
     const saved = await this.prisma.wechatMessage.create({
       data: {
         contactId: otherId,
@@ -984,13 +1059,13 @@ export class WechatService implements OnModuleDestroy {
         toId,
         toName: isSelf ? this.userNickName || 'Bot' : 'Bot',
         content: displayContent,
-        msgType,
+        msgType: itemType,
         isSelf,
-        senderWechatId: senderWechatId ?? null,
-        timestamp: new Date((msg.create_time ?? Math.floor(Date.now() / 1000)) * 1000),
+        senderWechatId: null,
+        timestamp: new Date(msgTimestamp),
         metadata: {
-          rawMsgId: msg.msg_id,
-          contextToken: msg.context_token,
+          rawMsgId: msg.message_id,
+          contextToken,
           source: 'ilink',
         } as Prisma.InputJsonValue,
       },
@@ -1015,7 +1090,7 @@ export class WechatService implements OnModuleDestroy {
     if (isSelf) return;
 
     // 同步联系人信息到数据库
-    await this.syncContactFromMessage(otherId, senderName, isGroup);
+    await this.syncContactFromMessage(otherId, senderName, false);
 
     // 识别家庭成员
     const member = await this.resolveFamilyMember(fromId, senderName);
@@ -1038,8 +1113,8 @@ export class WechatService implements OnModuleDestroy {
       saved.id,
       otherId,
       senderName,
-      isGroup,
-      new Date((msg.create_time ?? Math.floor(Date.now() / 1000)) * 1000),
+      false,
+      new Date(msgTimestamp),
     );
 
     // 送入 AgentRuntime pipeline
@@ -1054,10 +1129,8 @@ export class WechatService implements OnModuleDestroy {
       timestamp: Date.now(),
     });
 
-    // 发送"正在输入"状态
-    if (msg.context_token) {
-      await this.ilink.sendTyping(otherId, msg.context_token);
-    }
+    // 发送"正在输入"状态（需先通过 getConfig 获取 typing_ticket）
+    await this.sendTypingIndicator(otherId, contextToken);
 
     try {
       const reply = await this.runAgentPipeline(
@@ -1080,6 +1153,8 @@ export class WechatService implements OnModuleDestroy {
       if (reply) {
         try {
           await this.sendMessage(otherId, reply);
+          // 取消"正在输入"状态
+          await this.cancelTypingIndicator(otherId);
         } catch (err) {
           this.logger.error(`Failed to send iLink reply: ${(err as Error).message}`);
         }
