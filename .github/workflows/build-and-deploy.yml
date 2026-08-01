@@ -143,27 +143,46 @@ jobs:
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \
               -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+            echo "== 检查 .env.production =="
+            if [ ! -f .env.production ]; then
+              echo "ERROR: .env.production not found! Creating minimal config..."
+              echo "POSTGRES_USER=echolife" > .env.production
+              echo "POSTGRES_PASSWORD=echolife2026" >> .env.production
+              echo "POSTGRES_DB=echolife" >> .env.production
+              echo "REDIS_PASSWORD=redis2026" >> .env.production
+              echo "JWT_SECRET=echolife-jwt-secret-2026" >> .env.production
+              echo "JWT_REFRESH_SECRET=echolife-jwt-refresh-2026" >> .env.production
+              echo "ENCRYPTION_KEY=echolife-encryption-key-32b!" >> .env.production
+              echo "CORS_ORIGINS=http://47.103.20.211,https://47.103.20.211" >> .env.production
+              echo "NEXT_PUBLIC_API_URL=http://47.103.20.211/api/v1" >> .env.production
+              echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
+              echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
+            fi
+            # 确保关键变量存在
+            grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
+            grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
+            grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=http://47.103.20.211/api/v1" >> .env.production
+            echo ".env.production check OK"
             echo "== 拉取新镜像 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || true
-            echo "== 停止旧容器 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production down || true
-            echo "== 启动基础服务 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis || true
+            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || echo "WARNING: pull failed"
+            echo "== 启动/重启服务（不停止现有容器）=="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
+            echo "postgres/redis started: $?"
             sleep 5
-            echo "== 启动 API =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d api || true
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
+            echo "api started: $?"
             sleep 10
-            echo "== 启动 Web + Nginx =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d web nginx || true
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web
+            echo "web started: $?"
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx
+            echo "nginx started: $?"
             sleep 3
-            echo "== 重载 nginx =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production restart nginx || true
-            echo "== 清理旧镜像 =="
-            docker image prune -f || true
             echo "== 容器状态 =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production ps
-            echo "== API 最近日志 =="
-            docker logs echolife-api --tail 30 2>&1 || true
-            echo "== Nginx 最近日志 =="
-            docker logs echolife-nginx --tail 20 2>&1 || true
+            echo "== API 日志（最后30行）=="
+            docker logs echolife-api --tail 30 2>&1 || echo "No API logs"
+            echo "== Nginx 日志（最后20行）=="
+            docker logs echolife-nginx --tail 20 2>&1 || echo "No nginx logs"
+            echo "== Docker 磁盘使用 =="
+            docker system df
             echo "== 部署完成 =="
