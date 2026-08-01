@@ -121,7 +121,7 @@ export interface AgentRuntimeInput {
   message: string;
   interviewId?: string;
   /** Explicit mode hint; runtime may override after planning */
-  mode?: 'chat' | 'digital-life' | 'story' | 'kindness';
+  mode?: 'chat' | 'digital-life' | 'story' | 'kindness' | 'wechat';
   /** Optional persona override for digital-life mode */
   persona?: string;
 }

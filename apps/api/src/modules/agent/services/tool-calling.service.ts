@@ -99,22 +99,37 @@ export class ToolCallingService {
     const commonResearchTools = ['deep_research', 'analyze_user_need'];
     // 具备网页浏览与回应综合能力的 agent
     const browseSynthTools = ['browse_webpage', 'synthesize_response'];
+    // 童忆引擎工具 — 让所有核心 agent 都能记录和发现温暖瞬间
+    const kindnessTools = [
+      'detect_kindness',
+      'create_kindness_memory',
+      'query_kindness_memories',
+      'reconstruct_kindness_story',
+      'generate_family_story',
+      'generate_warm_reminder',
+      'get_kindness_stats',
+    ];
 
     const toolMap: Record<string, string[]> = {
-      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search', ...commonResearchTools, ...browseSynthTools],
-      kitchen: ['create_memory', 'search_memories', 'search_knowledge', 'send_family_notification', 'search_recipes', 'nutrition_info', 'web_search', ...commonResearchTools],
+      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools],
+      kitchen: ['create_memory', 'search_memories', 'search_knowledge', 'send_family_notification', 'search_recipes', 'nutrition_info', 'web_search', ...commonResearchTools, ...kindnessTools],
       repair: ['create_memory', 'search_memories', 'send_family_notification', 'search_knowledge', 'web_search', ...commonResearchTools, ...browseSynthTools],
       knowledge: ['search_knowledge', 'upsert_entity', 'create_memory', 'search_memories', 'web_search', ...commonResearchTools, ...browseSynthTools],
-      health: ['create_memory', 'create_reminder', 'search_memories', 'track_health', 'search_health_memories', 'send_family_notification', 'web_search', ...commonResearchTools],
-      travel: ['create_memory', 'search_memories', 'send_family_notification', 'plan_itinerary', 'get_weather', 'web_search', ...commonResearchTools],
-      care: ['create_memory', 'create_reminder', 'send_family_notification', 'search_memories', ...commonResearchTools],
-      growth: ['create_memory', 'track_milestone', 'search_memories', 'search_growth_memories', ...commonResearchTools],
-      emotion: ['create_memory', 'search_memories', 'send_family_notification', 'log_mood', 'search_emotion_memories', 'analyze_emotion', ...commonResearchTools],
+      health: ['create_memory', 'create_reminder', 'search_memories', 'track_health', 'search_health_memories', 'send_family_notification', 'web_search', ...commonResearchTools, ...kindnessTools],
+      travel: ['create_memory', 'search_memories', 'send_family_notification', 'plan_itinerary', 'get_weather', 'web_search', ...commonResearchTools, ...kindnessTools],
+      care: ['create_memory', 'create_reminder', 'send_family_notification', 'search_memories', ...commonResearchTools, ...kindnessTools],
+      growth: ['create_memory', 'track_milestone', 'search_memories', 'search_growth_memories', ...commonResearchTools, ...kindnessTools],
+      emotion: ['create_memory', 'search_memories', 'send_family_notification', 'log_mood', 'search_emotion_memories', 'analyze_emotion', ...commonResearchTools, ...kindnessTools],
       shopping: ['create_memory', 'search_memories', 'create_budget_note', 'web_search', ...commonResearchTools],
       pet: ['create_memory', 'search_memories', 'track_pet_health', 'web_search', ...commonResearchTools],
       finance: ['create_memory', 'search_memories', 'track_expense', 'search_finance_memories', 'web_search', ...commonResearchTools],
-      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search', ...commonResearchTools, ...browseSynthTools],
-      story_agent: ['create_memory', 'search_memories', 'send_family_notification', 'extract_memory', 'gather_story_memories', 'web_search', ...commonResearchTools],
+      // life_coach (时墨) — 微信和家庭对话的主力 agent，拥有全部童忆引擎工具
+      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools],
+      story_agent: ['create_memory', 'search_memories', 'send_family_notification', 'extract_memory', 'gather_story_memories', 'web_search', ...commonResearchTools, ...kindnessTools],
+      // 童忆引擎专属 Agent
+      memory_story: ['create_memory', 'search_memories', 'reconstruct_kindness_story', 'generate_family_story', 'query_kindness_memories', ...commonResearchTools],
+      kindness: ['detect_kindness', 'create_kindness_memory', 'query_kindness_memories', 'search_memories', 'create_memory', ...commonResearchTools],
+      companion: ['generate_warm_reminder', 'get_kindness_stats', 'query_kindness_memories', 'create_reminder', 'send_family_notification', 'search_memories', ...commonResearchTools],
     };
     return toolMap[agentCode] ?? [];
   }

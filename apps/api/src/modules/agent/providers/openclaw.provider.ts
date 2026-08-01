@@ -35,7 +35,7 @@ import type { LoadedUserContext, FamilyContext } from '../types/agent-runtime.ty
 interface RuntimeState {
   startTime: number;
   agentType: string;
-  mode: 'chat' | 'digital-life' | 'story';
+  mode: 'chat' | 'digital-life' | 'story' | 'kindness' | 'wechat';
   userContext: LoadedUserContext;
   familyContext: FamilyContext;
   retrievedMemories: MemoryWithScore[];
@@ -136,8 +136,10 @@ export class OpenClawProvider extends AgentRuntimeProvider {
 
       // For simple chat mode, skip planning/reasoning and stream directly
       const isSimpleChat = state.mode === 'chat';
+      // WeChat mode: lightweight tool detection before streaming (no full plan/reason)
+      const isWechat = state.mode === 'wechat';
 
-      if (!isSimpleChat) {
+      if (!isSimpleChat && !isWechat) {
         // Full pipeline for non-chat modes
         // Step 3: Plan with full user + family context
         const availableTools = this.toolCalling.getToolSchemas(state.agentType).map((s) => s.name);
@@ -210,6 +212,54 @@ export class OpenClawProvider extends AgentRuntimeProvider {
         }
       }
 
+      // ── WeChat mode: lightweight tool detection ──────────────────
+      // 在流式回复前，先做一轮 LLM 工具选择，让微信消息能触发
+      // 童忆引擎工具（detect_kindness, create_kindness_memory 等），
+      // 但跳过完整的 plan/reason 管线以保持低延迟。
+      if (isWechat) {
+        const wechatToolSchemas = this.toolCalling.getToolSchemas(state.agentType);
+        if (wechatToolSchemas.length > 0) {
+          try {
+            const reasoningResult = await this.reasoning.reason({
+              message: input.message,
+              step: { id: 'wechat_detect', description: '分析用户消息，判断是否需要调用工具', tool_hint: 'auto' },
+              planReasoning: '微信对话模式：快速判断是否需要触发工具（温暖识别、记忆创建等）',
+              userContext: state.userContext,
+              familyContext: state.familyContext,
+              memoryContext: state.userContext.formattedMemories,
+              toolSchemas: wechatToolSchemas,
+            });
+
+            for (const tc of reasoningResult.toolCalls) {
+              state.toolCalls.push(tc);
+            }
+
+            state.toolCalls = state.toolCalls.slice(0, AGENT_RUNTIME.MAX_TOOL_CALLS_PER_TURN);
+
+            // 执行工具调用
+            if (state.toolCalls.length > 0) {
+              yield* this.emitAction({ action: 'execute_tools', status: 'running' });
+              state.toolResults = await this.action.executeToolCalls(
+                state.agentType,
+                input.userId,
+                state.toolCalls,
+                input.message,
+              );
+              yield* this.emitAction({ action: 'execute_tools', status: 'success' });
+
+              for (const call of state.toolCalls) {
+                yield { type: SSEEventType.TOOL_CALL, data: { tool: call.tool, args: call.args } };
+              }
+              for (const result of state.toolResults) {
+                yield { type: SSEEventType.OBSERVATION, data: this.observation.observeToolResult(result) };
+              }
+            }
+          } catch (err) {
+            this.logger.warn(`WeChat tool detection failed (non-fatal): ${(err as Error).message}`);
+          }
+        }
+      }
+
       // Step 6: Generate final response streaming as 时墨
       yield* this.streamResponse(input, state);
 
@@ -274,13 +324,14 @@ export class OpenClawProvider extends AgentRuntimeProvider {
     const mode = input.mode ?? 'chat';
     const agentType = await this.resolveAgentType(input);
 
+    // WeChat mode: retrieve more memories for better family context
+    const topK = mode === 'digital-life' ? 15 : mode === 'wechat' ? 10 : RAG_DEFAULTS.TOP_K;
+    const minSimilarity = mode === 'digital-life' ? 0.2 : mode === 'wechat' ? 0.25 : RAG_DEFAULTS.MIN_SIMILARITY;
+
     const retrievedMemories = await this.memoryBridge.retrieveMemories(
       input.userId,
       input.message,
-      {
-        topK: mode === 'digital-life' ? 15 : RAG_DEFAULTS.TOP_K,
-        minSimilarity: mode === 'digital-life' ? 0.2 : RAG_DEFAULTS.MIN_SIMILARITY,
-      },
+      { topK, minSimilarity },
     );
 
     const familyContext = await this.memoryBridge.loadFamilyContext(input.userId);
@@ -316,6 +367,11 @@ export class OpenClawProvider extends AgentRuntimeProvider {
 
     if (input.mode === 'story') {
       return AgentType.STORY_AGENT;
+    }
+
+    // For WeChat mode, use life_coach (时墨) — it has all kindness tools
+    if (input.mode === 'wechat') {
+      return AgentType.LIFE_COACH;
     }
 
     // For simple chat, skip the LLM routing call — always use life_coach
@@ -419,6 +475,20 @@ ${agentList}
     let systemPrompt: string;
     if (state.mode === 'digital-life') {
       systemPrompt = this.buildDigitalLifePrompt(input, state);
+    } else if (state.mode === 'wechat') {
+      // WeChat mode: use chat persona + kindness narrative style
+      // When tools detected kindness, the observation context will include it
+      systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, 'chat');
+      systemPrompt += observationContext;
+
+      // If kindness tools were called, inject kindness narrative style
+      const hasKindnessResult = state.toolResults.some(
+        (r) => r.tool === 'detect_kindness' || r.tool === 'create_kindness_memory' || r.tool === 'generate_warm_reminder',
+      );
+      if (hasKindnessResult) {
+        systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, 'kindness');
+        systemPrompt += observationContext;
+      }
     } else {
       systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, state.mode);
       systemPrompt += observationContext;

@@ -639,7 +639,7 @@ export class WechatService implements OnModuleDestroy {
       for await (const event of this.agentRuntime.run({
         userId,
         message,
-        mode: 'chat',
+        mode: 'wechat',
       })) {
         switch (event.type) {
           case SSEEventType.TOKEN:
