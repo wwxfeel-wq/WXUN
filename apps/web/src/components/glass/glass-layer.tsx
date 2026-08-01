@@ -122,9 +122,9 @@ function GlassEffects({
         />
       )}
 
-      {/* 厚度感：参考图双层内阴影
-          第一层：顶部内高光 + 底部内暗影 = 凸面玻璃
-          第二层：1px 白色内边框 = 玻璃切面 */}
+      {/* 厚度感：加厚版双层内阴影
+          第一层：更强的顶部内高光 + 底部内暗影 = 更厚凸面玻璃
+          第二层：更亮的 1px 白色内边框 = 玻璃切面 */}
       {thickness && (
         <>
           <span
@@ -132,9 +132,9 @@ function GlassEffects({
             className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
             style={{
               boxShadow: `
-                inset 0 1px 1px rgba(255,255,255,0.15),
-                inset 0 -1px 2px rgba(0,0,0,0.12),
-                inset 0 0 0 1px rgba(255,255,255,0.08)
+                inset 0 1.5px 2px rgba(255,255,255,0.22),
+                inset 0 -2px 3px rgba(0,0,0,0.16),
+                inset 0 0 0 1px rgba(255,255,255,0.12)
               `,
             }}
           />
@@ -143,16 +143,16 @@ function GlassEffects({
             className="pointer-events-none absolute inset-0 z-glass-thickness rounded-[inherit]"
             style={{
               boxShadow: `
-                inset 0 0 0 0.5px rgba(255,255,255,0.05),
-                inset 1px 0 3px -1px rgba(0,0,0,0.08),
-                inset -1px 0 3px -1px rgba(0,0,0,0.08)
+                inset 0 0 0 0.5px rgba(255,255,255,0.08),
+                inset 1.5px 0 4px -1px rgba(0,0,0,0.10),
+                inset -1.5px 0 4px -1px rgba(0,0,0,0.10)
               `,
             }}
           />
         </>
       )}
 
-      {/* 顶部边缘高光：参考图标志性细亮线
+      {/* 顶部边缘高光：加厚版更亮的标志性细亮线
           模拟玻璃切面顶部反光，中间最亮向两端渐隐 */}
       {edge && (
         <span
@@ -160,7 +160,7 @@ function GlassEffects({
           className="pointer-events-none absolute inset-x-1 top-0 z-glass-specular h-px rounded-full"
           style={{
             background:
-              'linear-gradient(90deg, transparent, rgba(255,255,255,0.25) 10%, rgba(255,255,255,0.50) 50%, rgba(255,255,255,0.25) 90%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(255,255,255,0.35) 10%, rgba(255,255,255,0.60) 50%, rgba(255,255,255,0.35) 90%, transparent)',
           }}
         />
       )}

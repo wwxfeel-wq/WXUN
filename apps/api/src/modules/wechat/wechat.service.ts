@@ -621,6 +621,84 @@ export class WechatService implements OnModuleDestroy {
   // ============================================================
 
   /**
+   * 通过微信 ID / 昵称解析绑定的家庭成员（公开方法，供 OpenClaw webhook 使用）
+   */
+  async resolveFamilyMemberByWechatId(
+    wechatId: string,
+    nickName: string,
+  ): Promise<{ id: string; userId: string; familyId: string } | null> {
+    return this.resolveFamilyMember(wechatId, nickName);
+  }
+
+  /**
+   * 从 OpenClaw 转发的消息中同步联系人信息（公开方法）
+   */
+  async syncContactFromOpenClaw(userId: string, nickname: string): Promise<void> {
+    await this.syncContactFromMessage(userId, nickname, false);
+  }
+
+  /**
+   * 持久化 OpenClaw 转发的消息到数据库和长期记忆（公开方法）
+   */
+  async persistOpenClawMessage(
+    member: { id: string; userId: string; familyId: string },
+    content: string,
+    contactId: string,
+    senderName: string,
+    reply: string,
+  ): Promise<void> {
+    try {
+      // 持久化用户消息
+      const saved = await this.prisma.wechatMessage.create({
+        data: {
+          contactId,
+          fromId: contactId,
+          fromName: senderName,
+          toId: this.botId || 'openclaw-bot',
+          toName: '时墨',
+          content,
+          msgType: 1,
+          isSelf: false,
+          timestamp: new Date(),
+          metadata: { source: 'openclaw', familyMemberId: member.id } as Prisma.InputJsonValue,
+        },
+      });
+
+      // 持久化回复
+      await this.prisma.wechatMessage.create({
+        data: {
+          contactId,
+          fromId: this.botId || 'openclaw-bot',
+          fromName: '时墨',
+          toId: contactId,
+          toName: senderName,
+          content: reply,
+          msgType: 1,
+          isSelf: true,
+          timestamp: new Date(),
+          metadata: { source: 'openclaw', replyTo: saved.id } as Prisma.InputJsonValue,
+        },
+      });
+
+      // 持久化到长期记忆
+      await this.persistChatAsMemory(
+        member,
+        content,
+        saved.id,
+        contactId,
+        senderName,
+        false,
+        new Date(),
+      );
+
+      // 触发主动服务
+      await this.handleProactiveActions(content, reply, member.userId, contactId, senderName);
+    } catch (err) {
+      this.logger.warn(`Failed to persist OpenClaw message: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * 通过微信 ID / 昵称解析绑定的家庭成员
    */
   private async resolveFamilyMember(

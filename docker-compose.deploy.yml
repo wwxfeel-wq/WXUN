@@ -79,6 +79,7 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-suiyan-openclaw-2026}
     expose:
       - '3001'
     healthcheck:
@@ -113,6 +114,35 @@ services:
           memory: 256m
           cpus: '0.5'
 
+  # ===== OpenClaw Gateway (微信 ClawBot) =====
+  # OpenClaw 运行微信 ClawBot 插件，负责：
+  #   - 扫码登录 (QR code)
+  #   - iLink 协议 (消息收发)
+  #   - 消息路由到 EchoLife API webhook
+  openclaw:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.openclaw
+    container_name: echolife-openclaw
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-suiyan-openclaw-2026}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
+    expose:
+      - '5140'
+    volumes:
+      - openclaw_data:/data/openclaw
+      - ./infra/openclaw/config.yaml:/app/config.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+
   # ===== Nginx Reverse Proxy =====
   nginx:
     image: nginx:alpine
@@ -140,3 +170,4 @@ volumes:
   postgres_data:
   redis_data:
   nginx_cache:
+  openclaw_data:

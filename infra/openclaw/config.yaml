@@ -1,0 +1,70 @@
+# OpenClaw 配置文件
+# ─────────────────────────────────────
+# 微信 ClawBot 运行在 OpenClaw 网关内，通过 webhook 联动 EchoLife AgentRuntime
+#
+# 架构:
+#   微信用户 ←→ OpenClaw (+ openclaw-weixin 插件) ←→ EchoLife API /api/v1/openclaw/webhook
+#
+# OpenClaw 负责:
+#   - 扫码登录 (openclaw channels login --channel openclaw-weixin)
+#   - iLink 协议 (消息收发、QR码、typing 状态)
+#   - 消息路由到 EchoLife webhook
+#
+# EchoLife 负责:
+#   - Agent 推理 (时墨人格 + 全部 Agent/Skills)
+#   - 家庭成员识别、记忆持久化、主动服务
+
+# ===== 服务配置 =====
+server:
+  port: 5140
+  host: 0.0.0.0
+
+# ===== 插件配置 =====
+plugins:
+  # 启用微信 ClawBot 插件
+  entries:
+    openclaw-weixin:
+      enabled: true
+  # 插件白名单
+  allow:
+    - openclaw-weixin
+
+# ===== 消息路由 =====
+# 将微信消息转发到 EchoLife API webhook
+routes:
+  # 默认路由：所有微信消息都转发到 EchoLife AgentRuntime
+  - channel: openclaw-weixin
+    handler: webhook
+    config:
+      url: http://api:3001/api/v1/openclaw/webhook
+      method: POST
+      headers:
+        X-Webhook-Secret: ${OPENCLAW_WEBHOOK_SECRET}
+        Content-Type: application/json
+      # 请求体模板（OpenClaw 会填充变量）
+      body:
+        content: "{{message.content}}"
+        fromUserId: "{{message.fromUserId}}"
+        fromUserName: "{{message.fromUserName}}"
+        messageType: "{{message.type}}"
+        sessionId: "{{message.sessionId}}"
+        channel: "{{message.channel}}"
+      # 响应中提取回复文本
+      replyField: "reply"
+      # 超时设置（Agent 推理可能需要较长时间）
+      timeout: 120000
+
+# ===== AI 模型配置 =====
+# OpenClaw 本身不需要 AI 模型，所有推理由 EchoLife AgentRuntime 处理
+# 但 OpenClaw 需要一个 fallback 模型用于健康检查等
+models:
+  default: deepseek
+  providers:
+    deepseek:
+      apiKey: ${DEEPSEEK_API_KEY}
+      baseURL: ${DEEPSEEK_API_URL}
+      model: deepseek-v4-flash
+
+# ===== 日志 =====
+log:
+  level: info

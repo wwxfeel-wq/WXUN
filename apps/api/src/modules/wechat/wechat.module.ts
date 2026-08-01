@@ -5,6 +5,7 @@ import { SummaryModule } from '../summary/summary.module';
 import { CapsuleModule } from '../capsule/capsule.module';
 import { NotificationModule } from '../notification/notification.module';
 import { WechatController } from './wechat.controller';
+import { OpenClawWebhookController } from './openclaw-webhook.controller';
 import { WechatService } from './wechat.service';
 
 @Module({
@@ -15,7 +16,7 @@ import { WechatService } from './wechat.service';
     CapsuleModule,
     NotificationModule,
   ],
-  controllers: [WechatController],
+  controllers: [WechatController, OpenClawWebhookController],
   providers: [WechatService],
   exports: [WechatService],
 })

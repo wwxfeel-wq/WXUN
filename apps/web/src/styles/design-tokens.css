@@ -142,24 +142,24 @@
   --color-surface-raised: rgba(255, 255, 255, 0.06);
   --color-surface-overlay: rgba(255, 255, 255, 0.08);
 
-  /* === Glass Surfaces (Premium Dark Glassmorphism) ===
-   * 参考图风格：极低透明度白色底色 + 强模糊 + 高饱和度。
-   * 底色 rgba(255,255,255,0.06) — 比之前更低，让背景更多透过
-   * 边框 rgba(255,255,255,0.15) — 更亮，突出玻璃边缘
-   * 顶部高光 rgba(255,255,255,0.3) — 模拟光源照射
+  /* === Glass Surfaces (Premium Dark Glassmorphism — Thickened) ===
+   * 加厚版：提高底色透明度 + 更强模糊 + 更亮边框
+   * 底色 rgba(255,255,255,0.10) — 更厚实，玻璃质感更明显
+   * 边框 rgba(255,255,255,0.22) — 更亮，突出玻璃边缘厚度
+   * 顶部高光 rgba(255,255,255,0.38) — 更强光源照射
    */
-  --color-glass: rgba(255, 255, 255, 0.06);
-  --color-glass-hover: rgba(255, 255, 255, 0.10);
-  --color-glass-strong: rgba(255, 255, 255, 0.08);
-  --color-glass-strong-hover: rgba(255, 255, 255, 0.12);
-  --color-glass-extreme: rgba(255, 255, 255, 0.10);
-  --color-glass-extreme-hover: rgba(255, 255, 255, 0.14);
-  --color-glass-border: rgba(255, 255, 255, 0.15);
-  --color-glass-border-hover: rgba(255, 255, 255, 0.25);
-  --color-glass-border-strong: rgba(255, 255, 255, 0.20);
-  --color-glass-border-top: rgba(255, 255, 255, 0.30);
-  --color-glass-highlight: rgba(255, 255, 255, 0.22);
-  --color-glass-shimmer: rgba(255, 255, 255, 0.26);
+  --color-glass: rgba(255, 255, 255, 0.10);
+  --color-glass-hover: rgba(255, 255, 255, 0.14);
+  --color-glass-strong: rgba(255, 255, 255, 0.12);
+  --color-glass-strong-hover: rgba(255, 255, 255, 0.16);
+  --color-glass-extreme: rgba(255, 255, 255, 0.15);
+  --color-glass-extreme-hover: rgba(255, 255, 255, 0.20);
+  --color-glass-border: rgba(255, 255, 255, 0.22);
+  --color-glass-border-hover: rgba(255, 255, 255, 0.32);
+  --color-glass-border-strong: rgba(255, 255, 255, 0.28);
+  --color-glass-border-top: rgba(255, 255, 255, 0.38);
+  --color-glass-highlight: rgba(255, 255, 255, 0.28);
+  --color-glass-shimmer: rgba(255, 255, 255, 0.32);
   --color-glass-tint-primary: rgba(0, 229, 168, 0.03);
   --color-glass-tint-secondary: rgba(122, 184, 240, 0.03);
   --color-glass-tint-rose: rgba(242, 130, 140, 0.02);
@@ -183,13 +183,13 @@
   --color-glass-shine-faint: rgba(255, 255, 255, 0.16);
   --color-glass-shine-dim: rgba(255, 255, 255, 0.10);
   --color-glass-shine-ghost: rgba(255, 255, 255, 0.06);
-  --color-glass-inner-shadow: color-mix(in srgb, var(--color-shadow) 18%, transparent);
-  --color-glass-inner-shadow-strong: color-mix(in srgb, var(--color-shadow) 28%, transparent);
+  --color-glass-inner-shadow: color-mix(in srgb, var(--color-shadow) 28%, transparent);
+  --color-glass-inner-shadow-strong: color-mix(in srgb, var(--color-shadow) 40%, transparent);
 
-  /* === Glass Thickness Layer ===
-   * 模拟真实玻璃厚度：内阴影 + 边缘 0.5px 高光 + 内侧 1px 暗边。
+  /* === Glass Thickness Layer (Thickened) ===
+   * 加厚版：更强的内阴影 + 更亮的边缘高光，模拟更厚的玻璃
    */
-  --glass-thickness-edge: var(--color-glass-edge-ghost);
+  --glass-thickness-edge: var(--color-glass-edge-subtle);
   --glass-thickness-inner-shadow: var(--color-glass-inner-shadow);
   --glass-thickness-inner-dark: var(--color-glass-inner-shadow-strong);
 
@@ -451,13 +451,13 @@
   --shadow-glow-secondary: 0 0 24px var(--color-secondary-glow);
   --shadow-glow-highlight: 0 0 24px var(--color-highlight-glow);
 
-  /* === Glass Shadows ===
-   * 参考图多层阴影：环境阴影 + 内高光 + 绿色辉光
+  /* === Glass Shadows (Thickened) ===
+   * 加厚版：更深的环境阴影 + 更强的内高光，增强玻璃厚度感
    */
-  --shadow-glass-soft: 0 8px 28px color-mix(in srgb, var(--color-shadow) 20%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 12%, transparent), inset 0 1px 0 rgba(255,255,255,0.06);
-  --shadow-glass-medium: 0 12px 36px color-mix(in srgb, var(--color-shadow) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 16%, transparent), inset 0 1px 0 rgba(255,255,255,0.08);
-  --shadow-glass-strong: 0 20px 52px color-mix(in srgb, var(--color-shadow) 40%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 20%, transparent), inset 0 1px 0 rgba(255,255,255,0.10);
-  --shadow-glass-extreme: 0 28px 72px color-mix(in srgb, var(--color-shadow) 50%, transparent), 0 12px 32px color-mix(in srgb, var(--color-shadow) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.12);
+  --shadow-glass-soft: 0 8px 28px color-mix(in srgb, var(--color-shadow) 28%, transparent), 0 2px 8px color-mix(in srgb, var(--color-shadow) 16%, transparent), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.06);
+  --shadow-glass-medium: 0 12px 36px color-mix(in srgb, var(--color-shadow) 36%, transparent), 0 4px 12px color-mix(in srgb, var(--color-shadow) 20%, transparent), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.08);
+  --shadow-glass-strong: 0 20px 52px color-mix(in srgb, var(--color-shadow) 46%, transparent), 0 8px 24px color-mix(in srgb, var(--color-shadow) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.10);
+  --shadow-glass-extreme: 0 28px 72px color-mix(in srgb, var(--color-shadow) 56%, transparent), 0 12px 32px color-mix(in srgb, var(--color-shadow) 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.12);
   /* 绿色辉光阴影 — 用于活跃/高亮状态 */
   --shadow-glow-green: 0 0 40px rgba(0, 210, 106, 0.25), 0 0 80px rgba(0, 210, 106, 0.10);
 
@@ -527,21 +527,19 @@
   --bp-2xl: 1536px;
   --bp-3xl: 1920px;
 
-  /* === Liquid Glass Effects ===
-   * 参考图复刻：blur(20px) saturate(1.4)
-   * 参考图使用 blur(40px) saturate(180%)，但考虑性能折中。
-   * 20px 模糊 + 1.4 饱和度已足够产生明显的毛玻璃质感。
-   * 底色更透明(0.06)，让模糊效果更依赖 backdrop 而非背景色。
+  /* === Liquid Glass Effects (Thickened) ===
+   * 加厚版：更强的模糊半径 + 更高饱和度，玻璃质感更厚重
+   * 28px 模糊 + 1.6 饱和度 — 更接近 Apple VisionOS 厚玻璃效果
    */
-  --glass-blur: blur(20px) saturate(1.4);
-  --glass-blur-strong: blur(28px) saturate(1.5);
-  --glass-blur-extreme: blur(36px) saturate(1.6);
-  --glass-blur-subtle: blur(14px) saturate(1.25);
-  --glass-blur-radius: 20px;
-  --glass-blur-radius-strong: 28px;
-  --glass-blur-radius-extreme: 36px;
-  --glass-blur-radius-subtle: 14px;
-  --glass-blur-radius-mobile: 10px;
+  --glass-blur: blur(28px) saturate(1.6);
+  --glass-blur-strong: blur(38px) saturate(1.7);
+  --glass-blur-extreme: blur(50px) saturate(1.8);
+  --glass-blur-subtle: blur(20px) saturate(1.4);
+  --glass-blur-radius: 28px;
+  --glass-blur-radius-strong: 38px;
+  --glass-blur-radius-extreme: 50px;
+  --glass-blur-radius-subtle: 20px;
+  --glass-blur-radius-mobile: 14px;
 
   /* === Ambient Blur Tokens === */
   --blur-orb-sm: 50px;

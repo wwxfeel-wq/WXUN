@@ -1,0 +1,52 @@
+# OpenClaw Gateway Dockerfile
+# ─────────────────────────────────────
+# 微信 ClawBot 运行在 OpenClaw 网关内
+# OpenClaw 负责：扫码登录、iLink 协议、消息路由到 EchoLife API
+#
+# 基础镜像: node:20-alpine (OpenClaw 需要 Node.js 20+)
+
+FROM node:20-alpine AS base
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+  && apk add --no-cache libc6-compat wget git python3 make g++
+
+# ===== OpenClaw 安装 =====
+FROM base AS openclaw-builder
+WORKDIR /app
+
+# 安装 OpenClaw CLI
+RUN npm install -g openclaw@latest
+
+# 安装微信 ClawBot 插件
+RUN openclaw plugins install "@tencent-weixin/openclaw-weixin@latest" || \
+    echo "Plugin install may need retry due to rate limit"
+
+# 启用插件
+RUN openclaw config set plugins.entries.openclaw-weixin.enabled true || true
+
+# ===== 生产镜像 =====
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+  && apk add --no-cache libc6-compat wget
+
+# 从 builder 阶段复制 OpenClaw 和插件
+COPY --from=openclaw-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=openclaw-builder /usr/local/bin/openclaw /usr/local/bin/openclaw
+COPY --from=openclaw-builder /root/.openclaw /root/.openclaw
+
+# 复制配置文件
+COPY infra/openclaw/config.yaml /app/config.yaml
+
+# 创建数据目录（用于持久化登录凭证）
+RUN mkdir -p /data/openclaw
+ENV OPENCLAW_HOME=/data/openclaw
+
+EXPOSE 5140
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5140/health || exit 1
+
+# 启动 OpenClaw 网关
+CMD ["openclaw", "start", "--config", "/app/config.yaml"]
