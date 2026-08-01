@@ -88,6 +88,12 @@ jobs:
           script: |
             set -e
             cd /www/wwwroot/echolife
+            echo "== 同步 docker-compose.deploy.yml =="
+            curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
+              -o docker-compose.deploy.yml || \
+              curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
+              -o docker-compose.deploy.yml
             echo "== 同步 nginx 配置 =="
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
