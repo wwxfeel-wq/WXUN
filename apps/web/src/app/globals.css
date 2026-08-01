@@ -1037,13 +1037,23 @@
   border-radius: 0;
 }
 
-/* 所有 UI 面板浮在粒子背景之上 */
+/* 所有 UI 面板浮在粒子背景之上 — 容器穿透，子元素按需捕获 */
 .spatial-home > .spatial-home__top-cards,
 .spatial-home > .spatial-home__left,
 .spatial-home > .spatial-home__core,
 .spatial-home > .spatial-home__right {
   position: relative;
   z-index: 2;
+  pointer-events: none;
+}
+
+/* 交互元素重新捕获指针事件 — 粒子云可在面板间隙自由旋转缩放 */
+.spatial-home__left a,
+.spatial-home__left button,
+.spatial-home__right .glass-layer,
+.spatial-home__right .spatial-panel,
+.spatial-home__top-cards .spatial-card {
+  pointer-events: auto;
 }
 
 /* 输入框保持 fixed 定位，仅提升 z-index 确保在粒子层之上 */

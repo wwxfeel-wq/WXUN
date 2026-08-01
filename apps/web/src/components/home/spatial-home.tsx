@@ -199,7 +199,7 @@ export function SpatialHome() {
           <GlassLayer intensity="default" className="spatial-panel">
             <ConsciousnessPanel
               state={lifeCoreState}
-              activity={shimoCore.understanding}
+              activity={shimoCore.mood ?? 73}
               className="consciousness-panel"
             />
           </GlassLayer>

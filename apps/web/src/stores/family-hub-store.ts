@@ -43,6 +43,8 @@ export type ShimoStatus =
 export interface ShimoCore {
   status: ShimoStatus;
   understanding: number;
+  /** 时墨自身心情指数（0-100），独立于家庭理解度 */
+  mood: number;
   level: number;
   agentCount: number;
   learningCount: number;
@@ -217,6 +219,7 @@ const defaultMetrics: FamilyMetrics = {
 const defaultShimoCore: ShimoCore = {
   status: 'online',
   understanding: 89,
+  mood: 73,
   level: 12,
   agentCount: 16,
   learningCount: 3,
@@ -401,6 +404,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
               ...s.shimoCore,
               status: 'updating_tree',
               understanding: Math.min(100, s.shimoCore.understanding + 1),
+              mood: Math.min(100, (s.shimoCore.mood ?? 73) + 3),
             },
             timeline: [
               {

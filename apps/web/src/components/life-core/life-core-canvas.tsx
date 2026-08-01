@@ -536,9 +536,14 @@ export function LifeCoreCanvas({
     pointerId: -1,
   });
 
+  // 多触摸点追踪 — 用于双指缩放
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
+
   const viewRef = useRef({
     yaw: 0, pitch: DEFAULT_PITCH,
     targetYaw: 0, targetPitch: DEFAULT_PITCH,
+    zoom: 1.0, targetZoom: 1.0,
   });
 
   const lastFrameRef = useRef<number>(0);
@@ -651,9 +656,8 @@ export function LifeCoreCanvas({
       : state === 'recalling'
       ? 0.93 + Math.sin(frame * 1.6) * 0.08
       : 1.04 + Math.sin(frame * 0.5) * 0.05;
-    const scale = baseScale * breath * burstScale;
 
-    // 视角
+    // 视角 + 缩放插值
     const drag = dragRef.current;
     const view = viewRef.current;
     if (drag.isDragging) {
@@ -670,6 +674,8 @@ export function LifeCoreCanvas({
       view.yaw += (view.targetYaw - view.yaw) * 0.08;
       view.pitch += (view.targetPitch - view.pitch) * 0.08;
     }
+    view.zoom += (view.targetZoom - view.zoom) * 0.12;
+    const scale = baseScale * breath * burstScale * view.zoom;
     const viewYaw = view.yaw;
     const viewPitch = view.pitch;
     const autoRot = reducedMotion ? 0 : (frame * 0.02 + burstSpin);
@@ -1057,24 +1063,51 @@ export function LifeCoreCanvas({
     return () => clearTimeout(timer);
   }, []);
 
-  // === 交互 ===
+  // === 交互（旋转 + 缩放） ===
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     if (!container) return;
     try { container.setPointerCapture(e.pointerId); } catch { /* noop */ }
-    dragRef.current.isDragging = true;
-    dragRef.current.lastX = e.clientX;
-    dragRef.current.lastY = e.clientY;
-    dragRef.current.velX = 0;
-    dragRef.current.velY = 0;
-    dragRef.current.pointerId = e.pointerId;
-    setIsDragging(true);
+
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 2) {
+      // 双指缩放开始
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchRef.current = { initialDist: dist, initialZoom: viewRef.current.targetZoom };
+      dragRef.current.isDragging = false;
+      setIsDragging(false);
+    } else if (pointersRef.current.size === 1) {
+      // 单指拖拽旋转
+      dragRef.current.isDragging = true;
+      dragRef.current.lastX = e.clientX;
+      dragRef.current.lastY = e.clientY;
+      dragRef.current.velX = 0;
+      dragRef.current.velY = 0;
+      dragRef.current.pointerId = e.pointerId;
+      setIsDragging(true);
+    }
     setShowHint(false);
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (drag.isDragging) {
+    // 更新指针位置
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      // 双指缩放
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinchRef.current.initialDist > 0) {
+        const ratio = dist / pinchRef.current.initialDist;
+        viewRef.current.targetZoom = clamp(pinchRef.current.initialZoom * ratio, 0.35, 3.0);
+      }
+    } else if (dragRef.current.isDragging) {
+      // 单指拖拽旋转
+      const drag = dragRef.current;
       const dx = e.clientX - drag.lastX;
       const dy = e.clientY - drag.lastY;
       const sens = 0.006;
@@ -1086,6 +1119,7 @@ export function LifeCoreCanvas({
       drag.lastX = e.clientX;
       drag.lastY = e.clientY;
     } else {
+      // 悬停检测
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -1105,19 +1139,42 @@ export function LifeCoreCanvas({
   }, []);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (drag.pointerId === e.pointerId || drag.isDragging) {
-      const container = containerRef.current;
-      if (container) try { container.releasePointerCapture(e.pointerId); } catch { /* noop */ }
-      drag.isDragging = false;
-      drag.pointerId = -1;
-      setIsDragging(false);
+    pointersRef.current.delete(e.pointerId);
+
+    const container = containerRef.current;
+    if (container) try { container.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
     }
+
+    if (pointersRef.current.size === 0) {
+      dragRef.current.isDragging = false;
+      dragRef.current.pointerId = -1;
+      setIsDragging(false);
+    } else if (pointersRef.current.size === 1) {
+      // 从双指切回单指 — 恢复拖拽旋转
+      const [pt] = Array.from(pointersRef.current.values());
+      dragRef.current.isDragging = true;
+      dragRef.current.lastX = pt.x;
+      dragRef.current.lastY = pt.y;
+      dragRef.current.velX = 0;
+      dragRef.current.velY = 0;
+      setIsDragging(true);
+    }
+  }, []);
+
+  // 滚轮缩放
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const delta = -e.deltaY * 0.0015;
+    viewRef.current.targetZoom = clamp(viewRef.current.targetZoom * (1 + delta), 0.35, 3.0);
+    setShowHint(false);
   }, []);
 
   const handleDoubleClick = useCallback(() => {
     viewRef.current.targetYaw = 0;
     viewRef.current.targetPitch = DEFAULT_PITCH;
+    viewRef.current.targetZoom = 1.0;
     dragRef.current.velX = 0;
     dragRef.current.velY = 0;
   }, []);
@@ -1127,6 +1184,10 @@ export function LifeCoreCanvas({
     memory: '记忆',
     event: '事件',
     knowledge: '知识',
+    kindness_warm: '温暖瞬间',
+    kindness_family: '家庭事件',
+    kindness_childhood: '童忆',
+    kindness_golden: '金色时刻',
   };
 
   return (
@@ -1139,6 +1200,7 @@ export function LifeCoreCanvas({
       onPointerCancel={handlePointerUp}
       onPointerLeave={() => setHoverInfo(null)}
       onDoubleClick={handleDoubleClick}
+      onWheel={handleWheel}
       style={{
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none',
@@ -1157,7 +1219,7 @@ export function LifeCoreCanvas({
       )}
       {showHint && (
         <div className="life-core__drag-hint pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--color-glass-border)] bg-[var(--color-glass)] px-3 py-1 text-xs text-[var(--color-text-tertiary)] backdrop-blur-glass">
-          拖拽旋转神经元 · 双击重置 ✦
+          拖拽旋转 · 滚轮/双指缩放 · 双击重置 ✦
         </div>
       )}
     </div>
