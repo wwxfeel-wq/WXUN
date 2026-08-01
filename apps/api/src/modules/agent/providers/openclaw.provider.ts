@@ -222,7 +222,7 @@ export class OpenClawProvider extends AgentRuntimeProvider {
           try {
             const reasoningResult = await this.reasoning.reason({
               message: input.message,
-              step: { id: 'wechat_detect', description: '分析用户消息，判断是否需要调用工具', tool_hint: 'auto' },
+              step: { id: 'wechat_detect', step: 1, goal: '分析用户消息，判断是否需要调用工具', tool: 'auto' },
               planReasoning: '微信对话模式：快速判断是否需要触发工具（温暖识别、记忆创建等）',
               userContext: state.userContext,
               familyContext: state.familyContext,
