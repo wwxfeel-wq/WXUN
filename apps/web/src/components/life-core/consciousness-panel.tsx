@@ -7,17 +7,17 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V6: 柔和心情波形 — 慢心率 + 呼吸感 + 真实情感波动
+ * V7: 真实心电图节奏 — 大段平坦基线 + 瞬间心跳脉冲
  *
- * 波形图以柔和的心电图形式呈现时墨当前的心情：
- * - 温柔陪伴：48 BPM 平静心跳（温柔、安定）
- * - 好奇探索：62 BPM 活跃心跳（好奇、轻快）
- * - 怀旧回忆：42 BPM 缓慢心跳（怀念、沉浸）
- * - 欣喜成长：56 BPM 愉悦心跳（欣喜、温暖）
+ * 波形图以真实心电图形式呈现时墨当前的心情：
+ * - 温柔陪伴：58 BPM（温柔、安定）
+ * - 好奇探索：72 BPM（好奇、轻快）
+ * - 怀旧回忆：50 BPM（怀念、沉浸）
+ * - 欣喜成长：65 BPM（欣喜、温暖）
  *
+ * 真实 ECG 的 90% 是平坦基线，只在心跳瞬间有尖锐的 P-QRS-T 脉冲。
+ * P 波极小，R 波尖锐狭窄，T 波柔和 — 不再是密集的正弦波。
  * 心情指数独立于家庭理解度，反映时墨自身的情感状态。
- * 基础心情值 + 状态偏移 + 有机波动 + 情绪事件 + 呼吸感 = 真实心情。
- * 波形圆润柔和，不再有尖锐的医学 QRS 尖峰，更像真实的情感起伏。
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -52,67 +52,68 @@ const MOOD_OFFSET: Record<LifeCoreState, number> = {
 };
 
 /** ECG 波形参数 — 每种心情对应不同心率与波形形态
- *  V6: 慢心率 + 柔和波形 — 真实心情感受而非医学监测
- *  心率大幅降低（45-62 BPM），波形圆润柔和，呼吸感叠加 */
+ *  V7: 真实心电图节奏 — 大段平坦基线 + 瞬间心跳脉冲
+ *  真实 ECG 的 90% 是平坦基线，只在 R 波瞬间有尖锐脉冲 */
 const ECG_PROFILE: Record<LifeCoreState, {
-  /** 心率 BPM — 真实心情感受，慢而有力 */
+  /** 心率 BPM */
   bpm: number;
-  /** QRS 主峰振幅 (0-1) — 降低尖锐感 */
-  qrsAmp: number;
-  /** P 波振幅 — 加大让波形更圆润 */
+  /** R 波振幅 (0-1) — 主峰高度 */
+  rAmp: number;
+  /** P 波振幅 — 很小的心房波 */
   pAmp: number;
-  /** T 波振幅 — 加大让波形更柔和 */
+  /** T 波振幅 — 心室复极化 */
   tAmp: number;
   /** P 波中心位置 (0-1 心动周期内) */
   pCenter: number;
-  /** P 波宽度 — 加宽让波形更平缓 */
+  /** P 波宽度 — 很窄 */
   pWidth: number;
   /** R 波中心位置 */
   rCenter: number;
-  /** R 波宽度 — 加宽让尖峰不再刺眼 */
+  /** R 波宽度 — 极窄，模拟真实 QRS 尖峰 */
   rWidth: number;
   /** T 波中心位置 */
   tCenter: number;
-  /** T 波宽度 — 加宽让回落更温柔 */
+  /** T 波宽度 — 中等 */
   tWidth: number;
   /** 波形颜色 RGB */
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 48, qrsAmp: 0.85, pAmp: 0.35, tAmp: 0.62,
-    pCenter: 0.14, pWidth: 0.055, rCenter: 0.28, rWidth: 0.012, tCenter: 0.50, tWidth: 0.10,
+    bpm: 58, rAmp: 1.0, pAmp: 0.12, tAmp: 0.22,
+    pCenter: 0.20, pWidth: 0.020, rCenter: 0.28, rWidth: 0.004, tCenter: 0.42, tWidth: 0.035,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 62, qrsAmp: 1.05, pAmp: 0.38, tAmp: 0.68,
-    pCenter: 0.12, pWidth: 0.048, rCenter: 0.26, rWidth: 0.010, tCenter: 0.48, tWidth: 0.085,
+    bpm: 72, rAmp: 1.2, pAmp: 0.14, tAmp: 0.28,
+    pCenter: 0.18, pWidth: 0.018, rCenter: 0.26, rWidth: 0.0035, tCenter: 0.40, tWidth: 0.030,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 42, qrsAmp: 0.72, pAmp: 0.32, tAmp: 0.58,
-    pCenter: 0.15, pWidth: 0.065, rCenter: 0.30, rWidth: 0.014, tCenter: 0.52, tWidth: 0.12,
+    bpm: 50, rAmp: 0.85, pAmp: 0.10, tAmp: 0.18,
+    pCenter: 0.22, pWidth: 0.025, rCenter: 0.30, rWidth: 0.005, tCenter: 0.46, tWidth: 0.045,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 56, qrsAmp: 0.95, pAmp: 0.36, tAmp: 0.70,
-    pCenter: 0.13, pWidth: 0.052, rCenter: 0.27, rWidth: 0.011, tCenter: 0.49, tWidth: 0.095,
+    bpm: 65, rAmp: 1.1, pAmp: 0.13, tAmp: 0.25,
+    pCenter: 0.19, pWidth: 0.020, rCenter: 0.27, rWidth: 0.004, tCenter: 0.41, tWidth: 0.032,
     color: [232, 134, 174],
   },
 };
 
 type EcgProfile = typeof ECG_PROFILE[LifeCoreState];
 
-/** 计算 ECG 复合波在某相位上的值 — 柔和 P-QRS-T 形态 */
+/** 计算 ECG 复合波在某相位上的值 — 真实心电图节奏
+ *  大部分相位返回 0（平坦基线），只在 P-R-T 附近有波动 */
 function ecgComplex(phase: number, p: EcgProfile): number {
-  // P 波 — 心房去极化（柔和圆弧）
+  // P 波 — 心房去极化（很小很窄的圆弧）
   const pWave = p.pAmp * Math.exp(-Math.pow((phase - p.pCenter) / p.pWidth, 2));
-  // Q 波 — R 波前的微小负向偏转（减弱）
-  const qWave = -p.qrsAmp * 0.06 * Math.exp(-Math.pow((phase - (p.rCenter - 0.02)) / 0.008, 2));
-  // R 波 — 柔和主峰（加宽让尖峰不再刺眼）
-  const rWave = p.qrsAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
-  // S 波 — R 波后的负向偏转（减弱）
-  const sWave = -p.qrsAmp * 0.15 * Math.exp(-Math.pow((phase - (p.rCenter + 0.02)) / 0.012, 2));
-  // T 波 — 心室复极化（柔和圆弧，加大加宽）
+  // Q 波 — R 波前的微小负向偏转（极小）
+  const qWave = -p.rAmp * 0.04 * Math.exp(-Math.pow((phase - (p.rCenter - 0.008)) / 0.004, 2));
+  // R 波 — 尖锐主峰（极窄，模拟真实 QRS）
+  const rWave = p.rAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
+  // S 波 — R 波后的负向偏转（小）
+  const sWave = -p.rAmp * 0.08 * Math.exp(-Math.pow((phase - (p.rCenter + 0.008)) / 0.006, 2));
+  // T 波 — 心室复极化（中等圆弧，远小于之前）
   const tWave = p.tAmp * Math.exp(-Math.pow((phase - p.tCenter) / p.tWidth, 2));
   return pWave + qWave + rWave + sWave + tWave;
 }
@@ -240,20 +241,21 @@ export default function ConsciousnessPanel({
 
       const actNorm = mood / 100;
 
-      // 心率 — 随心情微调（范围更小，更安定）
+      // 心率 — 随心情微调
       const bpm = p.bpm * (0.95 + actNorm * 0.10);
       const beatDuration = 60 / bpm;
 
-      // 滚动速度 — 慢下来，像呼吸一样从容
-      const scrollSpeed = W * 0.05;
+      // 滚动速度 — 像素/秒，模拟真实心电图纸 25mm/s 的视觉节奏
+      // 每个心跳周期占屏幕约 1/3 到 1/4 宽度
+      const scrollSpeed = W * 0.08;
 
-      // 呼吸感叠加 — 4-6 秒一次的慢呼吸，让基线微微起伏
-      const breathCycle = 5.5; // 秒/次
+      // 呼吸感叠加 — 慢呼吸让基线微微起伏
+      const breathCycle = 5.5;
       const breathPhase = (t % breathCycle) / breathCycle;
-      const breathWave = Math.sin(breathPhase * Math.PI * 2) * 0.08;
+      const breathWave = Math.sin(breathPhase * Math.PI * 2) * 0.05;
 
-      // 振幅缩放 — 降低峰值，让波形更温和
-      const ampScale = (H * 0.32) * (0.70 + actNorm * 0.30);
+      // 振幅缩放 — R 波尖峰要明显，但整体不太夸张
+      const ampScale = (H * 0.38) * (0.75 + actNorm * 0.25);
 
       // ═══ 采样 ECG 波形 ═══
       const samples = Math.max(150, Math.floor(W / 1.5));
