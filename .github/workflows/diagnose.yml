@@ -1,0 +1,72 @@
+name: Diagnose Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Diagnose Server State
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH diagnose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            echo "== PWD ==" > /tmp/diag.txt
+            pwd >> /tmp/diag.txt 2>&1
+            echo "== LS /www/wwwroot/echolife ==" >> /tmp/diag.txt
+            ls -la /www/wwwroot/echolife/ >> /tmp/diag.txt 2>&1
+            echo "== .env.production exists? ==" >> /tmp/diag.txt
+            ls -la /www/wwwroot/echolife/.env.production >> /tmp/diag.txt 2>&1
+            echo "== .env.production content (masked) ==" >> /tmp/diag.txt
+            cat /www/wwwroot/echolife/.env.production | sed 's/=.*/=***/' >> /tmp/diag.txt 2>&1
+            echo "== docker version ==" >> /tmp/diag.txt
+            docker version >> /tmp/diag.txt 2>&1
+            echo "== docker ps -a ==" >> /tmp/diag.txt
+            docker ps -a >> /tmp/diag.txt 2>&1
+            echo "== docker compose version ==" >> /tmp/diag.txt
+            docker compose version >> /tmp/diag.txt 2>&1
+            echo "== docker-compose.deploy.yml exists? ==" >> /tmp/diag.txt
+            ls -la /www/wwwroot/echolife/docker-compose.deploy.yml >> /tmp/diag.txt 2>&1
+            echo "== docker compose config ==" >> /tmp/diag.txt
+            cd /www/wwwroot/echolife && docker compose -f docker-compose.deploy.yml --env-file .env.production config >> /tmp/diag.txt 2>&1
+            echo "== docker compose ps ==" >> /tmp/diag.txt
+            cd /www/wwwroot/echolife && docker compose -f docker-compose.deploy.yml --env-file .env.production ps >> /tmp/diag.txt 2>&1
+            echo "== df -h ==" >> /tmp/diag.txt
+            df -h >> /tmp/diag.txt 2>&1
+            echo "== free -m ==" >> /tmp/diag.txt
+            free -m >> /tmp/diag.txt 2>&1
+            echo "== docker system df ==" >> /tmp/diag.txt
+            docker system df >> /tmp/diag.txt 2>&1
+            echo "== nginx logs ==" >> /tmp/diag.txt
+            docker logs echolife-nginx --tail 30 >> /tmp/diag.txt 2>&1
+            echo "== api logs ==" >> /tmp/diag.txt
+            docker logs echolife-api --tail 30 >> /tmp/diag.txt 2>&1
+            echo "== port 80 check ==" >> /tmp/diag.txt
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:80/ || echo "curl failed" >> /tmp/diag.txt 2>&1
+            echo "== DONE ==" >> /tmp/diag.txt
+
+      - name: Download diagnostic file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          source: /tmp/diag.txt
+          target: diag.txt
+          strip_components: 2
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-diagnosis
+          path: diag.txt
+          retention-days: 7
+
+      - name: Display diagnosis
+        run: cat diag.txt
