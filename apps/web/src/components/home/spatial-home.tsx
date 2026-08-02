@@ -7,6 +7,7 @@ import {
   ArrowUp,
   BookOpen,
   BrainCircuit,
+  Cpu,
   GraduationCap,
   Heart,
   Hourglass,
@@ -33,6 +34,7 @@ const familyEntries = [
   { href: '/kindness', icon: Heart, label: '童忆', hint: '温暖瞬间与家庭故事' },
   { href: '/capsules', icon: Hourglass, label: '时间胶囊', hint: '写给未来' },
   { href: '/wechat-bot', icon: MessageCircle, label: '微信 Bot', hint: '扫码连接家庭群' },
+  { href: '/devices', icon: Cpu, label: '智能设备', hint: '米家与 HomeKit' },
   { href: '/skills', icon: GraduationCap, label: '能力', hint: '时墨的成长' },
   { href: '/interview', icon: MessagesSquare, label: '陪伴', hint: '和时墨聊聊' },
 ];

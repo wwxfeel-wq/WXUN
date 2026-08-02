@@ -7,15 +7,11 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V7: 真实心电图节奏 — 大段平坦基线 + 瞬间心跳脉冲
- *
- * 波形图以真实心电图形式呈现时墨当前的心情：
- * - 温柔陪伴：52 BPM（温柔、安定）
- * - 好奇探索：65 BPM（好奇、轻快）
- * - 怀旧回忆：45 BPM（怀念、沉浸）
- * - 欣喜成长：58 BPM（欣喜、温暖）
- *
- * 真实 ECG 的 90% 是平坦基线，只在心跳瞬间有尖锐的 P-QRS-T 脉冲。
+ * V8: 更大平坦基线占比 + 更慢滚动速度
+ * - P-QRS-T 复合波集中在周期前 40%，后 60% 完全平坦基线
+ * - BPM 降低（companion 46, learning 58, recalling 40, growing 52）
+ * - 滚动速度 W*0.015（比 V7 再降 40%）
+ * - 真实 ECG 的 80%+ 是平坦基线，只在心跳瞬间有尖锐的 P-QRS-T 脉冲
  * P 波极小，R 波尖锐狭窄，T 波柔和 — 不再是密集的正弦波。
  * 心情指数独立于家庭理解度，反映时墨自身的情感状态。
  */
@@ -52,10 +48,10 @@ const MOOD_OFFSET: Record<LifeCoreState, number> = {
 };
 
 /** ECG 波形参数 — 每种心情对应不同心率与波形形态
- *  V7: 真实心电图节奏 — 大段平坦基线 + 瞬间心跳脉冲
- *  真实 ECG 的 90% 是平坦基线，只在 R 波瞬间有尖锐脉冲 */
+ *  V8: 更大比例平坦基线 — P-QRS-T 集中在周期前 40%，后 60% 完全平坦
+ *  降低 BPM 增加心搏间隔，滚动速度再降 40% */
 const ECG_PROFILE: Record<LifeCoreState, {
-  /** 心率 BPM */
+  /** 心率 BPM — 降速让心搏间隔更长 */
   bpm: number;
   /** R 波振幅 (0-1) — 主峰高度 */
   rAmp: number;
@@ -79,23 +75,23 @@ const ECG_PROFILE: Record<LifeCoreState, {
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 52, rAmp: 1.3, pAmp: 0.12, tAmp: 0.35,
-    pCenter: 0.20, pWidth: 0.020, rCenter: 0.28, rWidth: 0.004, tCenter: 0.42, tWidth: 0.035,
+    bpm: 46, rAmp: 1.3, pAmp: 0.12, tAmp: 0.35,
+    pCenter: 0.25, pWidth: 0.020, rCenter: 0.30, rWidth: 0.004, tCenter: 0.38, tWidth: 0.030,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 65, rAmp: 1.5, pAmp: 0.14, tAmp: 0.40,
-    pCenter: 0.18, pWidth: 0.018, rCenter: 0.26, rWidth: 0.0035, tCenter: 0.40, tWidth: 0.030,
+    bpm: 58, rAmp: 1.5, pAmp: 0.14, tAmp: 0.40,
+    pCenter: 0.23, pWidth: 0.018, rCenter: 0.28, rWidth: 0.0035, tCenter: 0.36, tWidth: 0.028,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 45, rAmp: 1.1, pAmp: 0.10, tAmp: 0.30,
-    pCenter: 0.22, pWidth: 0.025, rCenter: 0.30, rWidth: 0.005, tCenter: 0.46, tWidth: 0.045,
+    bpm: 40, rAmp: 1.1, pAmp: 0.10, tAmp: 0.30,
+    pCenter: 0.27, pWidth: 0.025, rCenter: 0.32, rWidth: 0.005, tCenter: 0.40, tWidth: 0.035,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 58, rAmp: 1.4, pAmp: 0.13, tAmp: 0.38,
-    pCenter: 0.19, pWidth: 0.020, rCenter: 0.27, rWidth: 0.004, tCenter: 0.41, tWidth: 0.032,
+    bpm: 52, rAmp: 1.4, pAmp: 0.13, tAmp: 0.38,
+    pCenter: 0.24, pWidth: 0.020, rCenter: 0.29, rWidth: 0.004, tCenter: 0.37, tWidth: 0.030,
     color: [232, 134, 174],
   },
 };
@@ -246,8 +242,8 @@ export default function ConsciousnessPanel({
       const bpm = p.bpm * (0.95 + actNorm * 0.10 + eventBoost * 0.08);
       const beatDuration = 60 / bpm;
 
-      // 滚动速度 — 像素/秒，降速 50% 让视觉节奏更从容，贴近真实心电图纸
-      const scrollSpeed = W * 0.025;
+      // 滚动速度 — 像素/秒，再降 40% 让视觉节奏更从容，大面积平坦基线
+      const scrollSpeed = W * 0.015;
 
       // 呼吸感叠加 — 双频叠加 + 心情状态调制，避免单一频率的机械规律
       const breathCycle1 = 5.5;

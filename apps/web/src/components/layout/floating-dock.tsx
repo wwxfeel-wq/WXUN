@@ -12,6 +12,7 @@ import {
   LogOut,
   Users,
   GraduationCap,
+  Cpu,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ const dockItems = [
   { id: 'interview', icon: MessagesSquare, label: '陪伴', href: '/interview' },
   { id: 'life-core', icon: Orbit, label: '生命核心', href: '/life-tree' },
   { id: 'center', icon: Sparkles, label: '回忆', href: '/center' },
+  { id: 'devices', icon: Cpu, label: '设备', href: '/devices' },
   { id: 'skills', icon: GraduationCap, label: '能力', href: '/skills' },
   { id: 'family', icon: Users, label: '家庭', href: '/family' },
 ];
