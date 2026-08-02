@@ -7,14 +7,14 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V9: 极慢心电图 — 几乎静止的大段平坦基线
- * - BPM 大幅降低（companion 38, learning 48, recalling 34, growing 42）
- * - 滚动速度 W*0.008（比 V8 再降 47%）
- * - 帧率从 24fps 降到 15fps
- * - P-QRS-T 集中在周期前 35%，后 65% 完全平坦
- * - 真实 ECG 的 85%+ 是平坦基线，视觉上几乎静止偶尔一个心跳脉冲
- * P 波极小，R 波尖锐狭窄，T 波柔和 — 不再是密集的正弦波。
- * 心情指数独立于家庭理解度，反映时墨自身的情感状态。
+ * V10: 极简心电图 — 一条平线，偶尔一个心跳
+ * - 去掉所有噪声层（肌电噪声、HRV、呼吸基线漂移、情绪事件）
+ * - 去掉 P 波、T 波、Q/S 波 — 只保留 R 波尖峰
+ * - BPM 极低（companion 22, learning 28, recalling 18, growing 24）
+ * - 滚动速度极慢 W*0.004
+ * - 帧率 8fps — 几乎静止
+ * - 90%+ 是完全平坦的基线，只有偶尔一个尖峰脉冲
+ * - 心情指数独立于家庭理解度，反映时墨自身的情感状态
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -40,7 +40,7 @@ const MOOD_DESC: Record<LifeCoreState, string> = {
   growing: '满心欢喜',
 };
 
-/** 心情状态对基础心情值的偏移 — 不同状态下时墨心情不同 */
+/** 心情状态对基础心情值的偏移 */
 const MOOD_OFFSET: Record<LifeCoreState, number> = {
   companion: 0,
   learning: 8,
@@ -48,71 +48,43 @@ const MOOD_OFFSET: Record<LifeCoreState, number> = {
   growing: 15,
 };
 
-/** ECG 波形参数 — 每种心情对应不同心率与波形形态
- *  V8: 更大比例平坦基线 — P-QRS-T 集中在周期前 40%，后 60% 完全平坦
- *  降低 BPM 增加心搏间隔，滚动速度再降 40% */
+/** V10 极简 ECG 参数 — 只有一个 R 波尖峰 */
 const ECG_PROFILE: Record<LifeCoreState, {
-  /** 心率 BPM — 降速让心搏间隔更长 */
+  /** 心率 BPM — 极低，3 秒一个心跳 */
   bpm: number;
-  /** R 波振幅 (0-1) — 主峰高度 */
+  /** R 波振幅 */
   rAmp: number;
-  /** P 波振幅 — 很小的心房波 */
-  pAmp: number;
-  /** T 波振幅 — 心室复极化 */
-  tAmp: number;
-  /** P 波中心位置 (0-1 心动周期内) */
-  pCenter: number;
-  /** P 波宽度 — 很窄 */
-  pWidth: number;
-  /** R 波中心位置 */
-  rCenter: number;
-  /** R 波宽度 — 极窄，模拟真实 QRS 尖峰 */
+  /** R 波宽度 — 极窄 */
   rWidth: number;
-  /** T 波中心位置 */
-  tCenter: number;
-  /** T 波宽度 — 中等 */
-  tWidth: number;
+  /** R 波在周期中的位置 — 前端，后面全是平线 */
+  rCenter: number;
   /** 波形颜色 RGB */
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 38, rAmp: 1.3, pAmp: 0.12, tAmp: 0.35,
-    pCenter: 0.28, pWidth: 0.020, rCenter: 0.32, rWidth: 0.004, tCenter: 0.40, tWidth: 0.030,
+    bpm: 22, rAmp: 1.2, rWidth: 0.003, rCenter: 0.08,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 48, rAmp: 1.5, pAmp: 0.14, tAmp: 0.40,
-    pCenter: 0.26, pWidth: 0.018, rCenter: 0.30, rWidth: 0.0035, tCenter: 0.38, tWidth: 0.028,
+    bpm: 28, rAmp: 1.4, rWidth: 0.0025, rCenter: 0.08,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 34, rAmp: 1.1, pAmp: 0.10, tAmp: 0.30,
-    pCenter: 0.30, pWidth: 0.025, rCenter: 0.34, rWidth: 0.005, tCenter: 0.42, tWidth: 0.035,
+    bpm: 18, rAmp: 1.0, rWidth: 0.0035, rCenter: 0.08,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 42, rAmp: 1.4, pAmp: 0.13, tAmp: 0.38,
-    pCenter: 0.27, pWidth: 0.020, rCenter: 0.31, rWidth: 0.004, tCenter: 0.39, tWidth: 0.030,
+    bpm: 24, rAmp: 1.3, rWidth: 0.003, rCenter: 0.08,
     color: [232, 134, 174],
   },
 };
 
 type EcgProfile = typeof ECG_PROFILE[LifeCoreState];
 
-/** 计算 ECG 复合波在某相位上的值 — 真实心电图节奏
- *  大部分相位返回 0（平坦基线），只在 P-R-T 附近有波动 */
-function ecgComplex(phase: number, p: EcgProfile): number {
-  // P 波 — 心房去极化（很小很窄的圆弧）
-  const pWave = p.pAmp * Math.exp(-Math.pow((phase - p.pCenter) / p.pWidth, 2));
-  // Q 波 — R 波前的微小负向偏转（极小）
-  const qWave = -p.rAmp * 0.04 * Math.exp(-Math.pow((phase - (p.rCenter - 0.008)) / 0.004, 2));
-  // R 波 — 尖锐主峰（极窄，模拟真实 QRS）
-  const rWave = p.rAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
-  // S 波 — R 波后的负向偏转（小）
-  const sWave = -p.rAmp * 0.08 * Math.exp(-Math.pow((phase - (p.rCenter + 0.008)) / 0.006, 2));
-  // T 波 — 心室复极化（中等圆弧，远小于之前）
-  const tWave = p.tAmp * Math.exp(-Math.pow((phase - p.tCenter) / p.tWidth, 2));
-  return pWave + qWave + rWave + sWave + tWave;
+/** V10: 只计算 R 波 — 其余全部返回 0（平坦基线） */
+function ecgPulse(phase: number, p: EcgProfile): number {
+  // R 波 — 尖锐主峰，极窄
+  return p.rAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
 }
 
 function clamp(v: number, min: number, max: number) {
@@ -142,7 +114,7 @@ export default function ConsciousnessPanel({
   const stateRef = useRef({ state, activity, profile, moodOffset });
   stateRef.current = { state, activity, profile, moodOffset };
 
-  // 显示用心情值 — 独立更新避免高频 re-render
+  // 显示用心情值
   const [displayMood, setDisplayMood] = useState(() => clamp(activity + moodOffset, 0, 100));
   const displayMoodRef = useRef(displayMood);
   const moodStrongRef = useRef<HTMLElement>(null);
@@ -166,28 +138,10 @@ export default function ConsciousnessPanel({
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    // 多频段噪声种子 — 模拟 Perlin 噪声的有机感
-    const noiseSeed = Array.from({ length: 64 }, () => Math.random() * 1000);
-    // 情绪事件种子 — 随机的情感波动事件
-    const eventSeed = Array.from({ length: 8 }, () => ({
-      time: Math.random() * 15,
-      intensity: 0.3 + Math.random() * 0.5,
-      duration: 2 + Math.random() * 3,
-      freq: 0.5 + Math.random() * 1.5,
-    }));
-
     const startTime = performance.now() / 1000;
     let lastMoodTextUpdate = 0;
 
-    /** 多频段噪声 — 模拟 Perlin 噪声的有机起伏 */
-    const organicNoise = (x: number, t: number, seed: number): number => {
-      const n1 = Math.sin(x * 1.3 + t * 0.7 + seed) * 0.5;
-      const n2 = Math.sin(x * 2.7 + t * 1.1 + seed * 1.7) * 0.3;
-      const n3 = Math.sin(x * 5.1 + t * 1.9 + seed * 2.3) * 0.15;
-      return n1 + n2 + n3;
-    };
-
-    /** 边缘羽化函数 — 两边平滑淡出 */
+    /** 边缘羽化 */
     const featherAlpha = (xNorm: number): number => {
       const leftEdge = 0.06;
       const rightEdge = 0.94;
@@ -200,137 +154,64 @@ export default function ConsciousnessPanel({
       return 1;
     };
 
-    /** 情绪事件 — 偶发的情感波动 */
-    const moodEvent = (t: number): number => {
-      let sum = 0;
-      for (const evt of eventSeed) {
-        const cycle = 12 + evt.duration * 3;
-        const phase = (t % cycle) - evt.time;
-        if (phase > 0 && phase < evt.duration) {
-          const env = Math.sin((phase / evt.duration) * Math.PI);
-          sum += env * evt.intensity * Math.sin(t * evt.freq * Math.PI * 2);
-        }
-      }
-      return sum;
-    };
-
     const draw = () => {
       const now = performance.now() / 1000;
-      // prefers-reduced-motion 时冻结时间 — 波形静止展示，不做滚动/呼吸动画
       const t = reduceMotion ? 0 : now - startTime;
-      const { state: lifeState, profile: p, activity: act, moodOffset: mo } = stateRef.current;
+      const { profile: p, activity: act, moodOffset: mo } = stateRef.current;
 
       ctx.clearRect(0, 0, W, H);
 
       const cy = H / 2;
 
-      // ═══ 时墨真实心情 = 基础值 + 状态偏移 + 有机波动 + 情绪事件 ═══
-      const slowMood = organicNoise(t * 0.12, t * 0.08, noiseSeed[0]);
-      const eventBoost = moodEvent(t);
-      const rawMood = act + mo + slowMood * 6 + eventBoost * 4;
-      const mood = clamp(rawMood, 0, 100);
+      // ═══ 心情值 — 仅用于数字显示，不再影响波形 ═══
+      const mood = clamp(act + mo, 0, 100);
       displayMoodRef.current = mood;
 
-      // 每 800ms 更新 DOM 心情数字 — 更慢更沉稳
-      if (now - lastMoodTextUpdate > 0.8 && moodStrongRef.current) {
+      if (now - lastMoodTextUpdate > 1.5 && moodStrongRef.current) {
         lastMoodTextUpdate = now;
         moodStrongRef.current.textContent = String(Math.round(mood));
       }
 
-      const actNorm = mood / 100;
+      // ═══ V10: 极简波形 — 只有一条平线 + R 波尖峰 ═══
+      const beatDuration = 60 / p.bpm;
 
-      // 心率 — 随心情微调 + 情绪事件回流加成（让 moodEvent 影响瞬时心率）
-      const bpm = p.bpm * (0.95 + actNorm * 0.10 + eventBoost * 0.08);
-      const beatDuration = 60 / bpm;
+      // 滚动速度 — 极慢
+      const scrollSpeed = W * 0.004;
 
-      // 滚动速度 — 极慢，像真实心电图纸一样几乎静止
-      const scrollSpeed = W * 0.008;
+      // 振幅
+      const ampScale = H * 0.38;
 
-      // 呼吸感叠加 — 双频叠加 + 心情状态调制，避免单一频率的机械规律
-      const breathCycle1 = 5.5;
-      const breathCycle2 = 7.3;
-      const breathWave = Math.sin((t / breathCycle1) * Math.PI * 2) * 0.035
-        + Math.sin((t / breathCycle2) * Math.PI * 2 + 1.3) * 0.018;
-      const breathScale = lifeState === 'recalling' ? 1.3 : lifeState === 'learning' ? 0.8 : 1.0;
-
-      // 振幅缩放 — 略大振幅让心跳脉冲更明显，但整体保持温和 + 情绪事件动态加成
-      const ampScale = (H * 0.42) * (0.75 + actNorm * 0.25);
-      const dynamicAmpScale = ampScale * (1 + eventBoost * 0.12);
-
-      // ═══ 采样 ECG 波形 ═══
-      const samples = Math.max(150, Math.floor(W / 1.5));
+      // 采样
+      const samples = Math.max(100, Math.floor(W / 2));
       const points: { x: number; y: number; alpha: number }[] = [];
 
       for (let i = 0; i <= samples; i++) {
         const x = (i / samples) * W;
         const xNorm = i / samples;
 
-        // 时间映射 — 从右向左滚动
+        // 时间映射
         const timeAtX = t - (1 - xNorm) * (W / scrollSpeed);
 
-        // 心率变异（HRV）— 慢速噪声调制 beatDuration，相邻心跳间距 ±8% 抖动
-        const beatIndex = Math.floor(timeAtX / beatDuration);
-        // 规范化噪声索引到 [0,63]，兼容 reduceMotion 下 timeAtX 为负的情况
-        const bi = ((beatIndex % 64) + 64) % 64;
-        const hrvNoise = organicNoise(beatIndex * 0.7, t * 0.3, noiseSeed[bi]);
-        const actualBeatDuration = beatDuration * (1 + hrvNoise * 0.08);
+        // 心动周期相位
+        const phase = ((timeAtX / beatDuration) % 1 + 1) % 1;
 
-        // 心动周期相位 (0~1) — 使用 HRV 调制后的周期
-        const phase = ((timeAtX / actualBeatDuration) % 1 + 1) % 1;
-
-        // 波形微变 — 每个心跳形态略有不同（振幅 ±6%、宽度 ±4%），避免逐拍雷同
-        const ampJitter = 1 + organicNoise(beatIndex * 1.3, t * 0.2, noiseSeed[(bi + 8) % 64]) * 0.06;
-        const widthJitter = 1 + organicNoise(beatIndex * 0.9, t * 0.15, noiseSeed[(bi + 16) % 64]) * 0.04;
-        const jitteredProfile: EcgProfile = {
-          ...p,
-          rAmp: p.rAmp * ampJitter,
-          tAmp: p.tAmp * ampJitter,
-          rWidth: p.rWidth * widthJitter,
-        };
-
-        // ECG 复合波值 — 传入扰动后的参数
-        const ecgVal = ecgComplex(phase, jitteredProfile);
-
-        // 基线肌电噪声 — 高频 0.008 + 慢速漂移 0.015，更贴近真实电极信号
-        const fastNoise = (Math.sin(timeAtX * 31 + xNorm * 150) * 0.3 + Math.sin(timeAtX * 57) * 0.2) * 0.008;
-        const slowDrift = organicNoise(xNorm * 3, t * 0.5, noiseSeed[32]) * 0.015;
-        const totalNoise = fastNoise + slowDrift;
+        // V10: 只有 R 波，其余全是 0
+        const ecgVal = ecgPulse(phase, p);
 
         // 边缘羽化
         const edgeFade = featherAlpha(xNorm);
 
-        // 叠加呼吸基线漂移 — 双频叠加 + 心情状态调制
-        const breathOffset = breathWave * breathScale * dynamicAmpScale * edgeFade;
-
-        const y = cy - (ecgVal + totalNoise) * dynamicAmpScale * edgeFade + breathOffset;
+        const y = cy - ecgVal * ampScale * edgeFade;
         points.push({ x, y, alpha: edgeFade });
       }
 
       const [lr, lg, lb] = p.color;
 
-      // ═══ 1. 淡网格背景 — 医用心电图纸效果 ═══
-      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.035)`;
-      ctx.lineWidth = 0.5;
-      const gridX = W / 24;
-      const gridY = H / 6;
-      for (let gx = 0; gx <= W; gx += gridX) {
-        ctx.beginPath();
-        ctx.moveTo(gx, 0);
-        ctx.lineTo(gx, H);
-        ctx.stroke();
-      }
-      for (let gy = 0; gy <= H; gy += gridY) {
-        ctx.beginPath();
-        ctx.moveTo(0, gy);
-        ctx.lineTo(W, gy);
-        ctx.stroke();
-      }
-
-      // ═══ 2. 基线 — 带羽化的淡虚线 ═══
+      // ═══ 1. 基线 — 淡虚线 ═══
       const axisGrad = ctx.createLinearGradient(0, 0, W, 0);
       axisGrad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, 0)`);
-      axisGrad.addColorStop(0.06, `rgba(${lr}, ${lg}, ${lb}, 0.05)`);
-      axisGrad.addColorStop(0.94, `rgba(${lr}, ${lg}, ${lb}, 0.05)`);
+      axisGrad.addColorStop(0.06, `rgba(${lr}, ${lg}, ${lb}, 0.06)`);
+      axisGrad.addColorStop(0.94, `rgba(${lr}, ${lg}, ${lb}, 0.06)`);
       axisGrad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
       ctx.beginPath();
       ctx.strokeStyle = axisGrad;
@@ -341,15 +222,15 @@ export default function ConsciousnessPanel({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // ═══ 3. ECG 波形 — 三层渲染（光晕 → 主线 → 亮芯） ═══
+      // ═══ 2. ECG 波形 — 两层（光晕 + 主线） ═══
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // 3a. 外层光晕
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.07)`;
-      ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, 0.3)`;
-      ctx.shadowBlur = 12;
+      // 2a. 外层光晕
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.06)`;
+      ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, 0.2)`;
+      ctx.shadowBlur = 8;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
         if (i === 0) {
@@ -364,38 +245,16 @@ export default function ConsciousnessPanel({
       }
       ctx.stroke();
 
-      // 3b. 主线 — 分段渲染以支持羽化 alpha
-      ctx.lineWidth = 2;
-      ctx.shadowBlur = 6;
+      // 2b. 主线 — 分段渲染支持羽化
+      ctx.lineWidth = 1.8;
+      ctx.shadowBlur = 4;
       for (let i = 1; i < points.length; i++) {
         const p0 = points[i - 1];
         const p1 = points[i];
-        const segAlpha = (p0.alpha + p1.alpha) / 2 * (0.6 + actNorm * 0.4);
+        const segAlpha = (p0.alpha + p1.alpha) / 2 * 0.7;
         ctx.beginPath();
         ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha})`;
-        ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha * 0.6})`;
-        if (i < points.length - 1) {
-          const p2 = points[i + 1];
-          const xc = (p1.x + p2.x) / 2;
-          const yc = (p1.y + p2.y) / 2;
-          ctx.moveTo(p0.x, p0.y);
-          ctx.quadraticCurveTo(p1.x, p1.y, xc, yc);
-        } else {
-          ctx.moveTo(p0.x, p0.y);
-          ctx.lineTo(p1.x, p1.y);
-        }
-        ctx.stroke();
-      }
-
-      // 3c. 亮芯线 — 白色高光
-      ctx.lineWidth = 1;
-      ctx.shadowBlur = 0;
-      for (let i = 1; i < points.length; i++) {
-        const p0 = points[i - 1];
-        const p1 = points[i];
-        const segAlpha = (p0.alpha + p1.alpha) / 2 * (0.7 + actNorm * 0.3);
-        ctx.beginPath();
-        ctx.strokeStyle = `rgba(255, 255, 255, ${segAlpha * 0.45})`;
+        ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha * 0.5})`;
         if (i < points.length - 1) {
           const p2 = points[i + 1];
           const xc = (p1.x + p2.x) / 2;
@@ -412,26 +271,26 @@ export default function ConsciousnessPanel({
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
 
-      // ═══ 4. 当前位置扫描亮点（右侧） ═══
+      // ═══ 3. 当前位置扫描亮点 ═══
       const lastPoint = points[points.length - 1];
       if (lastPoint && lastPoint.alpha > 0.1) {
         const dotGrad = ctx.createRadialGradient(
           lastPoint.x, lastPoint.y, 0,
-          lastPoint.x, lastPoint.y, 10,
+          lastPoint.x, lastPoint.y, 8,
         );
-        dotGrad.addColorStop(0, `rgba(255, 255, 255, 0.9)`);
-        dotGrad.addColorStop(0.3, `rgba(${lr}, ${lg}, ${lb}, 0.5)`);
+        dotGrad.addColorStop(0, `rgba(255, 255, 255, 0.8)`);
+        dotGrad.addColorStop(0.3, `rgba(${lr}, ${lg}, ${lb}, 0.4)`);
         dotGrad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
         ctx.fillStyle = dotGrad;
         ctx.beginPath();
-        ctx.arc(lastPoint.x, lastPoint.y, 10, 0, Math.PI * 2);
+        ctx.arc(lastPoint.x, lastPoint.y, 8, 0, Math.PI * 2);
         ctx.fill();
       }
     };
 
-    // 15fps 渲染 — 极慢节奏，大段静止基线
+    // 8fps — 极慢节奏
     let lastDraw = 0;
-    const frameInterval = 1000 / 15;
+    const frameInterval = 1000 / 8;
     const loop = (now: number) => {
       if (now - lastDraw >= frameInterval) {
         lastDraw = now;
@@ -441,7 +300,7 @@ export default function ConsciousnessPanel({
     };
     rafRef.current = requestAnimationFrame(loop);
 
-    // 每 3 秒同步一次显示心情到 React state — 更慢的数字变化
+    // 每 3 秒同步心情数字
     const moodInterval = setInterval(() => {
       setDisplayMood(displayMoodRef.current);
     }, 3000);
