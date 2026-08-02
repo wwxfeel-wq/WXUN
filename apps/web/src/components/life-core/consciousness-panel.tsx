@@ -7,18 +7,15 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V12: 真实动态心电图 (Holter Monitor)
- * - 还原真实 PQRST 波形，符合医学标准比例
- * - 心率变异性 (HRV)：每次 R-R 间隔自然变化 ±5-10%
- * - 呼吸性窦性心律不齐 (RSA)：R 波振幅随呼吸周期微变
- * - 基线漂移：呼吸引起的缓慢基线移动
- * - 正常静息心率 60-75 BPM
- * - 滚动速度模拟真实监护仪（约 6 秒数据可见）
- * - 心情指数独立于家庭理解度，反映时墨自身的情感状态
+ * V14: 真随机动态心电图
  *
- * 参考：Wikipedia Electrocardiography
- * P 波 0.08-0.12s, PR 间期 0.12-0.20s, QRS 0.06-0.10s
- * ST 段等电位线, T 波 0.16s, QT 间期 0.36-0.44s
+ * 根因修复：
+ * 1. 种子用 Date.now() → 每次刷新序列不同，不再有规则重复
+ * 2. HRV 放大 3 倍（0.35-0.50），均值回归降到 0.05 → R-R 间隔真正不规则
+ * 3. R 波用余弦钟形替代窄高斯 → 圆润宽顶，不再尖锐
+ * 4. P/Q/S 波振幅砍到 0.02-0.05 → 波形干净，只有 R 波和柔和 T 波
+ * 5. 可见窗口 12 秒，BPM 50-60 → 更少更从容
+ * 6. 偶发呼吸性心律不齐（8% 概率长间隔）
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -49,39 +46,19 @@ const MOOD_OFFSET: Record<LifeCoreState, number> = {
   growing: 15,
 };
 
-/** V12 真实 ECG 参数 — 正常静息心率 */
 const ECG_PROFILE: Record<LifeCoreState, {
-  /** 静息心率 BPM — 正常范围 60-100 */
   bpm: number;
-  /** HRV 强度 — R-R 间隔变异系数 */
   hrvStrength: number;
-  /** 波形颜色 RGB */
   color: [number, number, number];
 }> = {
-  companion: {
-    bpm: 65,
-    hrvStrength: 0.08,
-    color: [82, 196, 128],
-  },
-  learning: {
-    bpm: 75,
-    hrvStrength: 0.06,
-    color: [86, 180, 233],
-  },
-  recalling: {
-    bpm: 60,
-    hrvStrength: 0.10,
-    color: [230, 162, 90],
-  },
-  growing: {
-    bpm: 72,
-    hrvStrength: 0.07,
-    color: [232, 134, 174],
-  },
+  companion: { bpm: 52, hrvStrength: 0.45, color: [82, 196, 128] },
+  learning: { bpm: 58, hrvStrength: 0.38, color: [86, 180, 233] },
+  recalling: { bpm: 50, hrvStrength: 0.50, color: [230, 162, 90] },
+  growing: { bpm: 56, hrvStrength: 0.40, color: [232, 134, 174] },
 };
 
 // ═══════════════════════════════════════════
-// 伪随机数生成器
+// 伪随机 — 种子用时间，每次刷新不同
 // ═══════════════════════════════════════════
 
 function mulberry32(seed: number) {
@@ -93,119 +70,154 @@ function mulberry32(seed: number) {
   };
 }
 
+/** 高斯随机（Box-Muller） */
+function gaussianRandom(rand: () => number): number {
+  const u = Math.max(1e-10, rand());
+  const v = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
 // ═══════════════════════════════════════════
-// 心跳时间表 — 预计算带有 HRV 的 R-R 间隔
+// 心拍参数 — 每拍独立的形态参数
 // ═══════════════════════════════════════════
 
+interface BeatParams {
+  start: number;
+  duration: number;
+  // R 波 — 余弦钟形，圆润宽顶
+  rAmp: number;
+  rCenter: number;
+  rHalfWidth: number;
+  // T 波 — 柔和不对称
+  tAmp: number;
+  tCenter: number;
+  tWidthUp: number;
+  tWidthDown: number;
+  // P 波 — 极淡
+  pAmp: number;
+  pCenter: number;
+  pWidth: number;
+  // Q/S 波 — 微小切迹
+  qAmp: number;
+  qCenter: number;
+  qWidth: number;
+  sAmp: number;
+  sCenter: number;
+  sWidth: number;
+}
+
 interface BeatSchedule {
-  /** 每拍开始时间（秒） */
+  beats: BeatParams[];
   starts: Float64Array;
-  /** 每拍持续时间（秒） */
-  intervals: Float64Array;
-  /** 每拍 R 波振幅倍率（RSA 效应） */
-  rAmps: Float64Array;
-  /** 总时长覆盖 */
   totalDuration: number;
-  /** 基础心率 */
   bpm: number;
 }
 
-const BEAT_COUNT = 600; // 足够覆盖 ~10 分钟
+const BEAT_COUNT = 400;
 
 function buildBeatSchedule(bpm: number, hrvStrength: number): BeatSchedule {
-  const rand = mulberry32(137);
+  // 种子用时间 + 随机 → 每次刷新完全不同
+  const seed = (Date.now() ^ (Math.random() * 1e9 | 0)) >>> 0;
+  const rand = mulberry32(seed);
   const meanInterval = 60 / bpm;
+  const beats: BeatParams[] = [];
   const starts = new Float64Array(BEAT_COUNT);
-  const intervals = new Float64Array(BEAT_COUNT);
-  const rAmps = new Float64Array(BEAT_COUNT);
 
   let cumulative = 0;
+  let prevInterval = meanInterval;
+
   for (let i = 0; i < BEAT_COUNT; i++) {
-    // HRV: 多频率成分模拟自主神经系统
-    // 高频 (HF): 呼吸性窦性心律不齐 ~0.25 Hz
-    const hf = Math.sin(i * 0.4) * hrvStrength * 0.6;
-    // 低频 (LF): 血压调节 ~0.1 Hz
-    const lf = Math.sin(i * 0.12) * hrvStrength * 0.3;
-    // 随机噪声
-    const noise = (rand() - 0.5) * hrvStrength * 0.4;
+    // ═══ 真随机游走 HRV ═══
+    // 大步长 + 弱均值回归 → R-R 间隔真正不规则
+    const randomStep = gaussianRandom(rand) * hrvStrength * meanInterval * 0.5;
+    const meanReversion = (meanInterval - prevInterval) * 0.05;
+    let interval = prevInterval + randomStep + meanReversion;
+    // 钳制范围放宽 → 允许 ±35% 变化
+    interval = clamp(interval, meanInterval * 0.65, meanInterval * 1.5);
 
-    const interval = meanInterval * (1 + hf + lf + noise);
-    intervals[i] = interval;
+    // 8% 概率呼吸性心律不齐 — 偶发长间隔
+    if (rand() < 0.08) {
+      interval *= 1.2 + rand() * 0.25;
+    }
+
+    prevInterval = interval;
     starts[i] = cumulative;
-    cumulative += interval;
 
-    // RSA: R 波振幅随呼吸周期变化
-    const rsa = 1 + Math.sin(i * 0.4) * 0.06 + (rand() - 0.5) * 0.02;
-    rAmps[i] = rsa;
+    const beatDuration = interval;
+
+    // ═══ 每拍形态随机变化 ═══
+    // R 波 — 余弦钟形，宽顶圆润
+    const rHalfWidth = 0.055 + rand() * 0.03; // 半宽 0.055-0.085，全宽 0.11-0.17
+    beats.push({
+      start: cumulative,
+      duration: beatDuration,
+      // R 波 — 振幅适中，不再 towering
+      rAmp: 0.48 + rand() * 0.17, // 0.48-0.65
+      rCenter: 0.20 + rand() * 0.02,
+      rHalfWidth,
+      // T 波 — 柔和，不对称
+      tAmp: 0.08 + rand() * 0.06, // 0.08-0.14
+      tCenter: 0.48 + rand() * 0.1,
+      tWidthUp: 0.06 + rand() * 0.03,
+      tWidthDown: 0.09 + rand() * 0.04,
+      // P 波 — 极淡
+      pAmp: 0.03 + rand() * 0.025, // 0.03-0.055
+      pCenter: 0.09 + rand() * 0.02,
+      pWidth: 0.035 + rand() * 0.015,
+      // Q 波 — 微小切迹
+      qAmp: -(0.015 + rand() * 0.02), // -0.015 to -0.035
+      qCenter: 0.17 + rand() * 0.015,
+      qWidth: 0.02 + rand() * 0.01,
+      // S 波 — 微小切迹
+      sAmp: -(0.02 + rand() * 0.03), // -0.02 to -0.05
+      sCenter: 0.24 + rand() * 0.02,
+      sWidth: 0.025 + rand() * 0.015,
+    });
+
+    cumulative += interval;
   }
 
-  return {
-    starts,
-    intervals,
-    rAmps,
-    totalDuration: cumulative,
-    bpm,
-  };
+  return { beats, starts, totalDuration: cumulative, bpm };
 }
 
-/** 二分查找：给定时间 t，返回所在的心拍索引 */
+/** 二分查找心拍索引 */
 function findBeatIndex(schedule: BeatSchedule, t: number): number {
   if (t < 0) return 0;
   if (t >= schedule.totalDuration) return BEAT_COUNT - 1;
-
   let lo = 0, hi = BEAT_COUNT - 1;
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1;
-    if (schedule.starts[mid] <= t) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
+    if (schedule.starts[mid] <= t) lo = mid;
+    else hi = mid;
   }
   return lo;
 }
 
-// ═══════════════════════════════════════════
-// PQRST 波形函数 — 医学标准比例
-// ═══════════════════════════════════════════
-
 /**
- * 单个心拍内的 ECG 波形值
- * @param phase 心拍内相位 0-1（0=心拍开始, 1=下一心拍开始）
- * @param rAmpMul R 波振幅倍率（RSA 效应）
- * @returns ECG 值（归一化，R 波峰值约 1.0）
+ * 单拍 ECG 波形 — V14
+ * R 波用余弦钟形：0.5*(1+cos(π*d/hw))，圆润宽顶
+ * 其余波用高斯，振幅极低
  */
-function ecgWaveform(phase: number, rAmpMul: number): number {
-  // P 波 — 心房去极化，小圆弧
-  // 正常：0.08-0.12s，振幅 ~0.15mV，位于心拍前 10%
-  const pWave = 0.15 * Math.exp(-Math.pow((phase - 0.08) / 0.035, 2));
-
-  // PR 段 — 等电位线（flat），0.12-0.20s
-  // 无波形，自然返回 0
-
-  // Q 波 — R 波前的小负向偏转
-  const qWave = -0.08 * Math.exp(-Math.pow((phase - 0.205) / 0.006, 2));
-
-  // R 波 — 心室去极化主峰
-  // 正常 QRS 0.06-0.10s，R 波是最尖锐的部分
-  const rWave = 1.0 * rAmpMul * Math.exp(-Math.pow((phase - 0.225) / 0.009, 2));
-
-  // S 波 — R 波后的负向偏转
-  const sWave = -0.18 * Math.exp(-Math.pow((phase - 0.245) / 0.007, 2));
-
-  // ST 段 — 等电位线，0.08s
-  // 无波形
-
-  // T 波 — 心室复极化，圆弧，比 QRS 宽
-  // 正常：0.16s，振幅 ~0.3mV，不对称（上升慢下降快）
-  const tCenter = 0.48;
-  const tWidth = phase < tCenter ? 0.05 : 0.07; // 不对称
-  const tWave = 0.28 * Math.exp(-Math.pow((phase - tCenter) / tWidth, 2));
-
+function ecgWaveform(phase: number, b: BeatParams): number {
+  // P 波 — 极淡高斯
+  const pWave = b.pAmp * Math.exp(-Math.pow((phase - b.pCenter) / b.pWidth, 2));
+  // Q 波 — 微小
+  const qWave = b.qAmp * Math.exp(-Math.pow((phase - b.qCenter) / b.qWidth, 2));
+  // R 波 — 余弦钟形（圆润宽顶，不尖锐）
+  const rDist = Math.abs(phase - b.rCenter);
+  let rWave = 0;
+  if (rDist < b.rHalfWidth) {
+    rWave = b.rAmp * 0.5 * (1 + Math.cos(Math.PI * rDist / b.rHalfWidth));
+  }
+  // S 波 — 微小
+  const sWave = b.sAmp * Math.exp(-Math.pow((phase - b.sCenter) / b.sWidth, 2));
+  // T 波 — 不对称高斯
+  const tWidth = phase < b.tCenter ? b.tWidthUp : b.tWidthDown;
+  const tWave = b.tAmp * Math.exp(-Math.pow((phase - b.tCenter) / tWidth, 2));
   return pWave + qWave + rWave + sWave + tWave;
 }
 
@@ -258,29 +270,19 @@ export default function ConsciousnessPanel({
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    // 预计算心跳时间表
     let schedule = buildBeatSchedule(profile.bpm, profile.hrvStrength);
-    const rebuildSchedule = (bpm: number, hrv: number) => {
-      schedule = buildBeatSchedule(bpm, hrv);
-    };
-    rebuildSchedule(profile.bpm, profile.hrvStrength);
 
     const startTime = performance.now() / 1000;
     let lastMoodTextUpdate = 0;
-
-    // 用于基线漂移的伪随机
-    const baselineRand = mulberry32(991);
+    const noiseSeed = (Math.random() * 1e6 | 0) + 1;
+    const noiseRand = mulberry32(noiseSeed);
 
     /** 边缘羽化 */
     const featherAlpha = (xNorm: number): number => {
       const leftEdge = 0.05;
       const rightEdge = 0.95;
-      if (xNorm < leftEdge) {
-        return Math.sin((xNorm / leftEdge) * Math.PI * 0.5);
-      }
-      if (xNorm > rightEdge) {
-        return Math.sin(((1.0 - xNorm) / (1.0 - rightEdge)) * Math.PI * 0.5);
-      }
+      if (xNorm < leftEdge) return Math.sin((xNorm / leftEdge) * Math.PI * 0.5);
+      if (xNorm > rightEdge) return Math.sin(((1.0 - xNorm) / (1.0 - rightEdge)) * Math.PI * 0.5);
       return 1;
     };
 
@@ -289,16 +291,13 @@ export default function ConsciousnessPanel({
       const t = reduceMotion ? 0 : now - startTime;
       const { profile: p, activity: act, moodOffset: mo } = stateRef.current;
 
-      // 如果心率参数变化，重建时间表
       if (schedule.bpm !== p.bpm) {
-        rebuildSchedule(p.bpm, p.hrvStrength);
+        schedule = buildBeatSchedule(p.bpm, p.hrvStrength);
       }
 
       ctx.clearRect(0, 0, W, H);
-
       const cy = H / 2;
 
-      // 心情值 — 仅用于数字显示
       const mood = clamp(act + mo, 0, 100);
       displayMoodRef.current = mood;
       if (now - lastMoodTextUpdate > 1.5 && moodStrongRef.current) {
@@ -306,59 +305,44 @@ export default function ConsciousnessPanel({
         moodStrongRef.current.textContent = String(Math.round(mood));
       }
 
-      // ═══ V12: 真实动态心电图 ═══
-
-      // 滚动速度 — 约 6 秒数据可见（模拟监护仪）
-      const scrollSpeed = W / 6.0;
-
-      // 振幅 — R 波约占画布高度的 35%
-      const ampScale = H * 0.35;
-
-      // 采样数 — 高密度保证 QRS 尖锐
-      const samples = Math.max(200, Math.floor(W / 1.5));
+      // ═══ V14: 真随机动态心电图 ═══
+      // 12 秒数据可见 — 更少心跳，更从容
+      const scrollSpeed = W / 12.0;
+      const ampScale = H * 0.22; // 降振幅，更柔和
+      const samples = Math.max(300, Math.floor(W / 1.5));
       const points: { x: number; y: number; alpha: number }[] = [];
 
       for (let i = 0; i <= samples; i++) {
         const x = (i / samples) * W;
         const xNorm = i / samples;
-
-        // 时间映射：右端是当前时间，左端是过去
         const timeAtX = t - (1 - xNorm) * (W / scrollSpeed);
 
-        // 找到当前时间所在的心拍
         const beatIdx = findBeatIndex(schedule, timeAtX);
-        const beatStart = schedule.starts[beatIdx];
-        const beatInterval = schedule.intervals[beatIdx];
-        const rAmpMul = schedule.rAmps[beatIdx];
+        const beat = schedule.beats[beatIdx];
+        const phase = clamp((timeAtX - beat.start) / beat.duration, 0, 1);
 
-        // 心拍内相位 0-1
-        const phase = clamp((timeAtX - beatStart) / beatInterval, 0, 1);
+        const ecgVal = ecgWaveform(phase, beat);
 
-        // PQRST 波形
-        const ecgVal = ecgWaveform(phase, rAmpMul);
-
-        // 基线漂移 — 呼吸引起的缓慢移动
+        // 基线漂移 — 低频随机
         const baselineWander =
-          Math.sin(timeAtX * 0.25) * 0.025 +
-          Math.sin(timeAtX * 0.11) * 0.015;
+          Math.sin(timeAtX * 0.12) * 0.015 +
+          Math.sin(timeAtX * 0.05 + 1.3) * 0.008;
 
-        // 微弱噪声 — 真实电极不可能完全干净
-        const noise = (baselineRand() - 0.5) * 0.008;
+        // 电极噪声 — 很低
+        const noise = (noiseRand() - 0.5) * 0.008;
 
-        // 边缘羽化
         const edgeFade = featherAlpha(xNorm);
-
         const y = cy - (ecgVal + baselineWander + noise) * ampScale * edgeFade;
         points.push({ x, y, alpha: edgeFade });
       }
 
       const [lr, lg, lb] = p.color;
 
-      // ═══ 1. 基线 — 淡虚线 ═══
+      // 基线
       const axisGrad = ctx.createLinearGradient(0, 0, W, 0);
       axisGrad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, 0)`);
-      axisGrad.addColorStop(0.05, `rgba(${lr}, ${lg}, ${lb}, 0.05)`);
-      axisGrad.addColorStop(0.95, `rgba(${lr}, ${lg}, ${lb}, 0.05)`);
+      axisGrad.addColorStop(0.05, `rgba(${lr}, ${lg}, ${lb}, 0.04)`);
+      axisGrad.addColorStop(0.95, `rgba(${lr}, ${lg}, ${lb}, 0.04)`);
       axisGrad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
       ctx.beginPath();
       ctx.strokeStyle = axisGrad;
@@ -369,73 +353,65 @@ export default function ConsciousnessPanel({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // ═══ 2. ECG 波形 — 光晕 + 主线 ═══
+      // ECG 波形
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // 2a. 外层光晕
+      // 光晕层
       ctx.lineWidth = 4;
-      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.08)`;
-      ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, 0.25)`;
-      ctx.shadowBlur = 6;
+      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.06)`;
+      ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, 0.15)`;
+      ctx.shadowBlur = 4;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
-        if (i === 0) {
-          ctx.moveTo(points[i].x, points[i].y);
-        } else {
+        if (i === 0) ctx.moveTo(points[i].x, points[i].y);
+        else {
           const prev = points[i - 1];
           const curr = points[i];
-          const xc = (prev.x + curr.x) / 2;
-          const yc = (prev.y + curr.y) / 2;
-          ctx.quadraticCurveTo(prev.x, prev.y, xc, yc);
+          ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + curr.x) / 2, (prev.y + curr.y) / 2);
         }
       }
       ctx.stroke();
 
-      // 2b. 主线 — 分段渲染支持羽化
-      ctx.lineWidth = 1.6;
-      ctx.shadowBlur = 3;
+      // 主线
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 2;
       for (let i = 1; i < points.length; i++) {
         const p0 = points[i - 1];
         const p1 = points[i];
         const segAlpha = (p0.alpha + p1.alpha) / 2 * 0.75;
         ctx.beginPath();
         ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha})`;
-        ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha * 0.4})`;
+        ctx.shadowColor = `rgba(${lr}, ${lg}, ${lb}, ${segAlpha * 0.3})`;
         if (i < points.length - 1) {
           const p2 = points[i + 1];
-          const xc = (p1.x + p2.x) / 2;
-          const yc = (p1.y + p2.y) / 2;
           ctx.moveTo(p0.x, p0.y);
-          ctx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+          ctx.quadraticCurveTo(p1.x, p1.y, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
         } else {
           ctx.moveTo(p0.x, p0.y);
           ctx.lineTo(p1.x, p1.y);
         }
         ctx.stroke();
       }
-
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
 
-      // ═══ 3. 当前位置扫描亮点 ═══
+      // 扫描亮点
       const lastPoint = points[points.length - 1];
       if (lastPoint && lastPoint.alpha > 0.1) {
         const dotGrad = ctx.createRadialGradient(
-          lastPoint.x, lastPoint.y, 0,
-          lastPoint.x, lastPoint.y, 7,
+          lastPoint.x, lastPoint.y, 0, lastPoint.x, lastPoint.y, 6,
         );
-        dotGrad.addColorStop(0, `rgba(255, 255, 255, 0.7)`);
-        dotGrad.addColorStop(0.3, `rgba(${lr}, ${lg}, ${lb}, 0.35)`);
+        dotGrad.addColorStop(0, `rgba(255, 255, 255, 0.6)`);
+        dotGrad.addColorStop(0.3, `rgba(${lr}, ${lg}, ${lb}, 0.3)`);
         dotGrad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
         ctx.fillStyle = dotGrad;
         ctx.beginPath();
-        ctx.arc(lastPoint.x, lastPoint.y, 7, 0, Math.PI * 2);
+        ctx.arc(lastPoint.x, lastPoint.y, 6, 0, Math.PI * 2);
         ctx.fill();
       }
     };
 
-    // 30fps — 流畅但不浪费
     let lastDraw = 0;
     const frameInterval = 1000 / 30;
     const loop = (now: number) => {
