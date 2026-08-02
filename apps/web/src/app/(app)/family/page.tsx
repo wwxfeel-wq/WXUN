@@ -70,130 +70,170 @@ export default function FamilyPage() {
   if (!familyId) {
     return (
       <PageTransition>
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-text">家庭记忆</h1>
-          <p className="text-sm text-text-muted">与家人共同守护属于你们的回忆</p>
-        </div>
-        <GlassLayer
-          asChild
-          intensity="strong"
-          className="relative flex flex-col items-center justify-center overflow-hidden py-24 text-center"
+        <div
+          className="w-full min-h-screen px-4 sm:px-8 lg:px-16 py-8 sm:py-10"
+          style={{
+            paddingBottom:
+              'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-2xl))',
+          }}
         >
-          {/* Ambient glow behind seedling */}
-          <div
-            className="pointer-events-none absolute top-1/2 left-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.12] blur-[60px]"
-            style={{ background: 'var(--color-primary)' }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10"
-          >
-            {/* Breathing seedling */}
-            <motion.svg
-              width="80"
-              height="96"
-              viewBox="0 0 64 80"
-              fill="none"
-              animate={{ scale: [1, 1.04, 1] }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          <div className="max-w-2xl mx-auto">
+            {/* Hero Header */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              className="mb-8 sm:mb-10"
             >
-              <motion.path
-                d="M32 78 C32 60, 30 45, 28 35"
-                stroke="var(--color-highlight)"
-                strokeOpacity="0.5"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <motion.path
-                d="M32 78 C32 55, 34 40, 36 30"
-                stroke="var(--color-highlight)"
-                strokeOpacity="0.4"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <motion.ellipse
-                cx="22"
-                cy="32"
-                rx="10"
-                ry="6"
-                fill="var(--color-success)"
-                fillOpacity="0.35"
-                animate={{ rotate: [-5, 5, -5] }}
-                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ transformOrigin: '28px 35px' }}
-              />
-              <motion.ellipse
-                cx="42"
-                cy="28"
-                rx="12"
-                ry="7"
-                fill="var(--color-success)"
-                fillOpacity="0.3"
-                animate={{ rotate: [5, -5, 5] }}
-                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ transformOrigin: '36px 30px' }}
-              />
-              <motion.circle
-                cx="32"
-                cy="22"
-                r="4"
-                fill="var(--color-secondary)"
-                fillOpacity="0.25"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <motion.circle
-                cx="32"
-                cy="40"
-                r="25"
-                fill="var(--color-success)"
-                fillOpacity="0.03"
-                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            </motion.svg>
+              <div className="flex items-center gap-2 mb-3">
+                <Users size={16} className="text-accent" aria-hidden="true" />
+                <span className="text-xs text-text-muted">家庭空间</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-display font-semibold text-text tracking-tight mb-1">
+                家庭记忆
+              </h1>
+              <p className="text-sm text-text-muted">
+                与家人共同守护属于你们的回忆
+              </p>
+            </motion.div>
 
-            <p className="mt-6 text-base font-medium text-text">还没有加入家庭</p>
-            <p className="mt-2 max-w-sm text-sm leading-relaxed text-text-muted">
-              创建一个家庭组，邀请家人加入，共同记录和分享珍贵的家庭记忆。
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button onClick={() => setCreateOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                创建家庭
-              </Button>
-              <Button variant="ghost" onClick={() => setJoinOpen(true)} className="gap-2">
-                <LogIn className="h-4 w-4" />
-                加入家庭
-              </Button>
-            </div>
-          </motion.div>
-        </GlassLayer>
+            {/* Empty State Card */}
+            <GlassLayer
+              asChild
+              intensity="strong"
+              className="relative flex flex-col items-center justify-center overflow-hidden py-16 sm:py-20 text-center"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="relative z-10 w-full max-w-sm mx-auto px-6"
+              >
+                {/* Ambient glow behind seedling */}
+                <div
+                  className="pointer-events-none absolute top-0 left-1/2 h-40 w-40 -translate-x-1/2 -translate-y-8 rounded-full opacity-[0.10] blur-[60px]"
+                  style={{ background: 'var(--color-primary)' }}
+                />
 
-        <CreateFamilyModal
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onCreated={(id) => {
-            setCurrentFamilyId(id);
-            setFamilyId(id);
-            setCreateOpen(false);
-            void mutate();
-          }}
-        />
-        <JoinFamilyModal
-          open={joinOpen}
-          onClose={() => setJoinOpen(false)}
-          onJoined={(id) => {
-            setCurrentFamilyId(id);
-            setFamilyId(id);
-            setJoinOpen(false);
-            void mutate();
-          }}
-        />
+                {/* Breathing seedling — larger, more prominent */}
+                <motion.svg
+                  width="96"
+                  height="112"
+                  viewBox="0 0 64 80"
+                  fill="none"
+                  className="mx-auto"
+                  animate={{ scale: [1, 1.04, 1] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <motion.path
+                    d="M32 78 C32 60, 30 45, 28 35"
+                    stroke="var(--color-highlight)"
+                    strokeOpacity="0.5"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                  <motion.path
+                    d="M32 78 C32 55, 34 40, 36 30"
+                    stroke="var(--color-highlight)"
+                    strokeOpacity="0.4"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                  <motion.ellipse
+                    cx="22"
+                    cy="32"
+                    rx="10"
+                    ry="6"
+                    fill="var(--color-success)"
+                    fillOpacity="0.35"
+                    animate={{ rotate: [-5, 5, -5] }}
+                    transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ transformOrigin: '28px 35px' }}
+                  />
+                  <motion.ellipse
+                    cx="42"
+                    cy="28"
+                    rx="12"
+                    ry="7"
+                    fill="var(--color-success)"
+                    fillOpacity="0.3"
+                    animate={{ rotate: [5, -5, 5] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ transformOrigin: '36px 30px' }}
+                  />
+                  <motion.circle
+                    cx="32"
+                    cy="22"
+                    r="4"
+                    fill="var(--color-secondary)"
+                    fillOpacity="0.25"
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                  <motion.circle
+                    cx="32"
+                    cy="40"
+                    r="25"
+                    fill="var(--color-success)"
+                    fillOpacity="0.03"
+                    animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                </motion.svg>
+
+                {/* Text hierarchy */}
+                <p className="mt-8 text-lg font-medium text-text">还没有加入家庭</p>
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                  创建一个家庭组，邀请家人加入，共同记录和分享珍贵的家庭记忆。
+                </p>
+
+                {/* Action buttons — larger, more prominent */}
+                <div className="mt-8 flex flex-col gap-3">
+                  <Button
+                    onClick={() => setCreateOpen(true)}
+                    size="lg"
+                    className="gap-2 w-full"
+                  >
+                    <Plus className="h-4 w-4" />
+                    创建家庭
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setJoinOpen(true)}
+                    size="lg"
+                    className="gap-2 w-full"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    加入家庭
+                  </Button>
+                </div>
+              </motion.div>
+            </GlassLayer>
+          </div>
+
+          <CreateFamilyModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onCreated={(id) => {
+              setCurrentFamilyId(id);
+              setFamilyId(id);
+              setCreateOpen(false);
+              void mutate();
+            }}
+          />
+          <JoinFamilyModal
+            open={joinOpen}
+            onClose={() => setJoinOpen(false)}
+            onJoined={(id) => {
+              setCurrentFamilyId(id);
+              setFamilyId(id);
+              setJoinOpen(false);
+              void mutate();
+            }}
+          />
+        </div>
       </PageTransition>
     );
   }
@@ -204,34 +244,56 @@ export default function FamilyPage() {
 
   return (
     <PageTransition>
-      <div className="pb-safe" style={{ paddingBottom: 'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-lg))' }}>
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-text">{family?.name ?? '家庭记忆'}</h1>
-            <p className="text-sm text-text-muted">
-              {family?.memberCount ?? 0} 位成员 · 与家人共享回忆
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              if (!confirm('确定离开这个家庭吗？')) return;
-              try {
-                await apiClient.delete(`/families/${familyId}/leave`);
-                setCurrentFamilyId(null);
-                setFamilyId(null);
-              } catch (err) {
-                alert(err instanceof ApiError ? err.message : '操作失败');
-              }
-            }}
-            className="gap-2 text-error hover:bg-error/10"
+      <div
+        className="w-full min-h-screen px-4 sm:px-8 lg:px-16 py-8 sm:py-10"
+        style={{
+          paddingBottom:
+            'calc(var(--home-mobile-dock-clearance) + var(--safe-bottom) + var(--space-2xl))',
+        }}
+      >
+        <div className="max-w-5xl mx-auto">
+          {/* Hero Header — 与空状态统一设计语言 */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="mb-8 sm:mb-10"
           >
-            <LogOut className="h-4 w-4" />
-            离开家庭
-          </Button>
-        </div>
+            <div className="flex items-center gap-2 mb-3">
+              <Users size={16} className="text-accent" aria-hidden="true" />
+              <span className="text-xs text-text-muted">家庭空间</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-display font-semibold text-text tracking-tight mb-1 truncate">
+                  {family?.name ?? '家庭记忆'}
+                </h1>
+                <p className="text-sm text-text-muted">
+                  {family?.memberCount ?? 0} 位成员 · 与家人共享回忆
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  if (!confirm('确定离开这个家庭吗？')) return;
+                  try {
+                    await apiClient.delete(`/families/${familyId}/leave`);
+                    setCurrentFamilyId(null);
+                    setFamilyId(null);
+                  } catch (err) {
+                    alert(err instanceof ApiError ? err.message : '操作失败');
+                  }
+                }}
+                className="gap-2 text-error hover:bg-error/10 shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">离开家庭</span>
+              </Button>
+            </div>
+          </motion.div>
 
-        <FamilyDetail familyId={familyId} />
+          <FamilyDetail familyId={familyId} />
+        </div>
       </div>
     </PageTransition>
   );
@@ -270,19 +332,19 @@ function FamilyDetail({ familyId }: { familyId: string }) {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
       {/* Members */}
       <GlassLayer
         asChild
         intensity="default"
-        className="p-6 lg:col-span-1"
+        className="p-5 sm:p-6 lg:col-span-1"
       >
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-5 flex items-center gap-2">
             <Users className="h-4 w-4 text-text-muted" />
             <h2 className="text-sm font-semibold text-text">家庭成员</h2>
             <Badge variant="outline">{members.length}</Badge>
@@ -290,18 +352,21 @@ function FamilyDetail({ familyId }: { familyId: string }) {
           {membersLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="skeleton h-12 rounded-xl" />
+                <div key={i} className="skeleton h-14 rounded-xl" />
               ))}
             </div>
           ) : members.length === 0 ? (
-            <p className="py-6 text-center text-xs text-text-muted">暂无成员</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <Users className="h-8 w-8 text-text-muted opacity-40" />
+              <p className="mt-3 text-sm text-text-muted">暂无其他成员</p>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {members.filter((m) => m?.id).map((m) => (
                 <GlassLayer
                   asChild
                   intensity="default"
-                  className="flex items-center gap-3 p-3 min-h-11"
+                  className="flex items-center gap-3 px-4 py-3 min-h-12"
                   key={m.id}
                 >
                   <motion.div
@@ -330,14 +395,14 @@ function FamilyDetail({ familyId }: { familyId: string }) {
       <GlassLayer
         asChild
         intensity="default"
-        className="p-6 lg:col-span-2"
+        className="p-5 sm:p-6 lg:col-span-2"
       >
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-text-muted" />
               <h2 className="text-sm font-semibold text-text">共享记忆</h2>
@@ -350,13 +415,21 @@ function FamilyDetail({ familyId }: { familyId: string }) {
           </div>
 
           {sharedMemories.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Share2 className="h-8 w-8 text-text-muted" />
-              <p className="mt-3 text-sm font-medium text-text">还没有共享的记忆</p>
-              <p className="mt-1 text-xs text-text-muted">将你的记忆分享给家人吧</p>
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="relative">
+                <div
+                  className="pointer-events-none absolute inset-0 rounded-full opacity-[0.08] blur-[40px]"
+                  style={{ background: 'var(--color-primary)' }}
+                />
+                <Share2 className="relative h-10 w-10 text-text-muted opacity-50" />
+              </div>
+              <p className="mt-4 text-sm font-medium text-text">还没有共享的记忆</p>
+              <p className="mt-1.5 text-xs text-text-muted leading-relaxed max-w-xs">
+                将你的记忆分享给家人，共同珍藏美好时光
+              </p>
             </div>
           ) : (
-            <StaggerContainer className="space-y-2">
+            <StaggerContainer className="space-y-2.5">
               {sharedMemories.map((sm) => (
                 <StaggerItem key={sm.id}>
                   <SharedMemoryRow
@@ -418,24 +491,27 @@ function SharedMemoryRow({
     <GlassLayer
       asChild
       intensity="default"
-      className="flex items-center gap-3 p-4 min-h-14"
+      className="flex items-center gap-3 px-4 py-3.5 min-h-14"
     >
       <motion.div
         whileHover={{ y: -2, scale: 1.005 }}
         transition={springHover}
+        className="w-full"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-medium text-text">记忆 #{(shared.memoryId ?? 'unknown').slice(0, 8)}</p>
+            <p className="truncate text-sm font-medium text-text">
+              记忆 #{(shared.memoryId ?? 'unknown').slice(0, 8)}
+            </p>
             <Badge className={status.className}>{status.label}</Badge>
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-text-muted">
             <Clock className="h-3 w-3" />
             {formatDate(shared.createdAt)}
           </div>
         </div>
         {isPending && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <Button size="sm" variant="primary" onClick={onConfirm} className="gap-1">
               <Check className="h-3.5 w-3.5" />
               确认
