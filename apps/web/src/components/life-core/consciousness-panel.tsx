@@ -7,15 +7,16 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V14: 真随机动态心电图
+ * V15: 极端随机动态心电图
  *
- * 根因修复：
- * 1. 种子用 Date.now() → 每次刷新序列不同，不再有规则重复
- * 2. HRV 放大 3 倍（0.35-0.50），均值回归降到 0.05 → R-R 间隔真正不规则
- * 3. R 波用余弦钟形替代窄高斯 → 圆润宽顶，不再尖锐
- * 4. P/Q/S 波振幅砍到 0.02-0.05 → 波形干净，只有 R 波和柔和 T 波
- * 5. 可见窗口 12 秒，BPM 50-60 → 更少更从容
- * 6. 偶发呼吸性心律不齐（8% 概率长间隔）
+ * 核心变化（vs V14）：
+ * 1. R 波振幅 0.48-0.65 → 0.25-1.15（4.6 倍范围，有些拍矮有些拍高）
+ * 2. R-R 间隔 0.65x-1.5x → 0.4x-2.2x（有时很密、有时很开）
+ * 3. 15% 概率"快拍"（短间隔）+ 12% 概率"长停顿"
+ * 4. R 波余弦半宽 0.055-0.085 → 0.07-0.13（更圆润）
+ * 5. T 波振幅 0.08-0.14 → 0.04-0.28（大范围随机）
+ * 6. P 波有时有有时无（40% 概率消失）
+ * 7. 可见窗口 14 秒，BPM 48-55
  */
 
 export const CONSCIOUSNESS_LABEL: Record<LifeCoreState, string> = {
@@ -51,10 +52,10 @@ const ECG_PROFILE: Record<LifeCoreState, {
   hrvStrength: number;
   color: [number, number, number];
 }> = {
-  companion: { bpm: 52, hrvStrength: 0.45, color: [82, 196, 128] },
-  learning: { bpm: 58, hrvStrength: 0.38, color: [86, 180, 233] },
-  recalling: { bpm: 50, hrvStrength: 0.50, color: [230, 162, 90] },
-  growing: { bpm: 56, hrvStrength: 0.40, color: [232, 134, 174] },
+  companion: { bpm: 50, hrvStrength: 0.60, color: [82, 196, 128] },
+  learning: { bpm: 54, hrvStrength: 0.55, color: [86, 180, 233] },
+  recalling: { bpm: 48, hrvStrength: 0.65, color: [230, 162, 90] },
+  growing: { bpm: 52, hrvStrength: 0.58, color: [232, 134, 174] },
 };
 
 // ═══════════════════════════════════════════
@@ -131,17 +132,20 @@ function buildBeatSchedule(bpm: number, hrvStrength: number): BeatSchedule {
   let prevInterval = meanInterval;
 
   for (let i = 0; i < BEAT_COUNT; i++) {
-    // ═══ 真随机游走 HRV ═══
-    // 大步长 + 弱均值回归 → R-R 间隔真正不规则
-    const randomStep = gaussianRandom(rand) * hrvStrength * meanInterval * 0.5;
-    const meanReversion = (meanInterval - prevInterval) * 0.05;
+    // ═══ V15: 极端随机 R-R 间隔 ═══
+    const randomStep = gaussianRandom(rand) * hrvStrength * meanInterval * 0.6;
+    const meanReversion = (meanInterval - prevInterval) * 0.03;
     let interval = prevInterval + randomStep + meanReversion;
-    // 钳制范围放宽 → 允许 ±35% 变化
-    interval = clamp(interval, meanInterval * 0.65, meanInterval * 1.5);
+    // 钳制范围极大 → 允许 0.4x 到 2.2x 变化
+    interval = clamp(interval, meanInterval * 0.4, meanInterval * 2.2);
 
-    // 8% 概率呼吸性心律不齐 — 偶发长间隔
-    if (rand() < 0.08) {
-      interval *= 1.2 + rand() * 0.25;
+    // 15% 概率"快拍" — 两个心跳挨得很近
+    if (rand() < 0.15) {
+      interval *= 0.45 + rand() * 0.2; // 0.45x-0.65x
+    }
+    // 12% 概率"长停顿" — 两个心跳隔得很远
+    else if (rand() < 0.12) {
+      interval *= 1.6 + rand() * 0.5; // 1.6x-2.1x
     }
 
     prevInterval = interval;
@@ -149,33 +153,42 @@ function buildBeatSchedule(bpm: number, hrvStrength: number): BeatSchedule {
 
     const beatDuration = interval;
 
-    // ═══ 每拍形态随机变化 ═══
-    // R 波 — 余弦钟形，宽顶圆润
-    const rHalfWidth = 0.055 + rand() * 0.03; // 半宽 0.055-0.085，全宽 0.11-0.17
+    // ═══ V15: 极端形态随机 ═══
+    // R 波 — 振幅 4.6 倍范围（有些拍矮、有些拍高）
+    const rAmp = 0.25 + rand() * 0.9; // 0.25-1.15
+    // R 波 — 余弦半宽，宽顶圆润
+    const rHalfWidth = 0.07 + rand() * 0.06; // 0.07-0.13
+
+    // P 波 — 40% 概率消失，60% 概率有
+    const hasP = rand() > 0.4;
+
+    // T 波 — 大范围随机振幅
+    const tAmp = 0.04 + rand() * 0.24; // 0.04-0.28
+
     beats.push({
       start: cumulative,
       duration: beatDuration,
-      // R 波 — 振幅适中，不再 towering
-      rAmp: 0.48 + rand() * 0.17, // 0.48-0.65
-      rCenter: 0.20 + rand() * 0.02,
+      // R 波
+      rAmp,
+      rCenter: 0.19 + rand() * 0.03,
       rHalfWidth,
-      // T 波 — 柔和，不对称
-      tAmp: 0.08 + rand() * 0.06, // 0.08-0.14
-      tCenter: 0.48 + rand() * 0.1,
-      tWidthUp: 0.06 + rand() * 0.03,
-      tWidthDown: 0.09 + rand() * 0.04,
-      // P 波 — 极淡
-      pAmp: 0.03 + rand() * 0.025, // 0.03-0.055
-      pCenter: 0.09 + rand() * 0.02,
-      pWidth: 0.035 + rand() * 0.015,
+      // T 波 — 柔和不对称
+      tAmp,
+      tCenter: 0.46 + rand() * 0.12,
+      tWidthUp: 0.05 + rand() * 0.04,
+      tWidthDown: 0.08 + rand() * 0.05,
+      // P 波 — 有时有有时无
+      pAmp: hasP ? (0.02 + rand() * 0.06) : 0, // 0 或 0.02-0.08
+      pCenter: 0.08 + rand() * 0.03,
+      pWidth: 0.03 + rand() * 0.02,
       // Q 波 — 微小切迹
-      qAmp: -(0.015 + rand() * 0.02), // -0.015 to -0.035
-      qCenter: 0.17 + rand() * 0.015,
-      qWidth: 0.02 + rand() * 0.01,
+      qAmp: -(0.01 + rand() * 0.03), // -0.01 to -0.04
+      qCenter: 0.16 + rand() * 0.02,
+      qWidth: 0.018 + rand() * 0.012,
       // S 波 — 微小切迹
-      sAmp: -(0.02 + rand() * 0.03), // -0.02 to -0.05
-      sCenter: 0.24 + rand() * 0.02,
-      sWidth: 0.025 + rand() * 0.015,
+      sAmp: -(0.015 + rand() * 0.04), // -0.015 to -0.055
+      sCenter: 0.24 + rand() * 0.025,
+      sWidth: 0.022 + rand() * 0.018,
     });
 
     cumulative += interval;
@@ -305,10 +318,10 @@ export default function ConsciousnessPanel({
         moodStrongRef.current.textContent = String(Math.round(mood));
       }
 
-      // ═══ V14: 真随机动态心电图 ═══
-      // 12 秒数据可见 — 更少心跳，更从容
-      const scrollSpeed = W / 12.0;
-      const ampScale = H * 0.22; // 降振幅，更柔和
+      // ═══ V15: 极端随机动态心电图 ═══
+      // 14 秒数据可见 — 更少心跳，更从容
+      const scrollSpeed = W / 14.0;
+      const ampScale = H * 0.28; // 振幅放大，配合大范围 R 波
       const samples = Math.max(300, Math.floor(W / 1.5));
       const points: { x: number; y: number; alpha: number }[] = [];
 
