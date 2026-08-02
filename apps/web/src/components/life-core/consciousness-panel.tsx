@@ -7,13 +7,13 @@ import type { LifeCoreState } from './life-core-canvas';
 /**
  * Mood Panel — 时墨心情心电图
  * ─────────────────────────────────────────────────────────────
- * V10: 极简心电图 — 一条平线，偶尔一个心跳
- * - 去掉所有噪声层（肌电噪声、HRV、呼吸基线漂移、情绪事件）
- * - 去掉 P 波、T 波、Q/S 波 — 只保留 R 波尖峰
- * - BPM 极低（companion 22, learning 28, recalling 18, growing 24）
+ * V11: 柔和心电图 — 平线 + 温柔心跳
+ * - 保留 PQRST 波形，但所有波形都加宽变圆
+ * - R 波不再尖锐，P/T 波是柔和的圆弧
+ * - BPM 低（companion 20, learning 26, recalling 16, growing 22）
  * - 滚动速度极慢 W*0.004
- * - 帧率 8fps — 几乎静止
- * - 90%+ 是完全平坦的基线，只有偶尔一个尖峰脉冲
+ * - 帧率 12fps
+ * - 85%+ 是平坦基线，心跳出现时柔和圆润
  * - 心情指数独立于家庭理解度，反映时墨自身的情感状态
  */
 
@@ -48,43 +48,75 @@ const MOOD_OFFSET: Record<LifeCoreState, number> = {
   growing: 15,
 };
 
-/** V10 极简 ECG 参数 — 只有一个 R 波尖峰 */
+/** V11 柔和 ECG 参数 — PQRST 全保留，但都加宽变圆 */
 const ECG_PROFILE: Record<LifeCoreState, {
-  /** 心率 BPM — 极低，3 秒一个心跳 */
+  /** 心率 BPM — 低，约 3 秒一个心跳 */
   bpm: number;
   /** R 波振幅 */
   rAmp: number;
-  /** R 波宽度 — 极窄 */
+  /** R 波宽度 — 加宽，不再尖锐 */
   rWidth: number;
-  /** R 波在周期中的位置 — 前端，后面全是平线 */
+  /** R 波在周期中的位置 */
   rCenter: number;
+  /** P 波振幅 — 小圆弧 */
+  pAmp: number;
+  /** P 波宽度 — 宽而柔和 */
+  pWidth: number;
+  /** P 波位置 */
+  pCenter: number;
+  /** T 波振幅 — 小圆弧 */
+  tAmp: number;
+  /** T 波宽度 — 宽而柔和 */
+  tWidth: number;
+  /** T 波位置 */
+  tCenter: number;
   /** 波形颜色 RGB */
   color: [number, number, number];
 }> = {
   companion: {
-    bpm: 22, rAmp: 1.2, rWidth: 0.003, rCenter: 0.08,
+    bpm: 20,
+    rAmp: 0.9, rWidth: 0.012, rCenter: 0.12,
+    pAmp: 0.15, pWidth: 0.025, pCenter: 0.06,
+    tAmp: 0.2, tWidth: 0.03, tCenter: 0.22,
     color: [82, 196, 128],
   },
   learning: {
-    bpm: 28, rAmp: 1.4, rWidth: 0.0025, rCenter: 0.08,
+    bpm: 26,
+    rAmp: 1.0, rWidth: 0.011, rCenter: 0.12,
+    pAmp: 0.18, pWidth: 0.025, pCenter: 0.06,
+    tAmp: 0.22, tWidth: 0.03, tCenter: 0.22,
     color: [86, 180, 233],
   },
   recalling: {
-    bpm: 18, rAmp: 1.0, rWidth: 0.0035, rCenter: 0.08,
+    bpm: 16,
+    rAmp: 0.75, rWidth: 0.014, rCenter: 0.12,
+    pAmp: 0.12, pWidth: 0.03, pCenter: 0.05,
+    tAmp: 0.16, tWidth: 0.035, tCenter: 0.23,
     color: [230, 162, 90],
   },
   growing: {
-    bpm: 24, rAmp: 1.3, rWidth: 0.003, rCenter: 0.08,
+    bpm: 22,
+    rAmp: 0.85, rWidth: 0.012, rCenter: 0.12,
+    pAmp: 0.16, pWidth: 0.025, pCenter: 0.06,
+    tAmp: 0.2, tWidth: 0.03, tCenter: 0.22,
     color: [232, 134, 174],
   },
 };
 
 type EcgProfile = typeof ECG_PROFILE[LifeCoreState];
 
-/** V10: 只计算 R 波 — 其余全部返回 0（平坦基线） */
+/** V11: 柔和 PQRST — 所有波形都用宽高斯函数，圆润不尖锐 */
 function ecgPulse(phase: number, p: EcgProfile): number {
-  // R 波 — 尖锐主峰，极窄
-  return p.rAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
+  // P 波 — 小圆弧（心房收缩）
+  const pWave = p.pAmp * Math.exp(-Math.pow((phase - p.pCenter) / p.pWidth, 2));
+
+  // R 波 — 主峰，但加宽变圆（心室收缩）
+  const rWave = p.rAmp * Math.exp(-Math.pow((phase - p.rCenter) / p.rWidth, 2));
+
+  // T 波 — 温柔圆弧（心室复极）
+  const tWave = p.tAmp * Math.exp(-Math.pow((phase - p.tCenter) / p.tWidth, 2));
+
+  return pWave + rWave + tWave;
 }
 
 function clamp(v: number, min: number, max: number) {
@@ -172,7 +204,7 @@ export default function ConsciousnessPanel({
         moodStrongRef.current.textContent = String(Math.round(mood));
       }
 
-      // ═══ V10: 极简波形 — 只有一条平线 + R 波尖峰 ═══
+      // ═══ V11: 柔和波形 — 平线 + 圆润 PQRST 心跳 ═══
       const beatDuration = 60 / p.bpm;
 
       // 滚动速度 — 极慢
@@ -195,7 +227,7 @@ export default function ConsciousnessPanel({
         // 心动周期相位
         const phase = ((timeAtX / beatDuration) % 1 + 1) % 1;
 
-        // V10: 只有 R 波，其余全是 0
+        // V11: 柔和 PQRST 波形
         const ecgVal = ecgPulse(phase, p);
 
         // 边缘羽化
@@ -288,9 +320,9 @@ export default function ConsciousnessPanel({
       }
     };
 
-    // 8fps — 极慢节奏
+    // 12fps — 柔和节奏
     let lastDraw = 0;
-    const frameInterval = 1000 / 8;
+    const frameInterval = 1000 / 12;
     const loop = (now: number) => {
       if (now - lastDraw >= frameInterval) {
         lastDraw = now;

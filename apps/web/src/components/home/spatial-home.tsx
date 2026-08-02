@@ -20,9 +20,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { GlassLayer } from '@/components/glass';
-import { AmbientBackground } from '@/components/home/ambient-background';
+import LifeCoreCanvas, { type LifeCoreState, type LifeCoreCounts } from '@/components/life-core/life-core-canvas';
 import ConsciousnessPanel from '@/components/life-core/consciousness-panel';
-import type { LifeCoreState } from '@/components/life-core/life-core-canvas';
 import { WelcomeGuide } from '@/components/onboarding/welcome-guide';
 import HomeChatOverlay from './home-chat-overlay';
 import { useFamilyHubStore } from '@/stores/family-hub-store';
@@ -66,6 +65,15 @@ export function SpatialHome() {
     return 'companion';
   }, [shimoCore.status]);
 
+  // 四类节点数量（含童忆引擎温暖节点）
+  const lifeCounts: LifeCoreCounts = useMemo(() => ({
+    memory: metrics.longTermMemories,
+    event: metrics.milestones + metrics.timeCapsules,
+    knowledge: metrics.knowledgeDocs,
+    agent: metrics.activeAgents,
+    kindness: metrics.kindnessMemories ?? 0,
+  }), [metrics]);
+
   // 新用户引导：家庭理解度与成员数均为 0 时展示三步引导卡片
   const showWelcomeGuide =
     metrics.understandingPercent === 0 && metrics.familyMembers === 0;
@@ -84,8 +92,15 @@ export function SpatialHome() {
 
   return (
     <section className="spatial-home" aria-label="SuiYan 生命空间">
-      {/* 极简柔光环境背景 — 纯 CSS，替代粒子树 canvas */}
-      <AmbientBackground className="spatial-home__bg-particles ambient-bg" />
+      {/* 全屏粒子星系背景层 — 固定定位填满整个视口 */}
+      <div className="spatial-home__bg-particles" aria-hidden="true">
+        <LifeCoreCanvas
+          state={lifeCoreState}
+          counts={lifeCounts}
+          level={metrics.aiLevel}
+          className="spatial-home__life-core spatial-home__life-core--fullscreen"
+        />
+      </div>
 
       {/* 顶部状态卡片：四个横排悬浮卡片
           使用轻量 div 替代 GlassLayer — 小卡片不需要 backdrop-filter，
