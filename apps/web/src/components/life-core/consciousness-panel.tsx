@@ -221,7 +221,7 @@ export default function ConsciousnessPanel({
       const now = performance.now() / 1000;
       // prefers-reduced-motion 时冻结时间 — 波形静止展示，不做滚动/呼吸动画
       const t = reduceMotion ? 0 : now - startTime;
-      const { profile: p, activity: act, moodOffset: mo } = stateRef.current;
+      const { state: lifeState, profile: p, activity: act, moodOffset: mo } = stateRef.current;
 
       ctx.clearRect(0, 0, W, H);
 
@@ -242,20 +242,23 @@ export default function ConsciousnessPanel({
 
       const actNorm = mood / 100;
 
-      // 心率 — 随心情微调
-      const bpm = p.bpm * (0.95 + actNorm * 0.10);
+      // 心率 — 随心情微调 + 情绪事件回流加成（让 moodEvent 影响瞬时心率）
+      const bpm = p.bpm * (0.95 + actNorm * 0.10 + eventBoost * 0.08);
       const beatDuration = 60 / bpm;
 
-      // 滚动速度 — 像素/秒，更缓慢的视觉节奏，模拟真实心电图纸的从容移动
-      const scrollSpeed = W * 0.05;
+      // 滚动速度 — 像素/秒，降速 50% 让视觉节奏更从容，贴近真实心电图纸
+      const scrollSpeed = W * 0.025;
 
-      // 呼吸感叠加 — 慢呼吸让基线微微起伏
-      const breathCycle = 5.5;
-      const breathPhase = (t % breathCycle) / breathCycle;
-      const breathWave = Math.sin(breathPhase * Math.PI * 2) * 0.05;
+      // 呼吸感叠加 — 双频叠加 + 心情状态调制，避免单一频率的机械规律
+      const breathCycle1 = 5.5;
+      const breathCycle2 = 7.3;
+      const breathWave = Math.sin((t / breathCycle1) * Math.PI * 2) * 0.035
+        + Math.sin((t / breathCycle2) * Math.PI * 2 + 1.3) * 0.018;
+      const breathScale = lifeState === 'recalling' ? 1.3 : lifeState === 'learning' ? 0.8 : 1.0;
 
-      // 振幅缩放 — 略大振幅让心跳脉冲更明显，但整体保持温和
+      // 振幅缩放 — 略大振幅让心跳脉冲更明显，但整体保持温和 + 情绪事件动态加成
       const ampScale = (H * 0.42) * (0.75 + actNorm * 0.25);
+      const dynamicAmpScale = ampScale * (1 + eventBoost * 0.12);
 
       // ═══ 采样 ECG 波形 ═══
       const samples = Math.max(150, Math.floor(W / 1.5));
@@ -268,22 +271,41 @@ export default function ConsciousnessPanel({
         // 时间映射 — 从右向左滚动
         const timeAtX = t - (1 - xNorm) * (W / scrollSpeed);
 
-        // 心动周期相位 (0~1)
-        const phase = ((timeAtX / beatDuration) % 1 + 1) % 1;
+        // 心率变异（HRV）— 慢速噪声调制 beatDuration，相邻心跳间距 ±8% 抖动
+        const beatIndex = Math.floor(timeAtX / beatDuration);
+        // 规范化噪声索引到 [0,63]，兼容 reduceMotion 下 timeAtX 为负的情况
+        const bi = ((beatIndex % 64) + 64) % 64;
+        const hrvNoise = organicNoise(beatIndex * 0.7, t * 0.3, noiseSeed[bi]);
+        const actualBeatDuration = beatDuration * (1 + hrvNoise * 0.08);
 
-        // ECG 复合波值
-        const ecgVal = ecgComplex(phase, p);
+        // 心动周期相位 (0~1) — 使用 HRV 调制后的周期
+        const phase = ((timeAtX / actualBeatDuration) % 1 + 1) % 1;
 
-        // 高频噪声 — 降低幅度，更安静
-        const noise = (Math.sin(timeAtX * 31 + xNorm * 150) * 0.3 + Math.sin(timeAtX * 57) * 0.2) * 0.004;
+        // 波形微变 — 每个心跳形态略有不同（振幅 ±6%、宽度 ±4%），避免逐拍雷同
+        const ampJitter = 1 + organicNoise(beatIndex * 1.3, t * 0.2, noiseSeed[(bi + 8) % 64]) * 0.06;
+        const widthJitter = 1 + organicNoise(beatIndex * 0.9, t * 0.15, noiseSeed[(bi + 16) % 64]) * 0.04;
+        const jitteredProfile: EcgProfile = {
+          ...p,
+          rAmp: p.rAmp * ampJitter,
+          tAmp: p.tAmp * ampJitter,
+          rWidth: p.rWidth * widthJitter,
+        };
+
+        // ECG 复合波值 — 传入扰动后的参数
+        const ecgVal = ecgComplex(phase, jitteredProfile);
+
+        // 基线肌电噪声 — 高频 0.008 + 慢速漂移 0.015，更贴近真实电极信号
+        const fastNoise = (Math.sin(timeAtX * 31 + xNorm * 150) * 0.3 + Math.sin(timeAtX * 57) * 0.2) * 0.008;
+        const slowDrift = organicNoise(xNorm * 3, t * 0.5, noiseSeed[32]) * 0.015;
+        const totalNoise = fastNoise + slowDrift;
 
         // 边缘羽化
         const edgeFade = featherAlpha(xNorm);
 
-        // 叠加呼吸基线漂移 — 让波形有生命般的起伏
-        const breathOffset = breathWave * ampScale * edgeFade;
+        // 叠加呼吸基线漂移 — 双频叠加 + 心情状态调制
+        const breathOffset = breathWave * breathScale * dynamicAmpScale * edgeFade;
 
-        const y = cy - (ecgVal + noise) * ampScale * edgeFade + breathOffset;
+        const y = cy - (ecgVal + totalNoise) * dynamicAmpScale * edgeFade + breathOffset;
         points.push({ x, y, alpha: edgeFade });
       }
 

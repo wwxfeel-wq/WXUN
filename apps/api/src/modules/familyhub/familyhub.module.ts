@@ -6,6 +6,7 @@ import { SkillsEvolutionService } from './skills-evolution.service';
 import { SkillsInvocationService } from './skills-invocation.service';
 import { AgentToolService } from './agent-tool.service';
 import { AgentWorkflowService } from './agent-workflow.service';
+import { HabitAnalyzerService } from '../agent/services/habit-analyzer.service';
 import { AiModule } from '../ai/ai.module';
 import { WechatModule } from '../wechat/wechat.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
@@ -23,6 +24,7 @@ import { LifeTreeModule } from '../lifetree/lifetree.module';
     SkillsInvocationService,
     AgentToolService,
     AgentWorkflowService,
+    HabitAnalyzerService,
   ],
   exports: [
     FamilyHubService,

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { HabitAnalyzerService } from '../agent/services/habit-analyzer.service';
 import { AgentToolResult } from './agent-tool.service';
 
 /** Optional evaluation context used to compute skill experience. */
@@ -70,7 +71,10 @@ export class SkillsEvolutionService {
   /** 每次经验值增量上限 */
   private readonly MAX_EXP = 15;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly habitAnalyzer: HabitAnalyzerService,
+  ) {}
 
   // ============================================================
   // 系统提示词增强
@@ -82,10 +86,15 @@ export class SkillsEvolutionService {
    * 将该 Agent 下所有技能的平均等级映射到分层提示词，
    * 注入到原系统提示词之后，引导 AI 以对应深度作答。
    *
+   * 同时根据用户习惯画像（toolUsageRate / emotionalPattern /
+   * preferredTopics）追加个性化维度，让回复更贴合用户的交流习惯。
+   * 习惯画像加载失败时不影响正常回复。
+   *
    * @param agentCode - Agent 编码
+   * @param userId    - 用户 ID（用于加载习惯画像）
    * @returns 提示词增强片段（无技能时返回空字符串）
    */
-  async buildSkillPrompt(agentCode: string): Promise<string> {
+  async buildSkillPrompt(agentCode: string, userId: string): Promise<string> {
     const agent = await this.prisma.agentRuntime.findUnique({
       where: { code: agentCode },
       include: { skills: true },
@@ -137,7 +146,64 @@ export class SkillsEvolutionService {
         naturalStyle,
     };
 
-    return tierPrompts[tier];
+    const basePrompt = tierPrompts[tier];
+
+    // 追加用户习惯画像维度（失败时不影响正常回复）
+    const habitSection = await this.buildHabitSection(userId);
+
+    return habitSection ? `${basePrompt}\n\n${habitSection}` : basePrompt;
+  }
+
+  /**
+   * 根据用户习惯画像生成个性化提示片段。
+   *
+   * 规则：
+   * - toolUsageRate === 'low' → 用户偏好纯对话，减少主动工具调用
+   * - emotionalPattern === 'negative' → 用户近期情绪偏消极，回复中增加温暖关怀
+   * - preferredTopics 包含 'health' → 用户关注健康话题
+   *
+   * 画像加载失败时返回空字符串，不影响技能提示词。
+   */
+  private async buildHabitSection(userId: string): Promise<string> {
+    let habitProfile;
+    try {
+      habitProfile = await this.habitAnalyzer.getHabitProfile(userId);
+    } catch (e) {
+      this.logger.warn(
+        `Habit profile load failed for user ${userId}: ${(e as Error).message}`,
+      );
+      return '';
+    }
+
+    const parts: string[] = [];
+
+    if (habitProfile?.toolUsageRate === 'low') {
+      parts.push('用户偏好纯对话，减少主动工具调用');
+    }
+    if (habitProfile?.emotionalPattern === 'negative') {
+      parts.push('用户近期情绪偏消极，回复中增加温暖关怀');
+    }
+
+    const topics = this.parseTopics(habitProfile?.preferredTopics);
+    if (topics.includes('health')) {
+      parts.push('用户关注健康话题');
+    }
+
+    if (parts.length === 0) {
+      return '';
+    }
+
+    return `【用户习惯】${parts.join('；')}。`;
+  }
+
+  /**
+   * 将 Prisma JsonValue 安全解析为字符串数组（用于 preferredTopics 检测）。
+   */
+  private parseTopics(value: Prisma.JsonValue | undefined | null): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((v): v is string => typeof v === 'string');
+    }
+    return [];
   }
 
   // ============================================================

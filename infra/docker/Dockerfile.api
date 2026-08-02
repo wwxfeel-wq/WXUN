@@ -1,6 +1,10 @@
 # EchoLife API - NestJS Backend Dockerfile
-FROM node:20-alpine AS base
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && apk add --no-cache libc6-compat wget openssl
+FROM node:20-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+# Skip Puppeteer's bundled Chromium download (system Chromium is used in runner)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # ===== Dependencies =====
@@ -28,11 +32,15 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install Chromium for Puppeteer screenshot support
+RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 # Install prisma for migrations
 RUN npm install -g prisma@5.22.0
 
 # Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma

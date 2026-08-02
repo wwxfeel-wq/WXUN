@@ -4,4 +4,6 @@ export * from './tools/memory.tools';
 export * from './tools/knowledge.tools';
 export * from './tools/notification.tools';
 export * from './tools/kindness.tools';
+export * from './tools/screenshot.tools';
+export * from './tools/iot.tools';
 export * from './tool-registry.module';

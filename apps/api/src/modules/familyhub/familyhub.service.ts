@@ -882,7 +882,7 @@ export class FamilyHubService {
         this.agentToolService.formatToolContext(toolResults);
 
       // ===== 3. 注入技能等级到系统提示词 =====
-      const skillPrompt = await this.skillsEvolution.buildSkillPrompt(code);
+      const skillPrompt = await this.skillsEvolution.buildSkillPrompt(code, userId);
       // 通用对话准则：只约束「怎么把话说好」，不覆盖各 Agent 的专业人格。
       // 每个 Agent 的语气/身份完全由其自身 systemPrompt 决定（见 AGENT_DEFINITIONS）。
       const conversationGuidelines =

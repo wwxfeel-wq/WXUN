@@ -43,6 +43,7 @@ export interface FamilyContext {
 
 /** User context loaded at the start of a pipeline run */
 export interface LoadedUserContext {
+  userId: string;
   nickname: string;
   aiTemperature: number;
   recentMessageHistory: Array<{ role: 'user' | 'assistant'; content: string }>;

@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { SHIMO_PERSONA, AI_CONFIG } from '@echolife/shared';
 import type { LoadedUserContext } from '../types/agent-runtime.types';
+import { EmotionEngineService } from './emotion-engine.service';
+import { HabitAnalyzerService } from './habit-analyzer.service';
 
 /**
  * ShimoPersona — the unified family AI companion identity.
@@ -12,11 +14,51 @@ import type { LoadedUserContext } from '../types/agent-runtime.types';
  */
 @Injectable()
 export class ShimoPersonaService {
+  private readonly logger = new Logger(ShimoPersonaService.name);
+
+  constructor(
+    private readonly emotionEngine: EmotionEngineService,
+    private readonly habitAnalyzer: HabitAnalyzerService,
+  ) {}
+
   /**
    * Render the unified 时墨 system prompt for the main response generation.
+   *
+   * 情感状态与用户习惯画像会在「重要约束」之前追加，让时墨的回复风格
+   * 随情感与习惯自然变化。两段注入均有 try-catch 保护，失败时不影响
+   * 正常回复。
    */
-  buildPersonaPrompt(ctx: LoadedUserContext, mode: string): string {
+  async buildPersonaPrompt(ctx: LoadedUserContext, mode: string): Promise<string> {
     const style = this.getStyleForMode(mode);
+
+    // 情感状态描述（失败时降级为空字符串，不影响主流程）
+    let emotionPrompt = '';
+    try {
+      const emotion = await this.emotionEngine.getEmotionState(ctx.userId);
+      emotionPrompt = await this.emotionEngine.buildEmotionPrompt(emotion);
+    } catch (e) {
+      this.logger.warn(
+        `Emotion prompt injection failed for user ${ctx.userId}: ${(e as Error).message}`,
+      );
+    }
+
+    // 用户习惯画像描述（失败时降级为空字符串，不影响主流程）
+    let habitPrompt = '';
+    try {
+      const habit = await this.habitAnalyzer.getHabitProfile(ctx.userId);
+      habitPrompt = await this.habitAnalyzer.buildHabitPrompt(habit);
+    } catch (e) {
+      this.logger.warn(
+        `Habit prompt injection failed for user ${ctx.userId}: ${(e as Error).message}`,
+      );
+    }
+
+    // 情感与习惯描述在「重要约束」之前追加
+    const dynamicContext = [emotionPrompt, habitPrompt]
+      .filter((s) => s && s.trim().length > 0)
+      .join('\n\n');
+
+    const dynamicSection = dynamicContext ? `\n\n${dynamicContext}\n` : '\n';
 
     return `你是「${SHIMO_PERSONA.NAME}」${SHIMO_PERSONA.AVATAR}，${SHIMO_PERSONA.ROLE}。
 
@@ -36,7 +78,7 @@ ${ctx.formattedMemories}
 
 近期对话：
 ${ctx.formattedRecentMessages}
-
+${dynamicSection}
 重要约束：
 - 你永远以「时墨」身份回复，不要提及 Planner、Reasoning、Tool、Workflow、Agent 等内部概念。
 - 如果调用了工具或记忆，把结果自然融入回复，不要生硬列出。

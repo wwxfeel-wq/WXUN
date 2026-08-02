@@ -449,6 +449,7 @@ ${agentList}
       : '暂无个性分析数据';
 
     return {
+      userId: input.userId,
       nickname,
       aiTemperature,
       recentMessageHistory: recentMessages.map((m) => ({
@@ -478,7 +479,7 @@ ${agentList}
     } else if (state.mode === 'wechat') {
       // WeChat mode: use chat persona + kindness narrative style
       // When tools detected kindness, the observation context will include it
-      systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, 'chat');
+      systemPrompt = await this.shimoPersona.buildPersonaPrompt(state.userContext, 'chat');
       systemPrompt += observationContext;
 
       // If kindness tools were called, inject kindness narrative style
@@ -486,16 +487,16 @@ ${agentList}
         (r) => r.tool === 'detect_kindness' || r.tool === 'create_kindness_memory' || r.tool === 'generate_warm_reminder',
       );
       if (hasKindnessResult) {
-        systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, 'kindness');
+        systemPrompt = await this.shimoPersona.buildPersonaPrompt(state.userContext, 'kindness');
         systemPrompt += observationContext;
       }
     } else {
-      systemPrompt = this.shimoPersona.buildPersonaPrompt(state.userContext, state.mode);
+      systemPrompt = await this.shimoPersona.buildPersonaPrompt(state.userContext, state.mode);
       systemPrompt += observationContext;
 
       // Inject skill evolution prompt
       try {
-        const skillPrompt = await this.skillsEvolution.buildSkillPrompt(state.agentType);
+        const skillPrompt = await this.skillsEvolution.buildSkillPrompt(state.agentType, input.userId);
         if (skillPrompt) {
           systemPrompt += '\n\n' + skillPrompt;
         }

@@ -46,6 +46,9 @@ model User {
   kindnessMemories KindnessMemory[]
   familyShortStories FamilyShortStory[] @relation("UserShortStories")
   warmReminders  WarmReminder[] @relation("UserWarmReminders")
+  emotionState   ShimoEmotionState?
+  habitProfile   UserHabitProfile?
+  iotCredentials IoTCredential[]
 
   @@index([status])
   @@index([createdAt])
@@ -850,4 +853,55 @@ model SkillTool {
   @@index([skillId])
   @@index([toolId])
   @@map("skill_tools")
+}
+
+/// 时墨情感状态 — 6 维度情感模型，每用户一条记录
+model ShimoEmotionState {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmth    Float    @default(0.7)
+  curiosity Float    @default(0.3)
+  calm      Float    @default(0.6)
+  joy       Float    @default(0.3)
+  nostalgia Float    @default(0.2)
+  concern   Float    @default(0.2)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("shimo_emotion_states")
+}
+
+/// 用户习惯画像 — 基于交互模式分析的自适应偏好
+model UserHabitProfile {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredTopics   Json     @default("[]")
+  avgMessageLength  String   @default("medium") @db.VarChar(20)
+  emotionalPattern  String   @default("stable") @db.VarChar(20)
+  activeTimeSlots   Json     @default("[]")
+  toolUsageRate     String   @default("balanced") @db.VarChar(20)
+  formalityLevel    String   @default("casual") @db.VarChar(20)
+  conversationCount Int      @default(0)
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("user_habit_profiles")
+}
+
+/// IoT 平台凭证 — 存储用户的智能硬件平台授权信息
+model IoTCredential {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform      String    @db.VarChar(20)
+  accessToken   String?   @map("access_token") @db.Text
+  refreshToken  String?   @map("refresh_token") @db.Text
+  expiresAt     DateTime? @map("expires_at")
+  metadata      Json?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, platform])
+  @@index([userId])
+  @@map("iot_credentials")
 }

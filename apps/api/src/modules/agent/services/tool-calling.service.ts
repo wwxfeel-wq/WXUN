@@ -109,9 +109,15 @@ export class ToolCallingService {
       'generate_warm_reminder',
       'get_kindness_stats',
     ];
+    // IoT 智能硬件工具 — 让生活类 agent 能查询与控制家庭设备
+    const iotTools = [
+      'list_iot_devices',
+      'control_device',
+      'get_device_status',
+    ];
 
     const toolMap: Record<string, string[]> = {
-      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools],
+      life: ['create_memory', 'create_reminder', 'search_memories', 'create_task', 'get_weather', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools, ...iotTools],
       kitchen: ['create_memory', 'search_memories', 'search_knowledge', 'send_family_notification', 'search_recipes', 'nutrition_info', 'web_search', ...commonResearchTools, ...kindnessTools],
       repair: ['create_memory', 'search_memories', 'send_family_notification', 'search_knowledge', 'web_search', ...commonResearchTools, ...browseSynthTools],
       knowledge: ['search_knowledge', 'upsert_entity', 'create_memory', 'search_memories', 'web_search', ...commonResearchTools, ...browseSynthTools],
@@ -123,8 +129,8 @@ export class ToolCallingService {
       shopping: ['create_memory', 'search_memories', 'create_budget_note', 'web_search', ...commonResearchTools],
       pet: ['create_memory', 'search_memories', 'track_pet_health', 'web_search', ...commonResearchTools],
       finance: ['create_memory', 'search_memories', 'track_expense', 'search_finance_memories', 'web_search', ...commonResearchTools],
-      // life_coach (时墨) — 微信和家庭对话的主力 agent，拥有全部童忆引擎工具
-      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools],
+      // life_coach (时墨) — 微信和家庭对话的主力 agent，拥有全部童忆引擎工具与 IoT 工具
+      life_coach: ['create_memory', 'create_reminder', 'search_memories', 'send_family_notification', 'extract_memory', 'web_search', ...commonResearchTools, ...browseSynthTools, ...kindnessTools, ...iotTools],
       story_agent: ['create_memory', 'search_memories', 'send_family_notification', 'extract_memory', 'gather_story_memories', 'web_search', ...commonResearchTools, ...kindnessTools],
       // 童忆引擎专属 Agent
       memory_story: ['create_memory', 'search_memories', 'reconstruct_kindness_story', 'generate_family_story', 'query_kindness_memories', ...commonResearchTools],

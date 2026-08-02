@@ -12,6 +12,7 @@ import { RagService } from './services/rag.service';
 import { QuotaService } from './services/quota.service';
 import { AgentOrchestratorService } from './services/agent-orchestrator.service';
 import { WebSearchService } from './services/web-search.service';
+import { ScreenshotService } from './services/screenshot.service';
 import { AgentEcosystemService } from './services/agent-ecosystem.service';
 // SkillsEvolutionService is provided here (not via importing FamilyHubModule)
 // to avoid a circular dependency — FamilyHubModule already imports AiModule.
@@ -30,6 +31,7 @@ import { SkillsEvolutionService } from '../familyhub/skills-evolution.service';
     QuotaService,
     AgentOrchestratorService,
     WebSearchService,
+    ScreenshotService,
     AgentEcosystemService,
     SkillsEvolutionService,
   ],
@@ -43,6 +45,7 @@ import { SkillsEvolutionService } from '../familyhub/skills-evolution.service';
     ApiKeyService,
     AgentEcosystemService,
     WebSearchService,
+    ScreenshotService,
   ],
 })
 export class AiModule {}

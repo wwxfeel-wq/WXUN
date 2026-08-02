@@ -9,6 +9,8 @@ import { ObservationService } from './services/observation.service';
 import { ActionService } from './services/action.service';
 import { WorkflowEngineService } from './services/workflow-engine.service';
 import { SchedulerService } from './services/scheduler.service';
+import { EmotionEngineService } from './services/emotion-engine.service';
+import { HabitAnalyzerService } from './services/habit-analyzer.service';
 import { AgentRuntimeProvider } from './providers/agent-runtime.provider';
 import { OpenClawProvider } from './providers/openclaw.provider';
 import { AiModule } from '../ai/ai.module';
@@ -32,11 +34,13 @@ import { ToolRegistryModule } from './tool-registry/tool-registry.module';
     ActionService,
     WorkflowEngineService,
     SchedulerService,
+    EmotionEngineService,
+    HabitAnalyzerService,
     {
       provide: AgentRuntimeProvider,
       useClass: OpenClawProvider,
     },
   ],
-  exports: [AgentRuntimeService],
+  exports: [AgentRuntimeService, EmotionEngineService, HabitAnalyzerService],
 })
 export class AgentModule {}
