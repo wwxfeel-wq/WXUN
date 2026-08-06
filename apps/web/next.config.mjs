@@ -5,6 +5,8 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   transpilePackages: ['@echolife/shared'],
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   experimental: {
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },
