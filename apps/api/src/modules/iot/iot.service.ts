@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MihomeProvider } from './providers/mihome.provider';
 import { HomekitProvider } from './providers/homekit.provider';
+import { MockProvider } from './providers/mock.provider';
 import type { IoTProviderInterface } from './providers/iot-provider.interface';
 import type {
   IoTDevice,
@@ -28,10 +29,12 @@ export class IoTService {
     private readonly prisma: PrismaService,
     private readonly mihomeProvider: MihomeProvider,
     private readonly homekitProvider: HomekitProvider,
+    private readonly mockProvider: MockProvider,
   ) {
     this.providers = new Map<IoTPlatform, IoTProviderInterface>([
       ['mihome', mihomeProvider],
       ['homekit', homekitProvider],
+      ['mock', mockProvider],
     ]);
   }
 
@@ -171,6 +174,14 @@ export class IoTService {
 
     const all: PlatformBinding[] = [];
     for (const platform of this.providers.keys()) {
+      if (platform === 'mock') {
+        all.push({
+          platform: 'mock',
+          bound: true,
+          updatedAt: new Date(),
+        });
+        continue;
+      }
       const credential = credentials.find((c) => c.platform === platform);
       all.push({
         platform,
@@ -199,7 +210,7 @@ export class IoTService {
 
     const prefix = deviceId.slice(0, idx);
     const nativeId = deviceId.slice(idx + 1);
-    if (prefix === 'mihome' || prefix === 'homekit') {
+    if (prefix === 'mihome' || prefix === 'homekit' || prefix === 'mock') {
       return { platform: prefix, nativeId };
     }
     return { platform: null, nativeId: deviceId };

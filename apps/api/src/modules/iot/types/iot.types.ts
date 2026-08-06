@@ -25,7 +25,7 @@ export type DeviceStatus =
   | 'charging';
 
 /** 已对接的 IoT 平台标识 */
-export type IoTPlatform = 'mihome' | 'homekit';
+export type IoTPlatform = 'mihome' | 'homekit' | 'mock';
 
 /** 统一设备模型，屏蔽各平台字段差异 */
 export interface IoTDevice {

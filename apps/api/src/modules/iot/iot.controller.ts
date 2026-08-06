@@ -5,10 +5,12 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IoTService } from './iot.service';
+import { IoTSchedulerService } from './iot-scheduler.service';
 import { ControlDeviceDto } from './dto/control-device.dto';
 import { BindPlatformDto } from './dto/bind-platform.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -20,7 +22,10 @@ import type { IoTPlatform } from './types/iot.types';
 @UseGuards(JwtAuthGuard)
 @Controller('iot')
 export class IoTController {
-  constructor(private readonly iotService: IoTService) {}
+  constructor(
+    private readonly iotService: IoTService,
+    private readonly schedulerService: IoTSchedulerService,
+  ) {}
 
   @Get('devices')
   @ApiOperation({
@@ -81,5 +86,24 @@ export class IoTController {
   ) {
     await this.iotService.unbindPlatform(userId, platform as IoTPlatform);
     return { success: true, platform };
+  }
+
+  @Post('scene/:scene')
+  @ApiOperation({
+    summary: '触发智能场景',
+    description:
+      '手动触发时墨的设备调度场景：morning（晨间唤醒）/ noon（午间清扫）/ evening（晚间归家）/ sleep（睡眠模式）/ patrol（环境巡检）',
+  })
+  async triggerScene(
+    @CurrentUser('userId') userId: string,
+    @Param('scene') scene: string,
+  ) {
+    this.schedulerService.setUserId(userId);
+    const result = await this.schedulerService.triggerScene(scene, userId);
+    return {
+      success: true,
+      scene,
+      result: result ?? { message: '场景已执行，查看通知了解详情' },
+    };
   }
 }

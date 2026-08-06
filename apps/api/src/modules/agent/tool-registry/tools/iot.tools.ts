@@ -68,7 +68,8 @@ export class IoTTools {
   private listIotDevices(): McpToolDefinition {
     return {
       name: 'list_iot_devices',
-      description: '列举用户所有已绑定平台（米家 / HomeKit）的智能设备列表',
+      description:
+        '列举用户所有智能设备（含内置演示设备：灯光、空调、扫地机器人、空气净化器、窗帘、传感器等），可用于分析家庭环境和操控设备',
       parameters: {
         type: 'object',
         properties: {},
@@ -123,7 +124,8 @@ export class IoTTools {
   private controlDevice(): McpToolDefinition {
     return {
       name: 'control_device',
-      description: '对指定智能设备下发控制指令（开 / 关 / 设置属性）',
+      description:
+        '对指定智能设备下发控制指令（开/关/设置属性）。支持灯光亮度调节、空调温度设置、扫地机器人启动清扫（mode=start_cleaning）、窗帘位置控制等',
       parameters: {
         type: 'object',
         properties: {
@@ -138,11 +140,13 @@ export class IoTTools {
           },
           property: {
             type: 'string',
-            description: 'set_property 动作时指定的属性名（如 brightness / temperature / mode）',
+            description:
+              'set_property 动作时指定的属性名（brightness 亮度 / temperature 温度 / mode 模式 / position 窗帘位置 / fanSpeed 风速）',
           },
           value: {
             type: 'string',
-            description: 'set_property 动作时设定的属性值',
+            description:
+              'set_property 动作时设定的属性值（如亮度 0-100、温度数值、扫地机 mode=start_cleaning）',
           },
         },
         required: ['deviceId', 'action'],

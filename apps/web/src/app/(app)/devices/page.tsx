@@ -19,6 +19,10 @@ import {
   Unplug,
   Loader2,
   ShieldCheck,
+  Sunrise,
+  Moon,
+  Search,
+  Bot as VacuumIcon,
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
@@ -46,7 +50,7 @@ type DeviceType =
 
 type DeviceStatus = 'on' | 'off' | 'running' | 'idle' | 'charging';
 
-type IoTPlatform = 'mihome' | 'homekit';
+type IoTPlatform = 'mihome' | 'homekit' | 'mock';
 
 interface IoTDevice {
   id: string;
@@ -104,6 +108,7 @@ const DEVICE_TYPE_LABEL: Record<DeviceType, string> = {
 const PLATFORM_LABEL: Record<IoTPlatform, string> = {
   mihome: '米家',
   homekit: 'HomeKit',
+  mock: '演示设备',
 };
 
 // ============================================================
@@ -148,6 +153,19 @@ export default function DevicesPage() {
 
   // 绑定弹窗状态
   const [bindModal, setBindModal] = React.useState<IoTPlatform | null>(null);
+  const [sceneLoading, setSceneLoading] = React.useState<string | null>(null);
+
+  const triggerScene = async (scene: string) => {
+    setSceneLoading(scene);
+    try {
+      await apiClient.post(`/iot/scene/${scene}`);
+      await mutateDevices();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : '场景触发失败');
+    } finally {
+      setSceneLoading(null);
+    }
+  };
 
   if (devicesLoading) {
     return <FullScreenLoader label="加载设备列表中..." />;
@@ -193,7 +211,15 @@ export default function DevicesPage() {
               <ShieldCheck size={15} className="text-text-muted" aria-hidden="true" />
               <h2 className="text-sm font-semibold text-text">平台绑定</h2>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              {/* 演示设备平台 — 始终在线 */}
+              <PlatformCard
+                platform="mock"
+                bound={true}
+                updatedAt={new Date()}
+                onBind={() => {}}
+                onUnbind={async () => {}}
+              />
               {(['mihome', 'homekit'] as IoTPlatform[]).map((platform) => {
                 const binding = bindings.find((b) => b.platform === platform);
                 const isBound = binding?.bound ?? false;
@@ -215,6 +241,27 @@ export default function DevicesPage() {
                   />
                 );
               })}
+            </div>
+          </motion.div>
+
+          {/* ===== 时墨智能场景 ===== */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15, ease: EASE }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles size={15} className="text-accent" aria-hidden="true" />
+              <h2 className="text-sm font-semibold text-text">时墨智能场景</h2>
+              <span className="text-xs text-text-subtle">一键触发设备自动化</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <SceneButton scene="morning" icon={Sunrise} label="晨间唤醒" desc="开窗帘·调灯光" onTrigger={triggerScene} />
+              <SceneButton scene="noon" icon={VacuumIcon} label="午间清扫" desc="扫地机器人" onTrigger={triggerScene} />
+              <SceneButton scene="evening" icon={House} label="归家模式" desc="开灯·开空调" onTrigger={triggerScene} />
+              <SceneButton scene="sleep" icon={Moon} label="睡眠模式" desc="关灯·拉窗帘" onTrigger={triggerScene} />
+              <SceneButton scene="patrol" icon={Search} label="环境巡检" desc="温湿度·空气" onTrigger={triggerScene} />
             </div>
           </motion.div>
 
@@ -315,6 +362,7 @@ function PlatformCard({
 }) {
   const [unbinding, setUnbinding] = React.useState(false);
   const label = PLATFORM_LABEL[platform];
+  const isMock = platform === 'mock';
 
   const handleUnbind = async () => {
     if (!confirm(`确定解绑${label}平台吗？解绑后将无法控制该平台下的设备。`)) return;
@@ -353,6 +401,8 @@ function PlatformCard({
               >
                 {platform === 'mihome' ? (
                   <House size={18} className={bound ? 'text-success' : 'text-text-muted'} />
+                ) : platform === 'mock' ? (
+                  <Sparkles size={18} className="text-accent" />
                 ) : (
                   <Cpu size={18} className={bound ? 'text-success' : 'text-text-muted'} />
                 )}
@@ -360,9 +410,11 @@ function PlatformCard({
               <div>
                 <p className="text-sm font-semibold text-text">{label}</p>
                 <p className="text-xs text-text-subtle">
-                  {bound
-                    ? `已绑定 · ${updatedAt ? new Date(updatedAt).toLocaleDateString() : ''}`
-                    : '未绑定'}
+                  {isMock
+                    ? '内置演示 · 12 台设备'
+                    : bound
+                      ? `已绑定 · ${updatedAt ? new Date(updatedAt).toLocaleDateString() : ''}`
+                      : '未绑定'}
                 </p>
               </div>
             </div>
@@ -384,7 +436,12 @@ function PlatformCard({
             </span>
           </div>
 
-          {bound ? (
+          {isMock ? (
+            <div className="flex items-center justify-center gap-1.5 text-xs text-accent py-1.5">
+              <Sparkles size={12} />
+              <span>开箱即用</span>
+            </div>
+          ) : bound ? (
             <Button
               variant="ghost"
               size="sm"
@@ -692,5 +749,74 @@ function BindPlatformModal({
         {error && <p className="text-sm text-error">{error}</p>}
       </div>
     </Modal>
+  );
+}
+
+// ============================================================
+// 场景触发按钮
+// ============================================================
+
+function SceneButton({
+  scene,
+  icon: Icon,
+  label,
+  desc,
+  onTrigger,
+}: {
+  scene: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  desc: string;
+  onTrigger: (scene: string) => Promise<void>;
+}) {
+  const [loading, setLoading] = React.useState(false);
+
+  const handleClick = async () => {
+    setLoading(true);
+    try {
+      await onTrigger(scene);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <GlassLayer
+      asChild
+      intensity="default"
+      className="p-4 relative overflow-hidden cursor-pointer"
+    >
+      <motion.button
+        whileHover={{ y: -3, scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
+        transition={springHover}
+        onClick={handleClick}
+        disabled={loading}
+        className="w-full text-left"
+      >
+        <div
+          className="absolute -top-12 -right-12 h-24 w-24 rounded-full blur-orb-md opacity-[0.08] pointer-events-none"
+          style={{ background: 'var(--color-accent, var(--color-primary))' }}
+        />
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--color-primary), transparent 85%)',
+              }}
+            >
+              {loading ? (
+                <Loader2 size={14} className="text-accent animate-spin" />
+              ) : (
+                <Icon size={14} className="text-accent" />
+              )}
+            </span>
+          </div>
+          <p className="text-xs font-semibold text-text mb-0.5">{label}</p>
+          <p className="text-[10px] text-text-subtle">{desc}</p>
+        </div>
+      </motion.button>
+    </GlassLayer>
   );
 }
