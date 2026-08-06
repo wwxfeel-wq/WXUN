@@ -1,3 +1,5 @@
+import path from 'path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -5,6 +7,11 @@ const nextConfig = {
   transpilePackages: ['@echolife/shared'],
   experimental: {
     optimizePackageImports: ['lucide-react', 'framer-motion'],
+  },
+  webpack(config) {
+    config.resolve.alias['@'] = path.resolve('./src');
+    config.resolve.alias['@echolife/shared'] = path.resolve('../../packages/shared/index.ts');
+    return config;
   },
   async rewrites() {
     // In Docker, API_INTERNAL_URL is set to http://api:3001 (service name).
