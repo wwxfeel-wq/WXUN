@@ -22,7 +22,6 @@ import {
   Sunrise,
   Moon,
   Search,
-  Bot as VacuumIcon,
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
@@ -258,7 +257,7 @@ export default function DevicesPage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <SceneButton scene="morning" icon={Sunrise} label="晨间唤醒" desc="开窗帘·调灯光" onTrigger={triggerScene} />
-              <SceneButton scene="noon" icon={VacuumIcon} label="午间清扫" desc="扫地机器人" onTrigger={triggerScene} />
+              <SceneButton scene="noon" icon={Bot} label="午间清扫" desc="扫地机器人" onTrigger={triggerScene} />
               <SceneButton scene="evening" icon={House} label="归家模式" desc="开灯·开空调" onTrigger={triggerScene} />
               <SceneButton scene="sleep" icon={Moon} label="睡眠模式" desc="关灯·拉窗帘" onTrigger={triggerScene} />
               <SceneButton scene="patrol" icon={Search} label="环境巡检" desc="温湿度·空气" onTrigger={triggerScene} />
