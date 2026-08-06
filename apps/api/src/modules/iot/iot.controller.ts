@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IoTService } from './iot.service';
 import { IoTSchedulerService } from './iot-scheduler.service';
+import { MockProvider } from './providers/mock.provider';
 import { ControlDeviceDto } from './dto/control-device.dto';
 import { BindPlatformDto } from './dto/bind-platform.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,6 +26,7 @@ export class IoTController {
   constructor(
     private readonly iotService: IoTService,
     private readonly schedulerService: IoTSchedulerService,
+    private readonly mockProvider: MockProvider,
   ) {}
 
   @Get('devices')
@@ -105,5 +107,66 @@ export class IoTController {
       scene,
       result: result ?? { message: '场景已执行，查看通知了解详情' },
     };
+  }
+
+  // ============================================================
+  // 扫地机器人 — 路线规划与实时状态
+  // ============================================================
+
+  @Get('vacuum/status')
+  @ApiOperation({
+    summary: '获取扫地机器人清洗状态',
+    description: '返回扫地机器人的实时清洗状态，包括路线规划、当前进度、覆盖面积、电量和事件列表',
+  })
+  async getVacuumStatus() {
+    return this.mockProvider.getVacuumState();
+  }
+
+  @Post('vacuum/start')
+  @ApiOperation({
+    summary: '启动扫地机器人清扫',
+    description: '手动启动扫地机器人清扫任务，支持 quick（快速）/ deep（深度）/ spot（重点）三种模式',
+  })
+  async startVacuum(
+    @CurrentUser('userId') userId: string,
+    @Body() body: { mode?: 'quick' | 'deep' | 'spot' },
+  ) {
+    const mode = body.mode ?? 'deep';
+    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const battery = Number(vacuum?.properties.battery ?? 85);
+
+    const route = this.mockProvider.startCleaning(mode, battery);
+
+    const roomSequence = route.waypoints
+      .filter((w) => w.action === 'enter')
+      .map((w) => w.room)
+      .join(' → ');
+
+    const durationMin = Math.floor(route.estimatedDurationSec / 60);
+
+    this.schedulerService.setUserId(userId);
+
+    return {
+      success: true,
+      route,
+      summary: {
+        routeName: route.name,
+        rooms: roomSequence,
+        totalArea: route.totalArea,
+        waypoints: route.waypoints.length,
+        estimatedDuration: `${durationMin} 分钟`,
+        battery,
+      },
+    };
+  }
+
+  @Post('vacuum/stop')
+  @ApiOperation({
+    summary: '停止扫地机器人清扫',
+    description: '停止当前清扫任务，扫地机器人回到待机状态',
+  })
+  async stopVacuum() {
+    this.mockProvider.stopCleaning();
+    return { success: true, message: '扫地机器人已停止清扫' };
   }
 }

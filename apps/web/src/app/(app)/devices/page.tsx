@@ -22,6 +22,13 @@ import {
   Sunrise,
   Moon,
   Search,
+  Navigation,
+  MapPin,
+  Play,
+  Square,
+  Route,
+  Battery,
+  Clock,
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
@@ -263,6 +270,9 @@ export default function DevicesPage() {
               <SceneButton scene="patrol" icon={Search} label="环境巡检" desc="温湿度·空气" onTrigger={triggerScene} />
             </div>
           </motion.div>
+
+          {/* ===== 扫地机器人路线规划 ===== */}
+          <VacuumRouteSection />
 
           {/* ===== 设备列表 ===== */}
           {grouped.length === 0 ? (
@@ -817,5 +827,419 @@ function SceneButton({
         </div>
       </motion.button>
     </GlassLayer>
+  );
+}
+
+// ============================================================
+// 扫地机器人路线规划可视化
+// ============================================================
+
+interface VacuumWaypoint {
+  room: string;
+  step: number;
+  x: number;
+  y: number;
+  action: 'enter' | 'clean' | 'turn' | 'avoid' | 'dock';
+  durationSec: number;
+  area: number;
+  completed: boolean;
+}
+
+interface VacuumRoutePlan {
+  name: string;
+  mode: 'quick' | 'deep' | 'spot';
+  totalArea: number;
+  estimatedDurationSec: number;
+  waypoints: VacuumWaypoint[];
+  plannedAt: string;
+}
+
+interface VacuumCleaningEvent {
+  type: 'obstacle' | 'dirt_detect' | 'low_battery' | 'room_complete' | 'stuck' | 'dock';
+  timestamp: string;
+  room: string;
+  description: string;
+  step: number;
+}
+
+interface VacuumState {
+  isCleaning: boolean;
+  mode: 'quick' | 'deep' | 'spot';
+  route: VacuumRoutePlan | null;
+  currentStep: number;
+  cleanedArea: number;
+  elapsedSec: number;
+  battery: number;
+  currentRoom: string;
+  events: VacuumCleaningEvent[];
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+const ROOM_COLORS: Record<string, string> = {
+  客厅: 'rgba(99, 179, 237, 0.15)',
+  主卧: 'rgba(167, 139, 250, 0.15)',
+  书房: 'rgba(52, 211, 153, 0.15)',
+  厨房: 'rgba(251, 146, 60, 0.15)',
+  走廊: 'rgba(156, 163, 175, 0.1)',
+  阳台: 'rgba(244, 114, 182, 0.15)',
+};
+
+const ACTION_ICONS: Record<string, string> = {
+  enter: '→',
+  clean: '··',
+  turn: '↻',
+  avoid: '⚠',
+  dock: '⌂',
+};
+
+function VacuumRouteSection() {
+  const { data: vacuumState, mutate } = useSWR<VacuumState>(
+    '/iot/vacuum/status',
+    swrFetcher,
+    { refreshInterval: 2000 },
+  );
+  const [starting, setStarting] = React.useState(false);
+  const [stopping, setStopping] = React.useState(false);
+
+  const isCleaning = vacuumState?.isCleaning ?? false;
+  const route = vacuumState?.route;
+  const progress = route && route.waypoints.length > 0
+    ? Math.round(((vacuumState?.currentStep ?? 0) / route.waypoints.length) * 100)
+    : 0;
+
+  const handleStart = async (mode: 'quick' | 'deep' | 'spot') => {
+    setStarting(true);
+    try {
+      await apiClient.post('/iot/vacuum/start', { mode });
+      await mutate();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : '启动失败');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleStop = async () => {
+    setStopping(true);
+    try {
+      await apiClient.post('/iot/vacuum/stop');
+      await mutate();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : '停止失败');
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.2, ease: EASE }}
+      className="mb-8"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Route size={15} className="text-accent" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-text">扫地机器人路线规划</h2>
+        <span className="text-xs text-text-subtle">
+          {isCleaning ? '清扫中' : '待命'}
+        </span>
+        {isCleaning && (
+          <span className="flex items-center gap-1 text-xs text-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+            实时
+          </span>
+        )}
+      </div>
+
+      <GlassLayer asChild intensity="strong" className="p-5 sm:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 左侧：SVG 路线地图 */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-medium text-text-muted">清扫路线图</p>
+              {route && (
+                <span className="text-xs text-text-subtle">{route.name}</span>
+              )}
+            </div>
+            <div className="relative rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)' }}>
+              <svg viewBox="0 0 100 90" className="w-full" style={{ aspectRatio: '10/9' }}>
+                {/* 房间矩形 */}
+                {Object.entries({
+                  客厅: { x: 10, y: 10, w: 40, h: 35 },
+                  主卧: { x: 55, y: 10, w: 35, h: 30 },
+                  书房: { x: 55, y: 45, w: 35, h: 20 },
+                  厨房: { x: 10, y: 50, w: 25, h: 20 },
+                  走廊: { x: 38, y: 50, w: 12, h: 15 },
+                  阳台: { x: 38, y: 70, w: 30, h: 15 },
+                }).map(([room, layout]) => (
+                  <g key={room}>
+                    <rect
+                      x={layout.x}
+                      y={layout.y}
+                      width={layout.w}
+                      height={layout.h}
+                      fill={ROOM_COLORS[room] || 'rgba(100,100,100,0.1)'}
+                      stroke="rgba(255,255,255,0.12)"
+                      strokeWidth="0.4"
+                      rx="1.5"
+                    />
+                    <text
+                      x={layout.x + layout.w / 2}
+                      y={layout.y + layout.h / 2}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="rgba(255,255,255,0.3)"
+                      fontSize="3"
+                    >
+                      {room}
+                    </text>
+                  </g>
+                ))}
+
+                {/* 路线连线 */}
+                {route && route.waypoints.length > 1 && (
+                  <polyline
+                    points={route.waypoints
+                      .map((w) => `${w.x},${w.y}`)
+                      .join(' ')}
+                    fill="none"
+                    stroke="rgba(99, 179, 237, 0.3)"
+                    strokeWidth="0.6"
+                    strokeDasharray="1.5,1"
+                  />
+                )}
+
+                {/* 已完成路线 */}
+                {route && route.waypoints.length > 1 && (
+                  <polyline
+                    points={route.waypoints
+                      .slice(0, (vacuumState?.currentStep ?? 0) + 1)
+                      .map((w) => `${w.x},${w.y}`)
+                      .join(' ')}
+                    fill="none"
+                    stroke="rgb(99, 179, 237)"
+                    strokeWidth="1"
+                  />
+                )}
+
+                {/* 路线节点 */}
+                {route?.waypoints.map((wp) => {
+                  const isCurrent = wp.step === (vacuumState?.currentStep ?? 0);
+                  const isCompleted = wp.completed;
+                  return (
+                    <g key={wp.step}>
+                      <circle
+                        cx={wp.x}
+                        cy={wp.y}
+                        r={isCurrent ? '2' : '1'}
+                        fill={
+                          isCurrent
+                            ? 'rgb(99, 179, 237)'
+                            : isCompleted
+                              ? 'rgba(52, 211, 153, 0.8)'
+                              : 'rgba(255,255,255,0.3)'
+                        }
+                        className={isCurrent ? 'animate-pulse' : ''}
+                      />
+                      {isCurrent && (
+                        <circle
+                          cx={wp.x}
+                          cy={wp.y}
+                          r="3.5"
+                          fill="none"
+                          stroke="rgb(99, 179, 237)"
+                          strokeWidth="0.4"
+                          opacity="0.5"
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* 充电桩 */}
+                <rect x="13" y="13" width="4" height="4" fill="rgba(251, 191, 36, 0.4)" rx="0.5" />
+                <text x="15" y="20" textAnchor="middle" fill="rgba(251, 191, 36, 0.6)" fontSize="2.5">⚡</text>
+              </svg>
+            </div>
+
+            {/* 进度条 */}
+            {route && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-text-muted">清扫进度</span>
+                  <span className="text-xs font-medium text-text">{progress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: 'var(--color-accent, rgb(99, 179, 237))' }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 右侧：状态面板 */}
+          <div className="flex flex-col gap-4">
+            {/* 状态指标 */}
+            <div className="grid grid-cols-2 gap-3">
+              <StatusMetric
+                icon={MapPin}
+                label="当前位置"
+                value={vacuumState?.currentRoom ?? '充电桩'}
+                color="var(--color-accent)"
+              />
+              <StatusMetric
+                icon={Battery}
+                label="剩余电量"
+                value={`${vacuumState?.battery ?? 0}%`}
+                color={(vacuumState?.battery ?? 100) < 20 ? 'var(--color-error)' : 'var(--color-success)'}
+              />
+              <StatusMetric
+                icon={Navigation}
+                label="已清扫"
+                value={`${vacuumState?.cleanedArea ?? 0}㎡`}
+                color="var(--color-accent)"
+              />
+              <StatusMetric
+                icon={Clock}
+                label="已耗时"
+                value={
+                  vacuumState?.elapsedSec
+                    ? `${Math.floor(vacuumState.elapsedSec / 60)}'${(vacuumState.elapsedSec % 60).toString().padStart(2, '0')}"`
+                    : "0'00"
+                }
+                color="var(--color-text-muted)"
+              />
+            </div>
+
+            {/* 路线信息 */}
+            {route && (
+              <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <p className="text-xs font-medium text-text mb-2">路线规划</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {route.waypoints
+                    .filter((w) => w.action === 'enter')
+                    .map((wp, i, arr) => (
+                      <React.Fragment key={wp.step}>
+                        <span className={`text-xs ${wp.completed ? 'text-success' : 'text-text-muted'}`}>
+                          {wp.room}
+                        </span>
+                        {i < arr.length - 1 && (
+                          <span className="text-text-subtle text-xs">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-xs text-text-subtle">
+                  <span>面积 {route.totalArea}㎡</span>
+                  <span>·</span>
+                  <span>{route.waypoints.length} 节点</span>
+                  <span>·</span>
+                  <span>预计 {Math.floor(route.estimatedDurationSec / 60)} 分钟</span>
+                </div>
+              </div>
+            )}
+
+            {/* 事件日志 */}
+            {vacuumState?.events && vacuumState.events.length > 0 && (
+              <div className="rounded-lg p-3 max-h-32 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <p className="text-xs font-medium text-text mb-2">事件日志</p>
+                <div className="space-y-1.5">
+                  {vacuumState.events.slice(-5).reverse().map((evt, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="shrink-0 mt-0.5">
+                        {evt.type === 'obstacle' ? '⚠️' :
+                         evt.type === 'dirt_detect' ? '🧹' :
+                         evt.type === 'low_battery' ? '🔋' :
+                         evt.type === 'dock' ? '⚡' : '✅'}
+                      </span>
+                      <span className="text-text-muted">{evt.description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 控制按钮 */}
+            <div className="flex items-center gap-2">
+              {!isCleaning ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleStart('quick')}
+                    disabled={starting}
+                    className="gap-1.5"
+                  >
+                    <Play size={12} />
+                    快速清扫
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleStart('deep')}
+                    disabled={starting}
+                    loading={starting}
+                    className="gap-1.5"
+                  >
+                    <Bot size={12} />
+                    深度清扫
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleStart('spot')}
+                    disabled={starting}
+                    className="gap-1.5"
+                  >
+                    <MapPin size={12} />
+                    重点清扫
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={handleStop}
+                  disabled={stopping}
+                  loading={stopping}
+                  className="gap-1.5"
+                >
+                  <Square size={12} />
+                  停止清扫
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </GlassLayer>
+    </motion.div>
+  );
+}
+
+function StatusMetric({
+  icon: Icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon size={11} className="text-text-muted" />
+        <span className="text-[10px] text-text-subtle">{label}</span>
+      </div>
+      <p className="text-sm font-semibold" style={{ color }}>{value}</p>
+    </div>
   );
 }

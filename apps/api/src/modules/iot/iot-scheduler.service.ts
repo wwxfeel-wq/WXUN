@@ -392,7 +392,7 @@ export class IoTSchedulerService {
     };
   }
 
-  /** 扫地机器人路线规划与派发 */
+  /** 扫地机器人路线规划与派发 — 调用 MockProvider 生成详细路线并启动模拟 */
   private async dispatchVacuumTask(
     userId: string,
     period: 'morning' | 'noon',
@@ -407,24 +407,32 @@ export class IoTSchedulerService {
       };
     }
 
-    // 启动清扫
-    await this.control(userId, 'mock:robot-vacuum', 'set_property', 'mode', 'start_cleaning');
+    // 启动清扫模拟
+    const mode = period === 'morning' ? 'quick' : 'deep';
+    const route = this.mockProvider.startCleaning(mode, battery);
 
-    // 规划清扫路线
-    const route = this.planVacuumRoute(period);
-    const area = period === 'morning' ? '32㎡（快速模式）' : '68㎡（深度模式）';
-    const duration = period === 'morning' ? '约 25 分钟' : '约 55 分钟';
+    // 生成路线描述
+    const roomSequence = route.waypoints
+      .filter((w) => w.action === 'enter')
+      .map((w) => w.room)
+      .join(' → ');
 
-    return {
-      summary:
-        `扫地机器人已启动${period === 'morning' ? '晨间快速清扫' : '午间深度清扫'}\n` +
-        `📋 清扫路线规划：${route}\n` +
-        `📐 覆盖面积：${area} · 预计耗时：${duration}\n` +
-        `🔋 当前电量：${battery}%`,
-    };
+    const durationMin = Math.floor(route.estimatedDurationSec / 60);
+    const durationSec = route.estimatedDurationSec % 60;
+
+    const summary =
+      `扫地机器人已启动${period === 'morning' ? '晨间快速清扫' : '午间深度清扫'}\n` +
+      `📋 路线名称：${route.name}\n` +
+      `🏠 清扫区域：${roomSequence}\n` +
+      `📐 覆盖面积：${route.totalArea}㎡ · 路线节点：${route.waypoints.length} 个\n` +
+      `⏱️ 预计耗时：${durationMin} 分 ${durationSec} 秒\n` +
+      `🔋 当前电量：${battery}%\n` +
+      `📍 起点充电桩 → ${roomSequence} → 返回充电桩`;
+
+    return { summary };
   }
 
-  /** 根据时段规划清扫路线 */
+  /** 根据时段规划清扫路线（保留兼容） */
   private planVacuumRoute(period: 'morning' | 'noon'): string {
     if (period === 'morning') {
       return '客厅 → 走廊 → 阳台（仅高频区域）';
