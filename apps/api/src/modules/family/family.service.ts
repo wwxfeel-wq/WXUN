@@ -43,28 +43,35 @@ export class FamilyService {
    * Used for auto-detecting existing families on frontend load.
    */
   async listUserFamilies(userId: string) {
-    const memberships = await this.prisma.familyMember.findMany({
-      where: { userId },
-      include: {
-        family: {
-          include: {
-            _count: { select: { members: true } },
+    try {
+      const memberships = await this.prisma.familyMember.findMany({
+        where: { userId },
+        include: {
+          family: {
+            include: {
+              _count: { select: { members: true } },
+            },
           },
         },
-      },
-      orderBy: { joinedAt: 'desc' },
-    });
+        orderBy: { joinedAt: 'desc' },
+      });
 
-    return memberships.map((m) => ({
-      id: m.family.id,
-      name: m.family.name,
-      description: m.family.description,
-      creatorId: m.family.creatorId,
-      createdAt: m.family.createdAt,
-      updatedAt: m.family.updatedAt,
-      memberCount: m.family._count.members,
-      role: m.role,
-    }));
+      return memberships.map((m) => ({
+        id: m.family.id,
+        name: m.family.name,
+        description: m.family.description,
+        creatorId: m.family.creatorId,
+        createdAt: m.family.createdAt,
+        updatedAt: m.family.updatedAt,
+        memberCount: m.family._count.members,
+        role: m.role,
+      }));
+    } catch (error) {
+      this.logger.error(
+        `listUserFamilies 查询失败 (userId=${userId}): ${(error as Error).message}\n${(error as Error).stack}`,
+      );
+      return [];
+    }
   }
 
   /**
