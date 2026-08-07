@@ -264,6 +264,59 @@ export class SupervisionService {
       }
     }
 
+    // --- 默认示例任务：当没有任何规则触发且用户无活跃任务时，生成示例任务供体验 ---
+    if (newTasks.length === 0) {
+      const existingActive = await this.getActiveSupervisions(userId);
+      if (existingActive.length === 0) {
+        const defaults: Array<{
+          familyMember: FamilyMemberInfo;
+          type: SupervisionType;
+          title: string;
+          description: string;
+          priority: SupervisionPriority;
+          sourceDevice: string;
+          suggestedAction: string;
+          dueMinutes: number;
+        }> = [
+          {
+            familyMember: MOCK_FAMILY_MEMBERS[0],
+            type: 'medication_reminder',
+            title: '提醒爷爷服用降压药',
+            description: '爷爷的早间降压药尚未服用，药盒检测到未取药',
+            priority: 'high',
+            sourceDevice: 'mock:medicine-box-bedroom',
+            suggestedAction: '请提醒爷爷服用降压药，或者帮他取药',
+            dueMinutes: 30,
+          },
+          {
+            familyMember: MOCK_FAMILY_MEMBERS[4],
+            type: 'homework_reminder',
+            title: '提醒小明完成课后作业',
+            description: '小明今天还有数学和语文作业未完成，建议在晚饭前写完',
+            priority: 'medium',
+            sourceDevice: 'mock:light-study',
+            suggestedAction: '请提醒小明去书房写作业，完成后可以适当休息',
+            dueMinutes: 60,
+          },
+          {
+            familyMember: MOCK_FAMILY_MEMBERS[2],
+            type: 'grocery_reminder',
+            title: '提醒爸爸下班顺路买菜',
+            description: '冰箱中鸡蛋、青菜即将过期，建议补充新鲜食材',
+            priority: 'low',
+            sourceDevice: 'mock:fridge-kitchen',
+            suggestedAction: '请提醒爸爸下班顺路买些新鲜食材',
+            dueMinutes: 120,
+          },
+        ];
+
+        for (const params of defaults) {
+          const task = this.tryCreateTask(userId, params);
+          if (task) newTasks.push(task);
+        }
+      }
+    }
+
     if (newTasks.length > 0) {
       this.logger.log(
         `为用户 ${userId} 生成了 ${newTasks.length} 条督促任务：${newTasks.map((t) => t.type).join(', ')}`,
