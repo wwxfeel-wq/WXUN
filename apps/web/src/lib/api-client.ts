@@ -215,6 +215,8 @@ export interface SSECallbacks {
   onEmotion?: (emotion: string, intensity: number) => void;
   onSkillExp?: (skillName: string, expGained: number, agentCode: string) => void;
   onSkillLevelUp?: (skillName: string, level: number, agentCode: string) => void;
+  onToolCall?: (tool: string, args: Record<string, unknown>) => void;
+  onObservation?: (data: { source: string; success: boolean; summary: string; data?: unknown }) => void;
   onDone?: (data: { memoryId?: string; summary?: string; emotion?: string }) => void;
   onError?: (message: string, code: number) => void;
   onClose?: () => void;
@@ -482,6 +484,21 @@ function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
         memoryId: data.memoryId as string | undefined,
         summary: data.summary as string | undefined,
         emotion: data.emotion as string | undefined,
+      });
+      break;
+    }
+    case 'tool_call': {
+      const tool = data.tool as string;
+      const args = (data.args as Record<string, unknown>) ?? {};
+      if (tool) callbacks.onToolCall?.(tool, args);
+      break;
+    }
+    case 'observation': {
+      callbacks.onObservation?.({
+        source: (data.source as string) ?? '',
+        success: (data.success as boolean) ?? false,
+        summary: (data.summary as string) ?? '',
+        data: data.data,
       });
       break;
     }

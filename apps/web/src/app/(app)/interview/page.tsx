@@ -13,6 +13,12 @@ import {
   Calendar,
   Users,
   Sun,
+  Check,
+  Loader2,
+  Bot,
+  Lightbulb,
+  AirVent,
+  Wind,
   type LucideIcon,
 } from "lucide-react";
 import { useSSEChat } from "@/hooks/use-sse-chat";
@@ -22,7 +28,98 @@ import { TypingDots } from "@/components/ui/loading";
 import { GlassLayer } from "@/components/glass";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn, getEmotionColor, getEmotionLabel } from "@/lib/utils";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, ToolCallInfo } from "@/lib/types";
+
+/** 工具名称 → 友好标签 + 图标 */
+const TOOL_META: Record<string, { label: string; icon: LucideIcon }> = {
+  control_device: { label: "设备控制", icon: Zap },
+  vacuum_cleaning: { label: "扫地机", icon: Bot },
+  start_device: { label: "启动设备", icon: Zap },
+  stop_device: { label: "停止设备", icon: Zap },
+  set_property: { label: "调整设置", icon: Zap },
+  turn_on: { label: "开启设备", icon: Zap },
+  turn_off: { label: "关闭设备", icon: Zap },
+  light_control: { label: "灯光控制", icon: Lightbulb },
+  ac_control: { label: "空调控制", icon: AirVent },
+  purifier_control: { label: "净化器控制", icon: Wind },
+};
+
+function describeToolArgs(args?: Record<string, unknown>): string {
+  if (!args) return "";
+  const parts: string[] = [];
+  const dn = args.deviceName as string | undefined;
+  const action = args.action as string | undefined;
+  const mode = args.mode as string | undefined;
+  const room = args.room as string | undefined;
+  if (dn) parts.push(dn);
+  if (room && !dn) parts.push(room);
+  if (mode) {
+    parts.push(mode === "quick" ? "快速清扫" : mode === "deep" ? "深度清扫" : mode === "spot" ? "重点清扫" : mode);
+  }
+  if (action) {
+    parts.push(action === "turn_on" ? "开启" : action === "turn_off" ? "关闭" : action === "start" ? "启动" : action === "stop" ? "停止" : action);
+  }
+  return parts.join(" · ");
+}
+
+function ToolCallCard({ tc }: { tc: ToolCallInfo }) {
+  const isPending = tc.success === undefined;
+  const isSuccess = tc.success === true;
+  const meta = TOOL_META[tc.tool] ?? { label: tc.tool, icon: Zap };
+  const Icon = meta.icon;
+  const desc = describeToolArgs(tc.args);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-xl border px-3 py-2"
+      style={{
+        background: isSuccess
+          ? "color-mix(in srgb, var(--color-success), transparent 92%)"
+          : isPending
+            ? "color-mix(in srgb, var(--color-accent), transparent 92%)"
+            : "color-mix(in srgb, var(--color-error), transparent 92%)",
+        borderColor: isSuccess
+          ? "color-mix(in srgb, var(--color-success), transparent 75%)"
+          : isPending
+            ? "color-mix(in srgb, var(--color-accent), transparent 75%)"
+            : "color-mix(in srgb, var(--color-error), transparent 75%)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+          style={{
+            background: isSuccess
+              ? "color-mix(in srgb, var(--color-success), transparent 80%)"
+              : isPending
+                ? "color-mix(in srgb, var(--color-accent), transparent 80%)"
+                : "color-mix(in srgb, var(--color-error), transparent 80%)",
+          }}
+        >
+          <Icon size={11} className={isSuccess ? "text-success" : isPending ? "text-accent" : "text-error"} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="text-xs font-medium text-text">{meta.label}</span>
+          {desc && <span className="ml-1.5 text-xs text-text-muted">{desc}</span>}
+        </div>
+        <span className="shrink-0">
+          {isPending ? (
+            <Loader2 size={12} className="text-accent animate-spin" />
+          ) : isSuccess ? (
+            <Check size={12} className="text-success" />
+          ) : (
+            <AlertCircle size={12} className="text-error" />
+          )}
+        </span>
+      </div>
+      {tc.summary && (
+        <p className="mt-1.5 pl-8 text-xs leading-relaxed text-text-muted">{tc.summary}</p>
+      )}
+    </motion.div>
+  );
+}
 
 /** Suggested conversation starters with icons. */
 const STARTERS: { text: string; icon: LucideIcon }[] = [
@@ -358,13 +455,22 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             <span className="whitespace-pre-wrap break-words">
               {message.content}
             </span>
-          ) : message.streaming ? (
+          ) : message.streaming && !message.toolCalls?.length ? (
             <TypingDots />
           ) : null}
           {message.streaming && message.content && (
             <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse-soft bg-accent align-middle" />
           )}
         </div>
+
+        {/* Tool call feedback cards */}
+        {isAI && message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="space-y-1.5">
+            {message.toolCalls.map((tc, i) => (
+              <ToolCallCard key={`${tc.tool}-${i}`} tc={tc} />
+            ))}
+          </div>
+        )}
 
         {/* Entities chips */}
         {isAI && message.entities && message.entities.length > 0 && (

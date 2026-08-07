@@ -977,18 +977,18 @@ function VacuumRouteSection() {
         )}
       </div>
 
-      <GlassLayer asChild intensity="strong" className="p-5 sm:p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 左侧：SVG 路线地图 */}
-          <div className="flex flex-col items-center">
-            <div className="flex items-center justify-between mb-3 w-full">
+      <GlassLayer asChild intensity="strong" className="p-4 sm:p-5 md:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-5">
+          {/* ── 左列：SVG 路线地图 + 进度条 ── */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-text-muted">清扫路线图</p>
               {route && (
                 <span className="text-xs text-text-subtle">{route.name}</span>
               )}
             </div>
-            <div className="relative rounded-xl overflow-hidden w-full max-w-md mx-auto" style={{ background: 'rgba(0,0,0,0.2)' }}>
-              <svg viewBox="0 0 100 90" className="w-full" style={{ aspectRatio: '10/9' }}>
+            <div className="relative rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.25)' }}>
+              <svg viewBox="0 0 100 90" className="w-full block" style={{ aspectRatio: '10/9' }}>
                 {/* 房间矩形 */}
                 {Object.entries({
                   客厅: { x: 10, y: 10, w: 40, h: 35 },
@@ -1015,7 +1015,7 @@ function VacuumRouteSection() {
                       textAnchor="middle"
                       dominantBaseline="central"
                       fill="rgba(255,255,255,0.35)"
-                      fontSize="4"
+                      fontSize="3.5"
                       fontWeight="500"
                     >
                       {room}
@@ -1023,15 +1023,15 @@ function VacuumRouteSection() {
                   </g>
                 ))}
 
-                {/* 路线连线 */}
+                {/* 路线连线（全部） */}
                 {route && route.waypoints.length > 1 && (
                   <polyline
                     points={route.waypoints
                       .map((w) => `${w.x},${w.y}`)
                       .join(' ')}
                     fill="none"
-                    stroke="rgba(99, 179, 237, 0.3)"
-                    strokeWidth="0.6"
+                    stroke="rgba(99, 179, 237, 0.25)"
+                    strokeWidth="0.5"
                     strokeDasharray="1.5,1"
                   />
                 )}
@@ -1046,6 +1046,8 @@ function VacuumRouteSection() {
                     fill="none"
                     stroke="rgb(99, 179, 237)"
                     strokeWidth="1"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
                   />
                 )}
 
@@ -1058,7 +1060,7 @@ function VacuumRouteSection() {
                       <circle
                         cx={wp.x}
                         cy={wp.y}
-                        r={isCurrent ? '2' : '1'}
+                        r={isCurrent ? '1.8' : '0.9'}
                         fill={
                           isCurrent
                             ? 'rgb(99, 179, 237)'
@@ -1090,8 +1092,8 @@ function VacuumRouteSection() {
             </div>
 
             {/* 进度条 */}
-            {route && (
-              <div className="mt-3 w-full max-w-md mx-auto">
+            {route ? (
+              <div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs text-text-muted">清扫进度</span>
                   <span className="text-xs font-medium text-text">{progress}%</span>
@@ -1106,13 +1108,18 @@ function VacuumRouteSection() {
                   />
                 </div>
               </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-text-subtle">
+                <Route size={11} />
+                <span>空闲状态 — 选择下方模式开始清扫</span>
+              </div>
             )}
           </div>
 
-          {/* 右侧：状态面板 */}
-          <div className="flex flex-col gap-4">
+          {/* ── 右列：状态指标 + 路线信息 + 事件 + 控制 ── */}
+          <div className="flex flex-col gap-3">
             {/* 状态指标 */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <StatusMetric
                 icon={MapPin}
                 label="当前位置"
@@ -1161,7 +1168,7 @@ function VacuumRouteSection() {
                       </React.Fragment>
                     ))}
                 </div>
-                <div className="mt-2 flex items-center gap-3 text-xs text-text-subtle">
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-subtle">
                   <span>面积 {route.totalArea}㎡</span>
                   <span>·</span>
                   <span>{route.waypoints.length} 节点</span>
@@ -1173,7 +1180,7 @@ function VacuumRouteSection() {
 
             {/* 事件日志 */}
             {vacuumState?.events && vacuumState.events.length > 0 && (
-              <div className="rounded-lg p-3 max-h-48 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="rounded-lg p-3 max-h-40 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
                 <p className="text-xs font-medium text-text mb-2">事件日志</p>
                 <div className="space-y-1.5">
                   {vacuumState.events.slice(-8).reverse().map((evt, i) => (
@@ -1192,7 +1199,7 @@ function VacuumRouteSection() {
             )}
 
             {/* 控制按钮 */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 mt-auto">
               {!isCleaning ? (
                 <>
                   <Button

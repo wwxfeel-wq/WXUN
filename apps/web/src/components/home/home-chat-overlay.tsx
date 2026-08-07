@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, X, Loader2, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { Send, X, Loader2, Sparkles, Image as ImageIcon, Check, AlertCircle, Zap, Bot, Lightbulb, AirVent, Wind } from 'lucide-react';
 import { useSSEChat } from '@/hooks/use-sse-chat';
 import { GlassLayer } from '@/components/glass';
-import type { ChatMessage } from '@/lib/types';
+import type { ChatMessage, ToolCallInfo } from '@/lib/types';
 
 /**
  * HomeChatOverlay — 首页浮动聊天面板
@@ -143,8 +143,129 @@ function MessageImageCard({ images }: { images: { alt: string; url: string }[] }
   );
 }
 
+/** 工具名称 → 友好标签 + 图标映射 */
+const TOOL_META: Record<string, { label: string; icon: typeof Zap }> = {
+  control_device: { label: '设备控制', icon: Zap },
+  vacuum_cleaning: { label: '扫地机', icon: Bot },
+  start_device: { label: '启动设备', icon: Zap },
+  stop_device: { label: '停止设备', icon: Zap },
+  set_property: { label: '调整设置', icon: Zap },
+  turn_on: { label: '开启设备', icon: Zap },
+  turn_off: { label: '关闭设备', icon: Zap },
+  light_control: { label: '灯光控制', icon: Lightbulb },
+  ac_control: { label: '空调控制', icon: AirVent },
+  purifier_control: { label: '净化器控制', icon: Wind },
+};
+
+/** 从工具参数中提取可读描述 */
+function describeToolArgs(tool: string, args?: Record<string, unknown>): string {
+  if (!args) return '';
+  const parts: string[] = [];
+  const deviceName = args.deviceName as string | undefined;
+  const action = args.action as string | undefined;
+  const mode = args.mode as string | undefined;
+  const room = args.room as string | undefined;
+  const property = args.property as string | undefined;
+  const value = args.value as string | number | undefined;
+
+  if (deviceName) parts.push(deviceName);
+  if (room && !deviceName) parts.push(room);
+  if (mode) {
+    const modeLabel = mode === 'quick' ? '快速清扫' : mode === 'deep' ? '深度清扫' : mode === 'spot' ? '重点清扫' : mode;
+    parts.push(modeLabel);
+  }
+  if (action) {
+    const actionLabel = action === 'turn_on' ? '开启' : action === 'turn_off' ? '关闭' : action === 'start' ? '启动' : action === 'stop' ? '停止' : action;
+    parts.push(actionLabel);
+  }
+  if (property && value !== undefined) {
+    const propLabel = property === 'brightness' ? '亮度' : property === 'temperature' ? '温度' : property;
+    parts.push(`${propLabel}→${value}`);
+  }
+  return parts.join(' · ');
+}
+
 /**
- * 渲染单条消息内容（文字 + 图片）
+ * ToolCallCard — 设备控制实时反馈卡片
+ *
+ * 在 AI 消息中展示时墨正在调用/已完成的设备控制操作。
+ * 三种状态：pending（执行中）、success（成功）、failed（失败）。
+ */
+function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
+  const isPending = toolCall.success === undefined;
+  const isSuccess = toolCall.success === true;
+  const meta = TOOL_META[toolCall.tool] ?? { label: toolCall.tool, icon: Zap };
+  const Icon = meta.icon;
+  const desc = describeToolArgs(toolCall.tool, toolCall.args);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      className="mt-2 rounded-xl border px-3 py-2"
+      style={{
+        background: isSuccess
+          ? 'color-mix(in srgb, var(--color-success), transparent 92%)'
+          : isPending
+            ? 'color-mix(in srgb, var(--color-accent), transparent 92%)'
+            : 'color-mix(in srgb, var(--color-error), transparent 92%)',
+        borderColor: isSuccess
+          ? 'color-mix(in srgb, var(--color-success), transparent 75%)'
+          : isPending
+            ? 'color-mix(in srgb, var(--color-accent), transparent 75%)'
+            : 'color-mix(in srgb, var(--color-error), transparent 75%)',
+      }}
+    >
+      <div className="flex items-center gap-2">
+        {/* 设备图标 */}
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+          style={{
+            background: isSuccess
+              ? 'color-mix(in srgb, var(--color-success), transparent 80%)'
+              : isPending
+                ? 'color-mix(in srgb, var(--color-accent), transparent 80%)'
+                : 'color-mix(in srgb, var(--color-error), transparent 80%)',
+          }}
+        >
+          <Icon size={11} className={
+            isSuccess ? 'text-success' : isPending ? 'text-accent' : 'text-error'
+          } />
+        </span>
+
+        {/* 标签 + 描述 */}
+        <div className="min-w-0 flex-1">
+          <span className="text-xs font-medium text-text">{meta.label}</span>
+          {desc && (
+            <span className="ml-1.5 text-xs text-text-muted">{desc}</span>
+          )}
+        </div>
+
+        {/* 状态指示 */}
+        <span className="shrink-0">
+          {isPending ? (
+            <Loader2 size={12} className="text-accent animate-spin" />
+          ) : isSuccess ? (
+            <Check size={12} className="text-success" />
+          ) : (
+            <AlertCircle size={12} className="text-error" />
+          )}
+        </span>
+      </div>
+
+      {/* 执行结果摘要 */}
+      {toolCall.summary && (
+        <p className="mt-1.5 text-xs text-text-muted leading-relaxed pl-8">
+          {toolCall.summary}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * 渲染单条消息内容（文字 + 图片 + 工具调用反馈）
  */
 function MessageContent({
   msg,
@@ -163,7 +284,10 @@ function MessageContent({
     ...(extraImageUrl ? [{ alt: '截图', url: extraImageUrl }] : []),
   ];
 
-  if (text || allImages.length > 0) {
+  const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
+  const hasContent = text || allImages.length > 0;
+
+  if (hasContent || hasToolCalls) {
     return (
       <>
         {text && (
@@ -174,7 +298,7 @@ function MessageContent({
             )}
           </span>
         )}
-        {!text && msg.streaming && allImages.length === 0 && (
+        {!text && msg.streaming && allImages.length === 0 && !hasToolCalls && (
           <span className="flex items-center gap-1.5 text-text-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             <span className="text-xs">
@@ -183,6 +307,13 @@ function MessageContent({
           </span>
         )}
         {allImages.length > 0 && <MessageImageCard images={allImages} />}
+        {hasToolCalls && (
+          <div className="space-y-1">
+            {msg.toolCalls!.map((tc, idx) => (
+              <ToolCallCard key={`${tc.tool}-${idx}`} toolCall={tc} />
+            ))}
+          </div>
+        )}
       </>
     );
   }

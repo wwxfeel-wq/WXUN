@@ -103,6 +103,16 @@ export interface ChatMessage {
   summary?: string;
   createdAt: number;
   streaming?: boolean;
+  imageUrl?: string;
+  toolCalls?: ToolCallInfo[];
+}
+
+/** IoT tool call info for real-time device control feedback in chat. */
+export interface ToolCallInfo {
+  tool: string;
+  args?: Record<string, unknown>;
+  success?: boolean;
+  summary?: string;
 }
 
 /** Family member within a family group. */

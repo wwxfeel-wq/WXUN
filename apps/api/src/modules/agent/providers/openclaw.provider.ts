@@ -139,6 +139,25 @@ export class OpenClawProvider extends AgentRuntimeProvider {
       // WeChat mode: lightweight tool detection before streaming (no full plan/reason)
       const isWechat = state.mode === 'wechat';
 
+      // chat 模式下，如果用户消息包含 IoT/智能家居关键词，
+      // 则启用轻量级工具检测（与 wechat 模式相同的流程）
+      const IOT_KEYWORDS = [
+        '扫地', '扫地机', '机器人', '清扫', '打扫', '扫一下', '吸尘',
+        '开灯', '关灯', '灯', '亮度',
+        '空调', '温度', '制热', '制冷',
+        '冰箱', '食材',
+        '门锁', '锁门', '上锁',
+        '摄像头', '监控',
+        '窗帘', '拉开', '拉上',
+        '药盒', '吃药', '服药',
+        '烟雾', '报警',
+        '空气净化', '净化器',
+        '设备', '家居', '家电', '智能',
+        '启动', '停止', '控制',
+        '联动', '安排',
+      ];
+      const hasIoTIntent = isSimpleChat && IOT_KEYWORDS.some((kw) => input.message.includes(kw));
+
       if (!isSimpleChat && !isWechat) {
         // Full pipeline for non-chat modes
         // Step 3: Plan with full user + family context
@@ -212,11 +231,11 @@ export class OpenClawProvider extends AgentRuntimeProvider {
         }
       }
 
-      // ── WeChat mode: lightweight tool detection ──────────────────
-      // 在流式回复前，先做一轮 LLM 工具选择，让微信消息能触发
-      // 童忆引擎工具（detect_kindness, create_kindness_memory 等），
+      // ── WeChat mode / IoT intent: lightweight tool detection ─────
+      // 在流式回复前，先做一轮 LLM 工具选择，让微信消息或 IoT 指令能触发
+      // 工具调用（扫地机控制、设备开关、童忆引擎等），
       // 但跳过完整的 plan/reason 管线以保持低延迟。
-      if (isWechat) {
+      if (isWechat || hasIoTIntent) {
         const wechatToolSchemas = this.toolCalling.getToolSchemas(state.agentType);
         if (wechatToolSchemas.length > 0) {
           try {

@@ -164,6 +164,41 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
             return next;
           });
         },
+        onToolCall: (tool, args) => {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            const existing = next[idx].toolCalls ?? [];
+            next[idx] = {
+              ...next[idx],
+              toolCalls: [...existing, { tool, args }],
+              streaming: true,
+            };
+            return next;
+          });
+        },
+        onObservation: (data) => {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiMessageId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            const calls = [...(next[idx].toolCalls ?? [])];
+            // 更新最后一个未完成的工具调用
+            for (let i = calls.length - 1; i >= 0; i--) {
+              if (calls[i].success === undefined) {
+                calls[i] = {
+                  ...calls[i],
+                  success: data.success,
+                  summary: data.summary,
+                };
+                break;
+              }
+            }
+            next[idx] = { ...next[idx], toolCalls: calls, streaming: true };
+            return next;
+          });
+        },
         onSkillExp: (skillName, expGained, agentCode) => {
           setSkillNotice({ type: 'exp', skillName, exp: expGained, agentCode });
         },
