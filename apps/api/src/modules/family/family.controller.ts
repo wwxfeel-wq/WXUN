@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -22,6 +23,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class FamilyController {
+  private readonly logger = new Logger(FamilyController.name);
+
   constructor(
     private readonly familyService: FamilyService,
     private readonly supervisionService: SupervisionService,
@@ -107,10 +110,16 @@ export class FamilyController {
     description: '根据设备状态和时间段生成督促任务，返回当前活跃的督促任务列表',
   })
   async getSupervisions(@CurrentUser('userId') userId: string) {
-    // 先根据最新设备状态生成督促任务，再返回活跃列表
-    await this.supervisionService.generateSupervisions(userId);
-    const tasks = await this.supervisionService.getActiveSupervisions(userId);
-    return { supervisions: tasks, count: tasks.length };
+    try {
+      await this.supervisionService.generateSupervisions(userId);
+      const tasks = await this.supervisionService.getActiveSupervisions(userId);
+      return { supervisions: tasks, count: tasks.length };
+    } catch (error) {
+      this.logger.error(
+        `获取督促任务失败 (userId=${userId}): ${(error as Error).message}\n${(error as Error).stack}`,
+      );
+      return { supervisions: [], count: 0 };
+    }
   }
 
   @Post('families/supervisions/:id/resolve')
