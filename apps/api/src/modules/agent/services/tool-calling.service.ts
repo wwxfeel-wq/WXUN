@@ -114,6 +114,9 @@ export class ToolCallingService {
       'list_iot_devices',
       'control_device',
       'get_device_status',
+      'start_vacuum_cleaning',
+      'stop_vacuum_cleaning',
+      'get_vacuum_status',
     ];
 
     const toolMap: Record<string, string[]> = {

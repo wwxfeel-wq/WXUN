@@ -227,6 +227,89 @@ const MOCK_DEVICE_SEEDS: MockDeviceSeed[] = [
     online: true,
     properties: { temperature: 32, humidity: 45, lightLevel: 'high', uvIndex: 7 },
   },
+  // ===== 智能冰箱（厨房） =====
+  {
+    id: 'mock:fridge-kitchen',
+    name: '智能冰箱',
+    room: '厨房',
+    type: 'fridge',
+    status: 'on',
+    online: true,
+    properties: {
+      temperature: 4,
+      doorOpen: false,
+      foodItems: [
+        { name: '牛奶', expiryDays: 2, addedDays: 5 },
+        { name: '鸡蛋', expiryDays: 8, addedDays: 10 },
+        { name: '青菜', expiryDays: 0, addedDays: 3 },
+        { name: '酸奶', expiryDays: 1, addedDays: 7 },
+      ],
+      healthScore: 85,
+    },
+  },
+  // ===== 智能门锁（玄关） =====
+  {
+    id: 'mock:door-lock-front',
+    name: '智能门锁',
+    room: '玄关',
+    type: 'lock',
+    status: 'on',
+    online: true,
+    properties: {
+      locked: true,
+      lastOpenTime: '2026-08-06 08:30',
+      unlockCount: 3,
+      batteryLevel: 72,
+      autoLock: true,
+    },
+  },
+  // ===== 烟雾报警器（厨房） =====
+  {
+    id: 'mock:smoke-alarm-kitchen',
+    name: '烟雾报警器',
+    room: '厨房',
+    type: 'alarm',
+    status: 'on',
+    online: true,
+    properties: {
+      smokeDetected: false,
+      coLevel: 0,
+      batteryLevel: 88,
+      testPassed: true,
+      lastTestDate: '2026-08-01',
+    },
+  },
+  // ===== 智能药盒（主卧） =====
+  {
+    id: 'mock:medicine-box-bedroom',
+    name: '智能药盒',
+    room: '主卧',
+    type: 'medical',
+    status: 'on',
+    online: true,
+    properties: {
+      compartments: 4,
+      nextDose: { time: '08:00', medication: '降压药', taken: false },
+      missedDoses: 1,
+      lastTakenTime: '2026-08-05 20:00',
+    },
+  },
+  // ===== 智能摄像头（客厅） =====
+  {
+    id: 'mock:camera-living',
+    name: '智能摄像头',
+    room: '客厅',
+    type: 'camera',
+    status: 'on',
+    online: true,
+    properties: {
+      recording: false,
+      motionDetected: true,
+      nightVision: true,
+      storageLeft: 76,
+      lastMotionTime: '2026-08-06 07:15',
+    },
+  },
 ];
 
 /**

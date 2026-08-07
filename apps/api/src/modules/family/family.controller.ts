@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FamilyService, JoinFamilyPayload } from './family.service';
+import { SupervisionService } from './supervision.service';
 import { CreateFamilyDto } from './dto/create-family.dto';
 import { ShareMemoryDto } from './dto/share-memory.dto';
 import { QuerySharedMemoryDto } from './dto/query-shared-memory.dto';
@@ -21,7 +22,17 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class FamilyController {
-  constructor(private readonly familyService: FamilyService) {}
+  constructor(
+    private readonly familyService: FamilyService,
+    private readonly supervisionService: SupervisionService,
+  ) {}
+
+  @Get('families')
+  @ApiOperation({ summary: '获取我的家庭列表', description: '获取当前用户加入的所有家庭组' })
+  async listMyFamilies(@CurrentUser('userId') userId: string) {
+    const families = await this.familyService.listUserFamilies(userId);
+    return { families, count: families.length };
+  }
 
   @Post('families')
   @ApiOperation({ summary: '创建家庭', description: '创建一个新的家庭组，创建者自动成为管理员' })
@@ -84,5 +95,34 @@ export class FamilyController {
   async leaveFamily(@CurrentUser('userId') userId: string, @Param('id') id: string) {
     await this.familyService.leaveFamily(userId, id);
     return { success: true };
+  }
+
+  // ============================================================
+  // 督促提醒（家长角色体系）
+  // ============================================================
+
+  @Get('families/supervisions')
+  @ApiOperation({
+    summary: '获取督促任务列表',
+    description: '根据设备状态和时间段生成督促任务，返回当前活跃的督促任务列表',
+  })
+  async getSupervisions(@CurrentUser('userId') userId: string) {
+    // 先根据最新设备状态生成督促任务，再返回活跃列表
+    await this.supervisionService.generateSupervisions(userId);
+    const tasks = await this.supervisionService.getActiveSupervisions(userId);
+    return { supervisions: tasks, count: tasks.length };
+  }
+
+  @Post('families/supervisions/:id/resolve')
+  @ApiOperation({
+    summary: '标记督促任务已完成',
+    description: '将指定的督促任务标记为已完成状态',
+  })
+  async resolveSupervision(
+    @CurrentUser('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    const task = await this.supervisionService.resolveSupervision(userId, id);
+    return { success: true, supervision: task };
   }
 }

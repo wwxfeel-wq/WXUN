@@ -99,6 +99,29 @@ export class IoTService {
     return devices.find((d) => d.id === deviceId) ?? null;
   }
 
+  /**
+   * 启动扫地机器人清扫（门面方法，委托给 MockProvider）。
+   */
+  startVacuumCleaning(mode: 'quick' | 'deep' | 'spot') {
+    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const battery = Number(vacuum?.properties.battery ?? 85);
+    return this.mockProvider.startCleaning(mode, battery);
+  }
+
+  /**
+   * 获取扫地机器人实时状态（门面方法）。
+   */
+  getVacuumStatus() {
+    return this.mockProvider.getVacuumState();
+  }
+
+  /**
+   * 停止扫地机器人清扫（门面方法）。
+   */
+  stopVacuumCleaning() {
+    return this.mockProvider.stopCleaning();
+  }
+
   // ============================================================
   // 平台凭证管理
   // ============================================================

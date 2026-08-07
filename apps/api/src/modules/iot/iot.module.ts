@@ -20,6 +20,6 @@ import { NotificationModule } from '../notification/notification.module';
   imports: [NotificationModule],
   controllers: [IoTController],
   providers: [IoTService, MihomeProvider, HomekitProvider, MockProvider, IoTSchedulerService],
-  exports: [IoTService, IoTSchedulerService],
+  exports: [IoTService, IoTSchedulerService, MockProvider],
 })
 export class IoTModule {}

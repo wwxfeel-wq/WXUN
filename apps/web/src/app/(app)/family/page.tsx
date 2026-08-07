@@ -13,6 +13,12 @@ import {
   X,
   Clock,
   BookOpen,
+  Bell,
+  AlertCircle,
+  Heart,
+  Shield,
+  ShoppingBag,
+  Pill,
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
@@ -49,10 +55,29 @@ const springHover = {
 export default function FamilyPage() {
   const [familyId, setFamilyId] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+  const [autoDetecting, setAutoDetecting] = React.useState(false);
 
   React.useEffect(() => {
-    setFamilyId(getCurrentFamilyId());
-    setHydrated(true);
+    const stored = getCurrentFamilyId();
+    if (stored) {
+      setFamilyId(stored);
+      setHydrated(true);
+      return;
+    }
+    setAutoDetecting(true);
+    swrFetcher<{ families: Array<{ id: string }> }>('/families')
+      .then((res) => {
+        if (res.families && res.families.length > 0) {
+          const firstId = res.families[0].id;
+          setCurrentFamilyId(firstId);
+          setFamilyId(firstId);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setAutoDetecting(false);
+        setHydrated(true);
+      });
   }, []);
 
   const { data: family, mutate, isLoading } = useSWR<Family>(
@@ -63,8 +88,8 @@ export default function FamilyPage() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [joinOpen, setJoinOpen] = React.useState(false);
 
-  if (!hydrated) {
-    return <FullScreenLoader />;
+  if (!hydrated || autoDetecting) {
+    return <FullScreenLoader label="正在查找你的家庭..." />;
   }
 
   if (!familyId) {
@@ -332,7 +357,11 @@ function FamilyDetail({ familyId }: { familyId: string }) {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+    <div className="space-y-6">
+      {/* 时墨督促提醒 */}
+      <SupervisionSection />
+
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
       {/* Members */}
       <GlassLayer
         asChild
@@ -443,6 +472,7 @@ function FamilyDetail({ familyId }: { familyId: string }) {
           )}
         </motion.div>
       </GlassLayer>
+      </div>
 
       <ShareMemoryModal
         familyId={familyId}
@@ -773,5 +803,163 @@ function ShareMemoryModal({
         {error && <p className="text-sm text-error">{error}</p>}
       </div>
     </Modal>
+  );
+}
+
+// ============================================================
+// 时墨督促提醒区域
+// ============================================================
+
+interface Supervision {
+  id: string;
+  familyMember: { name: string; role: string; avatar: string };
+  type: string;
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'active' | 'resolved' | 'snoozed';
+  sourceDevice?: string;
+  suggestedAction: string;
+  createdAt: string;
+  dueAt?: string;
+}
+
+const SUPERVISION_TYPE_META: Record<string, { icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>; color: string; label: string }> = {
+  medication_reminder: { icon: Pill, color: 'var(--color-error)', label: '用药提醒' },
+  homework_reminder: { icon: BookOpen, color: 'var(--color-info)', label: '学习提醒' },
+  grocery_reminder: { icon: ShoppingBag, color: 'var(--color-warning)', label: '食材提醒' },
+  safety_check: { icon: Shield, color: 'var(--color-error)', label: '安全检查' },
+  health_check: { icon: Heart, color: 'var(--color-accent)', label: '健康关怀' },
+  schedule_reminder: { icon: Clock, color: 'var(--color-text-muted)', label: '日程提醒' },
+};
+
+const PRIORITY_STYLE: Record<string, string> = {
+  high: 'border-error/30 bg-error/[0.06]',
+  medium: 'border-warning/20 bg-warning/[0.04]',
+  low: 'border-transparent bg-[rgba(255,255,255,0.03)]',
+};
+
+function SupervisionSection() {
+  const { data, mutate } = useSWR<{ supervisions: Supervision[] }>(
+    '/families/supervisions',
+    swrFetcher,
+    { refreshInterval: 10000 },
+  );
+  const [resolving, setResolving] = React.useState<string | null>(null);
+
+  const supervisions = data?.supervisions ?? [];
+  const activeCount = supervisions.filter((s) => s.status === 'active').length;
+
+  const handleResolve = async (id: string) => {
+    setResolving(id);
+    try {
+      await apiClient.post(`/families/supervisions/${id}/resolve`);
+      await mutate();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : '操作失败');
+    } finally {
+      setResolving(null);
+    }
+  };
+
+  if (activeCount === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <GlassLayer asChild intensity="default" className="p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
+              <Check className="h-4 w-4 text-success" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-text">家人一切安好</p>
+              <p className="text-xs text-text-muted">时墨正在守护家庭，暂无需要关注的事项</p>
+            </div>
+          </div>
+        </GlassLayer>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Bell size={15} className="text-accent" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-text">时墨督促提醒</h2>
+        <Badge variant="accent">{activeCount}</Badge>
+        <span className="text-xs text-text-subtle">时墨以家长身份关注家人</span>
+      </div>
+
+      <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {supervisions.filter((s) => s.status === 'active').map((sup) => {
+          const meta = SUPERVISION_TYPE_META[sup.type] ?? { icon: AlertCircle, color: 'var(--color-text-muted)', label: '提醒' };
+          const Icon = meta.icon;
+          return (
+            <StaggerItem key={sup.id}>
+              <GlassLayer
+                asChild
+                intensity="default"
+                className={cn('p-4 border', PRIORITY_STYLE[sup.priority])}
+              >
+                <motion.div whileHover={{ y: -2 }} transition={springHover}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                      style={{ backgroundColor: `color-mix(in srgb, ${meta.color}, transparent 88%)` }}
+                    >
+                      <Icon size={14} style={{ color: meta.color }} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-lg">{sup.familyMember.avatar}</span>
+                        <p className="text-sm font-medium text-text truncate">{sup.title}</p>
+                      </div>
+                      <p className="text-xs text-text-muted line-clamp-2">{sup.description}</p>
+                    </div>
+                    {sup.priority === 'high' && (
+                      <span className="flex items-center gap-0.5 shrink-0 text-xs text-error">
+                        <AlertCircle size={10} />
+                        紧急
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-text-subtle">
+                      <span>{sup.familyMember.name}</span>
+                      <span>·</span>
+                      <span>{meta.label}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleResolve(sup.id)}
+                      disabled={resolving === sup.id}
+                      className="gap-1.5 shrink-0"
+                    >
+                      <Check size={12} />
+                      已处理
+                    </Button>
+                  </div>
+
+                  {sup.suggestedAction && (
+                    <p className="mt-2 text-xs text-accent bg-accent/5 rounded-lg px-2.5 py-1.5">
+                      {sup.suggestedAction}
+                    </p>
+                  )}
+                </motion.div>
+              </GlassLayer>
+            </StaggerItem>
+          );
+        })}
+      </StaggerContainer>
+    </motion.div>
   );
 }

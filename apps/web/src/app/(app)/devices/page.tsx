@@ -29,16 +29,30 @@ import {
   Route,
   Battery,
   Clock,
+  Refrigerator,
+  Lock,
+  Siren,
+  Pill,
+  Camera,
+  Bell,
+  AlertCircle,
+  Heart,
+  Shield,
+  ShoppingBag,
+  BookOpen,
+  Check,
 } from 'lucide-react';
 import useSWR from 'swr';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
 import { GlassLayer } from '@/components/glass';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { FullScreenLoader } from '@/components/ui/loading';
 import { apiClient, swrFetcher, ApiError } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 
 // ============================================================
 // 类型定义（镜像后端 iot.types.ts）
@@ -52,7 +66,12 @@ type DeviceType =
   | 'sensor'
   | 'switch'
   | 'curtain'
-  | 'air_purifier';
+  | 'air_purifier'
+  | 'fridge'
+  | 'lock'
+  | 'alarm'
+  | 'medical'
+  | 'camera';
 
 type DeviceStatus = 'on' | 'off' | 'running' | 'idle' | 'charging';
 
@@ -98,6 +117,11 @@ const DEVICE_ICON_MAP: Record<DeviceType, React.ComponentType<{ size?: number; c
   switch: ToggleRight,
   curtain: Columns3,
   air_purifier: Wind,
+  fridge: Refrigerator,
+  lock: Lock,
+  alarm: Siren,
+  medical: Pill,
+  camera: Camera,
 };
 
 const DEVICE_TYPE_LABEL: Record<DeviceType, string> = {
@@ -109,6 +133,11 @@ const DEVICE_TYPE_LABEL: Record<DeviceType, string> = {
   switch: '开关',
   curtain: '窗帘',
   air_purifier: '空气净化器',
+  fridge: '冰箱',
+  lock: '门锁',
+  alarm: '报警器',
+  medical: '药盒',
+  camera: '摄像头',
 };
 
 const PLATFORM_LABEL: Record<IoTPlatform, string> = {
@@ -159,7 +188,7 @@ export default function DevicesPage() {
 
   // 绑定弹窗状态
   const [bindModal, setBindModal] = React.useState<IoTPlatform | null>(null);
-  const [sceneLoading, setSceneLoading] = React.useState<string | null>(null);
+  const [, setSceneLoading] = React.useState<string | null>(null);
 
   const triggerScene = async (scene: string) => {
     setSceneLoading(scene);
@@ -222,7 +251,7 @@ export default function DevicesPage() {
               <PlatformCard
                 platform="mock"
                 bound={true}
-                updatedAt={new Date()}
+                updatedAt={new Date().toISOString()}
                 onBind={() => {}}
                 onUnbind={async () => {}}
               />
@@ -270,6 +299,9 @@ export default function DevicesPage() {
               <SceneButton scene="patrol" icon={Search} label="环境巡检" desc="温湿度·空气" onTrigger={triggerScene} />
             </div>
           </motion.div>
+
+          {/* ===== 时墨督促提醒 ===== */}
+          <DeviceSupervisionSection />
 
           {/* ===== 扫地机器人路线规划 ===== */}
           <VacuumRouteSection />
@@ -885,14 +917,6 @@ const ROOM_COLORS: Record<string, string> = {
   阳台: 'rgba(244, 114, 182, 0.15)',
 };
 
-const ACTION_ICONS: Record<string, string> = {
-  enter: '→',
-  clean: '··',
-  turn: '↻',
-  avoid: '⚠',
-  dock: '⌂',
-};
-
 function VacuumRouteSection() {
   const { data: vacuumState, mutate } = useSWR<VacuumState>(
     '/iot/vacuum/status',
@@ -939,7 +963,7 @@ function VacuumRouteSection() {
       transition={{ duration: 0.5, delay: 0.2, ease: EASE }}
       className="mb-8"
     >
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center justify-center gap-2 mb-4">
         <Route size={15} className="text-accent" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-text">扫地机器人路线规划</h2>
         <span className="text-xs text-text-subtle">
@@ -956,14 +980,14 @@ function VacuumRouteSection() {
       <GlassLayer asChild intensity="strong" className="p-5 sm:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 左侧：SVG 路线地图 */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center justify-between mb-3 w-full">
               <p className="text-xs font-medium text-text-muted">清扫路线图</p>
               {route && (
                 <span className="text-xs text-text-subtle">{route.name}</span>
               )}
             </div>
-            <div className="relative rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)' }}>
+            <div className="relative rounded-xl overflow-hidden w-full max-w-md mx-auto" style={{ background: 'rgba(0,0,0,0.2)' }}>
               <svg viewBox="0 0 100 90" className="w-full" style={{ aspectRatio: '10/9' }}>
                 {/* 房间矩形 */}
                 {Object.entries({
@@ -990,8 +1014,9 @@ function VacuumRouteSection() {
                       y={layout.y + layout.h / 2}
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fill="rgba(255,255,255,0.3)"
-                      fontSize="3"
+                      fill="rgba(255,255,255,0.35)"
+                      fontSize="4"
+                      fontWeight="500"
                     >
                       {room}
                     </text>
@@ -1066,7 +1091,7 @@ function VacuumRouteSection() {
 
             {/* 进度条 */}
             {route && (
-              <div className="mt-3">
+              <div className="mt-3 w-full max-w-md mx-auto">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs text-text-muted">清扫进度</span>
                   <span className="text-xs font-medium text-text">{progress}%</span>
@@ -1148,10 +1173,10 @@ function VacuumRouteSection() {
 
             {/* 事件日志 */}
             {vacuumState?.events && vacuumState.events.length > 0 && (
-              <div className="rounded-lg p-3 max-h-32 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="rounded-lg p-3 max-h-48 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
                 <p className="text-xs font-medium text-text mb-2">事件日志</p>
                 <div className="space-y-1.5">
-                  {vacuumState.events.slice(-5).reverse().map((evt, i) => (
+                  {vacuumState.events.slice(-8).reverse().map((evt, i) => (
                     <div key={i} className="flex items-start gap-2 text-xs">
                       <span className="shrink-0 mt-0.5">
                         {evt.type === 'obstacle' ? '⚠️' :
@@ -1167,7 +1192,7 @@ function VacuumRouteSection() {
             )}
 
             {/* 控制按钮 */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {!isCleaning ? (
                 <>
                   <Button
@@ -1241,5 +1266,140 @@ function StatusMetric({
       </div>
       <p className="text-sm font-semibold" style={{ color }}>{value}</p>
     </div>
+  );
+}
+
+// ============================================================
+// 时墨督促提醒（设备页精简版）
+// ============================================================
+
+interface DeviceSupervision {
+  id: string;
+  familyMember: { name: string; role: string; avatar: string };
+  type: string;
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'active' | 'resolved' | 'snoozed';
+  sourceDevice?: string;
+  suggestedAction: string;
+}
+
+const SUP_META: Record<string, { icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>; color: string; label: string }> = {
+  medication_reminder: { icon: Pill, color: 'var(--color-error)', label: '用药' },
+  homework_reminder: { icon: BookOpen, color: 'var(--color-info)', label: '学习' },
+  grocery_reminder: { icon: ShoppingBag, color: 'var(--color-warning)', label: '食材' },
+  safety_check: { icon: Shield, color: 'var(--color-error)', label: '安全' },
+  health_check: { icon: Heart, color: 'var(--color-accent)', label: '健康' },
+  schedule_reminder: { icon: Clock, color: 'var(--color-text-muted)', label: '日程' },
+};
+
+const SUP_PRIORITY: Record<string, string> = {
+  high: 'border-error/30 bg-error/[0.06]',
+  medium: 'border-warning/20 bg-warning/[0.04]',
+  low: 'border-transparent bg-[rgba(255,255,255,0.03)]',
+};
+
+function DeviceSupervisionSection() {
+  const { data, mutate } = useSWR<{ supervisions: DeviceSupervision[] }>(
+    '/families/supervisions',
+    swrFetcher,
+    { refreshInterval: 15000 },
+  );
+  const [resolving, setResolving] = React.useState<string | null>(null);
+
+  const supervisions = data?.supervisions ?? [];
+  const activeList = supervisions.filter((s) => s.status === 'active');
+
+  if (activeList.length === 0) return null;
+
+  const handleResolve = async (id: string) => {
+    setResolving(id);
+    try {
+      await apiClient.post(`/families/supervisions/${id}/resolve`);
+      await mutate();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : '操作失败');
+    } finally {
+      setResolving(null);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.12, ease: EASE }}
+      className="mb-8"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Bell size={15} className="text-accent" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-text">时墨督促提醒</h2>
+        <Badge variant="accent">{activeList.length}</Badge>
+        <span className="text-xs text-text-subtle">基于设备状态自动检测</span>
+      </div>
+
+      <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {activeList.map((sup) => {
+          const meta = SUP_META[sup.type] ?? { icon: AlertCircle, color: 'var(--color-text-muted)', label: '提醒' };
+          const Icon = meta.icon;
+          return (
+            <StaggerItem key={sup.id}>
+              <GlassLayer
+                asChild
+                intensity="default"
+                className={cn('p-4 border', SUP_PRIORITY[sup.priority])}
+              >
+                <motion.div whileHover={{ y: -2 }} transition={springHover}>
+                  <div className="flex items-start gap-3 mb-2">
+                    <span
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: `color-mix(in srgb, ${meta.color}, transparent 88%)` }}
+                    >
+                      <Icon size={13} style={{ color: meta.color }} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-sm">{sup.familyMember.avatar}</span>
+                        <p className="text-xs font-medium text-text truncate">{sup.title}</p>
+                      </div>
+                      <p className="text-[11px] text-text-muted line-clamp-2">{sup.description}</p>
+                    </div>
+                    {sup.priority === 'high' && (
+                      <span className="flex items-center gap-0.5 shrink-0 text-[10px] text-error">
+                        <AlertCircle size={10} />
+                        紧急
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-text-subtle">
+                      {sup.familyMember.name} · {meta.label}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleResolve(sup.id)}
+                      disabled={resolving === sup.id}
+                      className="gap-1 shrink-0 h-7 px-2"
+                    >
+                      <Check size={11} />
+                      已处理
+                    </Button>
+                  </div>
+
+                  {sup.suggestedAction && (
+                    <p className="mt-1.5 text-[10px] text-accent bg-accent/5 rounded-md px-2 py-1">
+                      {sup.suggestedAction}
+                    </p>
+                  )}
+                </motion.div>
+              </GlassLayer>
+            </StaggerItem>
+          );
+        })}
+      </StaggerContainer>
+    </motion.div>
   );
 }

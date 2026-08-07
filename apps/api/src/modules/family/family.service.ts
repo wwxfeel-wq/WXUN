@@ -39,6 +39,35 @@ export class FamilyService {
   // ============================================================
 
   /**
+   * List all families the user belongs to.
+   * Used for auto-detecting existing families on frontend load.
+   */
+  async listUserFamilies(userId: string) {
+    const memberships = await this.prisma.familyMember.findMany({
+      where: { userId },
+      include: {
+        family: {
+          include: {
+            _count: { select: { members: true } },
+          },
+        },
+      },
+      orderBy: { joinedAt: 'desc' },
+    });
+
+    return memberships.map((m) => ({
+      id: m.family.id,
+      name: m.family.name,
+      description: m.family.description,
+      creatorId: m.family.creatorId,
+      createdAt: m.family.createdAt,
+      updatedAt: m.family.updatedAt,
+      memberCount: m.family._count.members,
+      role: m.role,
+    }));
+  }
+
+  /**
    * Create a new family group. The creator becomes the family admin.
    * Also generates an invite code stored in Redis for joining.
    */

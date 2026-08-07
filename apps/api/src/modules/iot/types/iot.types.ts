@@ -14,7 +14,12 @@ export type DeviceType =
   | 'sensor'
   | 'switch'
   | 'curtain'
-  | 'air_purifier';
+  | 'air_purifier'
+  | 'fridge'
+  | 'lock'
+  | 'alarm'
+  | 'medical'
+  | 'camera';
 
 /** 设备运行状态 */
 export type DeviceStatus =

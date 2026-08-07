@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { FamilyService } from './family.service';
 import { FamilyController } from './family.controller';
+import { SupervisionService } from './supervision.service';
+import { IoTModule } from '../iot/iot.module';
 
 @Module({
-  providers: [FamilyService],
+  imports: [IoTModule],
+  providers: [FamilyService, SupervisionService],
   controllers: [FamilyController],
-  exports: [FamilyService],
+  exports: [FamilyService, SupervisionService],
 })
 export class FamilyModule {}

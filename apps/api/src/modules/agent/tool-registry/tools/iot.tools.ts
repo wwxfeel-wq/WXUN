@@ -21,6 +21,11 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
   switch: '开关',
   curtain: '窗帘',
   air_purifier: '空气净化器',
+  fridge: '冰箱',
+  lock: '门锁',
+  alarm: '报警器',
+  medical: '药盒',
+  camera: '摄像头',
 };
 
 const DEVICE_STATUS_LABELS: Record<string, string> = {
@@ -42,6 +47,10 @@ const ALLOWED_ACTIONS: DeviceAction[] = ['turn_on', 'turn_off', 'set_property'];
  * - control_device：对指定设备下发控制指令
  * - get_device_status：查询单个设备的当前状态
  *
+ * 支持的设备类型涵盖灯光、空调、扫地机器人、空气净化器、窗帘、传感器、
+ * 智能冰箱（食材过期/温度/门状态）、智能门锁（锁定状态/电量）、
+ * 智能药盒（服药提醒/漏服记录）、智能摄像头（移动侦测/夜视）等。
+ *
  * 所有工具通过 IoTService 操作，设备 ID 采用
  * `${platform}:${nativeId}` 编码，控制时自动路由到对应平台。
  */
@@ -58,6 +67,9 @@ export class IoTTools {
       this.listIotDevices(),
       this.controlDevice(),
       this.getDeviceStatus(),
+      this.startVacuumCleaning(),
+      this.stopVacuumCleaning(),
+      this.getVacuumStatus(),
     ];
   }
 
@@ -69,7 +81,7 @@ export class IoTTools {
     return {
       name: 'list_iot_devices',
       description:
-        '列举用户所有智能设备（含内置演示设备：灯光、空调、扫地机器人、空气净化器、窗帘、传感器等），可用于分析家庭环境和操控设备',
+        '列举用户所有智能设备（含内置演示设备：灯光、空调、扫地机器人、空气净化器、窗帘、传感器、智能冰箱、智能门锁、烟雾报警器、智能药盒、智能摄像头等），可用于分析家庭环境和操控设备',
       parameters: {
         type: 'object',
         properties: {},
@@ -125,7 +137,7 @@ export class IoTTools {
     return {
       name: 'control_device',
       description:
-        '对指定智能设备下发控制指令（开/关/设置属性）。支持灯光亮度调节、空调温度设置、扫地机器人启动清扫（mode=start_cleaning）、窗帘位置控制等',
+        '对指定智能设备下发控制指令（开/关/设置属性）。支持灯光亮度调节、空调温度设置、扫地机器人启动清扫（mode=start_cleaning）、窗帘位置控制、冰箱温度调节（temperature）、门锁开关（locked）、摄像头录制开关（recording）等',
       parameters: {
         type: 'object',
         properties: {
@@ -141,7 +153,7 @@ export class IoTTools {
           property: {
             type: 'string',
             description:
-              'set_property 动作时指定的属性名（brightness 亮度 / temperature 温度 / mode 模式 / position 窗帘位置 / fanSpeed 风速）',
+              'set_property 动作时指定的属性名（brightness 亮度 / temperature 温度 / mode 模式 / position 窗帘位置 / fanSpeed 风速 / locked 门锁开关 / recording 摄像头录制 / doorOpen 冰箱门状态）',
           },
           value: {
             type: 'string',
@@ -229,7 +241,8 @@ export class IoTTools {
   private getDeviceStatus(): McpToolDefinition {
     return {
       name: 'get_device_status',
-      description: '查询单个智能设备的当前状态（在线状态、运行状态与属性）',
+      description:
+        '查询单个智能设备的当前状态（在线状态、运行状态与属性）。可用于查询冰箱食材过期情况、门锁锁定与电量状态、药盒服药提醒、摄像头移动侦测与录制状态等',
       parameters: {
         type: 'object',
         properties: {
@@ -280,6 +293,140 @@ export class IoTTools {
         tool: 'get_device_status',
         success: false,
         summary: `设备状态查询失败：${(error as Error).message}`,
+      };
+    }
+  }
+
+  // ============================================================
+  // start_vacuum_cleaning —— 启动扫地机器人
+  // ============================================================
+
+  private startVacuumCleaning(): McpToolDefinition {
+    return {
+      name: 'start_vacuum_cleaning',
+      description:
+        '启动扫地机器人清扫任务。支持三种模式：quick（快速清扫，约4分钟完成全屋）/ deep（深度清扫，覆盖更全面）/ spot（重点清扫，针对脏污区域）。用户说"打扫一下"/"清扫客厅"/"帮我拖地"等都可以调用此工具',
+      parameters: {
+        type: 'object',
+        properties: {
+          mode: {
+            type: 'string',
+            description: '清扫模式：quick（快速）/ deep（深度）/ spot（重点）',
+            enum: ['quick', 'deep', 'spot'],
+          },
+        },
+        required: [],
+      },
+      handler: async (args, _ctx) => this.handleStartVacuum(args),
+    };
+  }
+
+  private async handleStartVacuum(
+    args: Record<string, unknown>,
+  ): Promise<McpToolResult> {
+    const mode = (String(args.mode ?? 'deep').trim() as 'quick' | 'deep' | 'spot') || 'deep';
+
+    try {
+      const route = this.iotService.startVacuumCleaning(mode);
+
+      const roomSequence = route.waypoints
+        .filter((w) => w.action === 'enter')
+        .map((w) => w.room)
+        .join(' → ');
+
+      const durationMin = Math.floor(route.estimatedDurationSec / 60);
+
+      return {
+        tool: 'start_vacuum_cleaning',
+        success: true,
+        summary: `扫地机器人已启动${mode === 'quick' ? '快速' : mode === 'deep' ? '深度' : '重点'}清扫模式。路线：${roomSequence}，面积 ${route.totalArea}㎡，预计 ${durationMin} 分钟完成`,
+        data: { mode, route, rooms: roomSequence },
+      };
+    } catch (error) {
+      this.logger.warn(`start_vacuum_cleaning 失败：${(error as Error).message}`);
+      return {
+        tool: 'start_vacuum_cleaning',
+        success: false,
+        summary: `扫地机器人启动失败：${(error as Error).message}`,
+      };
+    }
+  }
+
+  // ============================================================
+  // stop_vacuum_cleaning —— 停止扫地机器人
+  // ============================================================
+
+  private stopVacuumCleaning(): McpToolDefinition {
+    return {
+      name: 'stop_vacuum_cleaning',
+      description: '停止扫地机器人当前清扫任务，机器人将返回充电桩',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+      handler: async (_args, _ctx) => this.handleStopVacuum(),
+    };
+  }
+
+  private async handleStopVacuum(): Promise<McpToolResult> {
+    try {
+      this.iotService.stopVacuumCleaning();
+      return {
+        tool: 'stop_vacuum_cleaning',
+        success: true,
+        summary: '扫地机器人已停止清扫，正在返回充电桩',
+      };
+    } catch (error) {
+      this.logger.warn(`stop_vacuum_cleaning 失败：${(error as Error).message}`);
+      return {
+        tool: 'stop_vacuum_cleaning',
+        success: false,
+        summary: `停止失败：${(error as Error).message}`,
+      };
+    }
+  }
+
+  // ============================================================
+  // get_vacuum_status —— 获取扫地机器人状态
+  // ============================================================
+
+  private getVacuumStatus(): McpToolDefinition {
+    return {
+      name: 'get_vacuum_status',
+      description: '查询扫地机器人的实时状态：是否在清扫、当前进度、电量、已清扫面积、事件日志等',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+      handler: async (_args, _ctx) => this.handleGetVacuumStatus(),
+    };
+  }
+
+  private async handleGetVacuumStatus(): Promise<McpToolResult> {
+    try {
+      const state = this.iotService.getVacuumStatus();
+      const progress = state.route && state.route.waypoints.length > 0
+        ? Math.round(((state.currentStep ?? 0) / state.route.waypoints.length) * 100)
+        : 0;
+
+      const summary = state.isCleaning
+        ? `扫地机器人正在${state.mode === 'quick' ? '快速' : state.mode === 'deep' ? '深度' : '重点'}清扫，进度 ${progress}%，位置：${state.currentRoom ?? '未知'}，电量 ${state.battery}%`
+        : `扫地机器人待命中，电量 ${state.battery}%`;
+
+      return {
+        tool: 'get_vacuum_status',
+        success: true,
+        summary,
+        data: state,
+      };
+    } catch (error) {
+      this.logger.warn(`get_vacuum_status 失败：${(error as Error).message}`);
+      return {
+        tool: 'get_vacuum_status',
+        success: false,
+        summary: `状态查询失败：${(error as Error).message}`,
       };
     }
   }

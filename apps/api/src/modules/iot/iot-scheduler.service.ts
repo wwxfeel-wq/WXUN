@@ -375,6 +375,99 @@ export class IoTSchedulerService {
       }
     }
 
+    // 6. 冰箱健康分析 — 温度异常 / 食材过期 / 门未关
+    const fridge = this.mockProvider.getDeviceRef('mock:fridge-kitchen');
+    if (fridge) {
+      const fridgeTemp = Number(fridge.properties.temperature ?? 4);
+      const doorOpen = Boolean(fridge.properties.doorOpen);
+      const foodItems =
+        (fridge.properties.foodItems as Array<{ name: string; expiryDays: number }>) ?? [];
+
+      // 温度异常检测（正常范围 2-8°C）
+      if (fridgeTemp < 2 || fridgeTemp > 8) {
+        actions.push(`冰箱温度异常：当前 ${fridgeTemp}°C，建议检查冰箱门是否关好`);
+        if (!affectedDevices.includes('智能冰箱')) affectedDevices.push('智能冰箱');
+      }
+
+      // 食材过期检查（expiryDays <= 0 视为已过期）
+      for (const item of foodItems) {
+        if (item.expiryDays <= 0) {
+          actions.push(`${item.name}已过期 ${Math.abs(item.expiryDays)} 天，请及时清理`);
+          if (!affectedDevices.includes('智能冰箱')) affectedDevices.push('智能冰箱');
+        }
+      }
+
+      // 冰箱门未关检测
+      if (doorOpen) {
+        actions.push('冰箱门当前处于打开状态，请及时关闭');
+        if (!affectedDevices.includes('智能冰箱')) affectedDevices.push('智能冰箱');
+      }
+    }
+
+    // 7. 门锁安全分析 — 未锁告警 / 低电量提醒
+    const doorLock = this.mockProvider.getDeviceRef('mock:door-lock-front');
+    if (doorLock) {
+      const locked = Boolean(doorLock.properties.locked);
+      const autoLock = Boolean(doorLock.properties.autoLock);
+      const batteryLevel = Number(doorLock.properties.batteryLevel ?? 100);
+
+      // 门锁未锁且开启了自动锁功能
+      if (!locked && autoLock) {
+        actions.push('门锁当前未锁定，但已开启自动锁功能，请检查门锁状态');
+        if (!affectedDevices.includes('智能门锁')) affectedDevices.push('智能门锁');
+      }
+
+      // 电量低于 30% 提醒更换电池
+      if (batteryLevel < 30) {
+        actions.push(`门锁电量低（${batteryLevel}%），请及时更换电池`);
+        if (!affectedDevices.includes('智能门锁')) affectedDevices.push('智能门锁');
+      }
+    }
+
+    // 8. 药盒提醒 — 针对留守老人场景
+    const medicineBox = this.mockProvider.getDeviceRef('mock:medicine-box-bedroom');
+    if (medicineBox) {
+      const nextDose = medicineBox.properties.nextDose as
+        | { time: string; medication: string; taken: boolean }
+        | undefined;
+      const missedDoses = Number(medicineBox.properties.missedDoses ?? 0);
+
+      if (nextDose) {
+        // 解析服药时间并与当前时间比较
+        const [doseHour, doseMinute] = nextDose.time.split(':').map(Number);
+        const now = new Date();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const doseMinutes = doseHour * 60 + doseMinute;
+
+        // 当前时间已过服药时间但尚未服用
+        if (nowMinutes > doseMinutes && !nextDose.taken) {
+          actions.push(
+            `药盒提醒：${nextDose.medication}（${nextDose.time}）尚未服用，请提醒爷爷吃药`,
+          );
+          if (!affectedDevices.includes('智能药盒')) affectedDevices.push('智能药盒');
+        }
+      }
+
+      // 漏服次数告警
+      if (missedDoses > 0) {
+        actions.push(`药盒告警：已有 ${missedDoses} 次漏服记录，请关注老人服药情况`);
+        if (!affectedDevices.includes('智能药盒')) affectedDevices.push('智能药盒');
+      }
+    }
+
+    // 9. 摄像头异常检测 — 深夜时段移动侦测
+    const camera = this.mockProvider.getDeviceRef('mock:camera-living');
+    if (camera) {
+      const motionDetected = Boolean(camera.properties.motionDetected);
+      const currentHour = new Date().getHours();
+
+      // 深夜时段（22:00-06:00）检测到移动
+      if (motionDetected && (currentHour >= 22 || currentHour < 6)) {
+        actions.push('摄像头深夜检测到异常移动，请关注家庭安全');
+        if (!affectedDevices.includes('智能摄像头')) affectedDevices.push('智能摄像头');
+      }
+    }
+
     const summary = `🔍 环境巡检报告：\n${actions.map((a) => `• ${a}`).join('\n')}`;
 
     // 只有在有设备操作时才发通知
