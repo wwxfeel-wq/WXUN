@@ -49,6 +49,47 @@ export class FamilyController {
     return this.familyService.joinFamily(userId, payload);
   }
 
+  // ============================================================
+  // 督促提醒（家长角色体系）
+  // 注意：这些路由必须在 families/:id 之前定义，否则
+  // /families/supervisions 会被 :id 参数匹配（id=supervisions）
+  // ============================================================
+
+  @Get('families/supervisions')
+  @ApiOperation({
+    summary: '获取督促任务列表',
+    description: '根据设备状态和时间段生成督促任务，返回当前活跃的督促任务列表',
+  })
+  async getSupervisions(@CurrentUser('userId') userId: string) {
+    try {
+      await this.supervisionService.generateSupervisions(userId);
+      const tasks = await this.supervisionService.getActiveSupervisions(userId);
+      return { supervisions: tasks, count: tasks.length };
+    } catch (error) {
+      this.logger.error(
+        `获取督促任务失败 (userId=${userId}): ${(error as Error).message}`,
+      );
+      return { supervisions: [], count: 0 };
+    }
+  }
+
+  @Post('families/supervisions/:id/resolve')
+  @ApiOperation({
+    summary: '标记督促任务已完成',
+    description: '将指定的督促任务标记为已完成状态',
+  })
+  async resolveSupervision(
+    @CurrentUser('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    const task = await this.supervisionService.resolveSupervision(userId, id);
+    return { success: true, supervision: task };
+  }
+
+  // ============================================================
+  // 家庭详情与操作（参数路由放在最后）
+  // ============================================================
+
   @Get('families/:id')
   @ApiOperation({ summary: '获取家庭详情', description: '获取家庭组的详细信息' })
   async getFamily(@CurrentUser('userId') userId: string, @Param('id') id: string) {
@@ -98,43 +139,5 @@ export class FamilyController {
   async leaveFamily(@CurrentUser('userId') userId: string, @Param('id') id: string) {
     await this.familyService.leaveFamily(userId, id);
     return { success: true };
-  }
-
-  // ============================================================
-  // 督促提醒（家长角色体系）
-  // ============================================================
-
-  @Get('families/supervisions')
-  @ApiOperation({
-    summary: '获取督促任务列表',
-    description: '根据设备状态和时间段生成督促任务，返回当前活跃的督促任务列表',
-  })
-  async getSupervisions(@CurrentUser('userId') userId: string) {
-    try {
-      this.logger.log(`getSupervisions called, userId=${userId}`);
-      const tasks = await this.supervisionService.getActiveSupervisions(userId);
-      this.logger.log(`getActiveSupervisions done, tasks=${tasks.length}`);
-      const result = { supervisions: tasks, count: tasks.length };
-      this.logger.log(`returning result`);
-      return result;
-    } catch (error) {
-      this.logger.error(
-        `获取督促任务失败 (userId=${userId}): ${(error as Error).message}\n${(error as Error).stack}`,
-      );
-      return { supervisions: [], count: 0 };
-    }
-  }
-
-  @Post('families/supervisions/:id/resolve')
-  @ApiOperation({
-    summary: '标记督促任务已完成',
-    description: '将指定的督促任务标记为已完成状态',
-  })
-  async resolveSupervision(
-    @CurrentUser('userId') userId: string,
-    @Param('id') id: string,
-  ) {
-    const task = await this.supervisionService.resolveSupervision(userId, id);
-    return { success: true, supervision: task };
   }
 }
