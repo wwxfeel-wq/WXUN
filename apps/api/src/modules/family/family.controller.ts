@@ -111,9 +111,12 @@ export class FamilyController {
   })
   async getSupervisions(@CurrentUser('userId') userId: string) {
     try {
-      await this.supervisionService.generateSupervisions(userId);
+      this.logger.log(`getSupervisions called, userId=${userId}`);
       const tasks = await this.supervisionService.getActiveSupervisions(userId);
-      return { supervisions: tasks, count: tasks.length };
+      this.logger.log(`getActiveSupervisions done, tasks=${tasks.length}`);
+      const result = { supervisions: tasks, count: tasks.length };
+      this.logger.log(`returning result`);
+      return result;
     } catch (error) {
       this.logger.error(
         `获取督促任务失败 (userId=${userId}): ${(error as Error).message}\n${(error as Error).stack}`,
