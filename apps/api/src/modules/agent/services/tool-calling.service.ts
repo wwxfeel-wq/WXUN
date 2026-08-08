@@ -119,7 +119,8 @@ export class ToolCallingService {
    * Returns an error message string if invalid, or null if valid.
    */
   private validateToolArgs(call: AgentToolCall, schema: ToolSchema): string | null {
-    const args = call.args ?? {};
+    // R2-BE-006: 创建浅拷贝，避免 delete 操作修改原始 call.args 对象
+    const args = { ...(call.args ?? {}) };
     const required = schema.parameters.required ?? [];
 
     for (const field of required) {
@@ -176,10 +177,16 @@ export class ToolCallingService {
         }
       }
       // R1-BE-010: 字符串 pattern 正则校验
+      // R2-BE-007: 包裹 try-catch 防止无效 pattern 抛出 SyntaxError
+      // R2-BE-009: 添加 'i' 标志使 pattern 大小写不敏感，与 handler 行为一致
       if (expectedType === 'string' && typeof value === 'string' && propSchema.pattern) {
-        const regex = new RegExp(propSchema.pattern);
-        if (!regex.test(value)) {
-          return `字段 ${key} 不符合格式要求: ${propSchema.pattern}`;
+        try {
+          const regex = new RegExp(propSchema.pattern, 'i');
+          if (!regex.test(value)) {
+            return `字段 ${key} 不符合格式要求: ${propSchema.pattern}`;
+          }
+        } catch {
+          this.logger.warn(`Invalid regex pattern for field ${key}: ${propSchema.pattern}`);
         }
       }
     }

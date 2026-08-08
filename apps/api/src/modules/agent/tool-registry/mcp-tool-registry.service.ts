@@ -189,6 +189,71 @@ export class McpToolRegistry {
         };
       }
     }
+
+    // R2-BE-010: 验证参数类型和格式
+    const properties = schema.properties ?? {};
+    for (const [key, propSchema] of Object.entries(properties)) {
+      const value = args[key];
+      if (value === undefined || value === null) continue;
+
+      const expectedType = propSchema.type;
+
+      // 类型校验
+      if (expectedType === 'string' && typeof value !== 'string') {
+        return { valid: false, reason: `参数 "${key}" 应为 string 类型` };
+      }
+      if (expectedType === 'number' && typeof value !== 'number') {
+        return { valid: false, reason: `参数 "${key}" 应为 number 类型` };
+      }
+      if (expectedType === 'integer' && !Number.isInteger(value)) {
+        return { valid: false, reason: `参数 "${key}" 应为 integer 类型` };
+      }
+      if (expectedType === 'boolean' && typeof value !== 'boolean') {
+        return { valid: false, reason: `参数 "${key}" 应为 boolean 类型` };
+      }
+      if (expectedType === 'array' && !Array.isArray(value)) {
+        return { valid: false, reason: `参数 "${key}" 应为 array 类型` };
+      }
+      if (
+        expectedType === 'object' &&
+        (typeof value !== 'object' || Array.isArray(value))
+      ) {
+        return { valid: false, reason: `参数 "${key}" 应为 object 类型` };
+      }
+
+      // enum 校验
+      if (
+        propSchema.enum &&
+        !propSchema.enum.includes(value as string | number | boolean)
+      ) {
+        return {
+          valid: false,
+          reason: `参数 "${key}" 的值不在允许范围内: ${propSchema.enum.join(', ')}`,
+        };
+      }
+
+      // pattern 正则校验（大小写不敏感，与 handler 行为一致）
+      if (
+        expectedType === 'string' &&
+        typeof value === 'string' &&
+        propSchema.pattern
+      ) {
+        try {
+          const regex = new RegExp(propSchema.pattern, 'i');
+          if (!regex.test(value)) {
+            return {
+              valid: false,
+              reason: `参数 "${key}" 不符合格式要求: ${propSchema.pattern}`,
+            };
+          }
+        } catch {
+          this.logger.warn(
+            `Invalid regex pattern for parameter ${key}: ${propSchema.pattern}`,
+          );
+        }
+      }
+    }
+
     return { valid: true };
   }
 }

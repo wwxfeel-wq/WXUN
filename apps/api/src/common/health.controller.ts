@@ -17,7 +17,7 @@ export class HealthController {
 
   @Public()
   @Get()
-  async check(@Res() response: Response) {
+  async check(@Res({ passthrough: true }) response: Response) {
     const checks: Record<string, string> = {};
 
     // Check database
@@ -54,10 +54,11 @@ export class HealthController {
     // Return HTTP 503 when degraded so load balancers and health checks
     // can correctly detect the service as unavailable.
     response.status(allOk ? 200 : 503);
-    response.json({
+
+    return {
       status,
       checks,
       timestamp: new Date().toISOString(),
-    });
+    };
   }
 }

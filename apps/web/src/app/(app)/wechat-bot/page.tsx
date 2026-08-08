@@ -234,6 +234,8 @@ export default function WeChatBotPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiWelcomeInitRef = useRef(false);
+  /** 跟踪 agent 活动回调中的 setTimeout，组件卸载时清除 */
+  const agentTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   /* ── Initialize AI welcome message on mount ── */
   useEffect(() => {
@@ -434,15 +436,23 @@ export default function WeChatBotPage() {
           setAgentActivities((prev) => [...prev.slice(-8), activity]);
         } else if (activity.type === 'done' || activity.type === 'error') {
           // agent 完成，延迟清除处理状态
-          setTimeout(() => setAgentProcessing(false), 800);
+          agentTimersRef.current.push(setTimeout(() => setAgentProcessing(false), 800));
           setAgentActivities((prev) => [...prev.slice(-8), activity]);
           // 3 秒后清空活动列表
-          setTimeout(() => setAgentActivities([]), 3000);
+          agentTimersRef.current.push(setTimeout(() => setAgentActivities([]), 3000));
         }
       },
+      undefined,
+      // 永久断开时重置 agentProcessing，避免卡在 true
+      () => setAgentProcessing(false),
     );
 
-    return () => handle.abort();
+    return () => {
+      handle.abort();
+      // 清除所有未完成的定时器
+      agentTimersRef.current.forEach((t) => clearTimeout(t));
+      agentTimersRef.current = [];
+    };
   }, [wechatStatus?.loggedIn]);
 
   /* ── 微信消息流 SSE：实时接收新消息（替代轮询） ── */

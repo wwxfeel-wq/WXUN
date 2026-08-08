@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync } from 'fs';
 import puppeteer, { type Browser } from 'puppeteer-core';
-import { isSafeUrl } from '../../../common/utils/ssrf-guard.util';
+import { isSafeUrlAsync } from '../../../common/utils/ssrf-guard.util';
 
 /** 截图请求选项 */
 export interface ScreenshotOptions {
@@ -80,8 +80,8 @@ export class ScreenshotService {
       return null;
     }
 
-    // SSRF 防护：阻止内网地址与元数据端点
-    if (!isSafeUrl(url)) {
+    // SSRF 防护：阻止内网地址与元数据端点（含 DNS 解析，防止 DNS rebinding）
+    if (!(await isSafeUrlAsync(url))) {
       this.logger.warn(`captureWebpage URL 被 SSRF 防护拦截：${url}`);
       return null;
     }

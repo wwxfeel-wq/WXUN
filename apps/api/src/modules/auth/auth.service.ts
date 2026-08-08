@@ -508,10 +508,22 @@ export class AuthService {
     });
 
     // Invalidate the reset token
-    await this.redis.del(key);
+    try {
+      await this.redis.del(key);
+    } catch (e) {
+      this.logger.error(
+        `Failed to delete reset token after password reset: ${(e as Error).message}`,
+      );
+    }
 
     // Revoke all refresh tokens (force re-login on all devices)
-    await this.redis.revokeAllRefreshTokens(userId);
+    try {
+      await this.redis.revokeAllRefreshTokens(userId);
+    } catch (e) {
+      this.logger.error(
+        `Failed to revoke refresh tokens after password reset: ${(e as Error).message}`,
+      );
+    }
 
     this.logger.log(`Password reset for user: ${userId}`);
   }

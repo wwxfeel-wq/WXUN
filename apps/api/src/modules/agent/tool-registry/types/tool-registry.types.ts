@@ -21,6 +21,8 @@ export interface McpToolParameterSchema {
   description?: string;
   enum?: (string | number | boolean)[];
   default?: unknown;
+  /** Regex pattern for string type validation. */
+  pattern?: string;
   /** For array items. */
   items?: McpToolParameterSchema;
   /** For object properties. */

@@ -75,7 +75,7 @@ case "${1:-start}" in
     if command -v certbot &> /dev/null || yum install -y certbot 2>/dev/null || apt-get install -y certbot 2>/dev/null; then
       echo -e "${YELLOW}尝试 Let's Encrypt 证书: $DOMAIN...${NC}"
       # Stop nginx to free port 80
-      docker compose -f $PROJECT_DIR/docker-compose.yml stop nginx 2>/dev/null || true
+      docker compose -f $PROJECT_DIR/docker-compose.deploy.yml --env-file $ENV_FILE stop nginx 2>/dev/null || true
 
       CERTBOT_EMAIL="${SEED_ADMIN_EMAIL:-admin@echolife.ai}"
       if certbot certonly --standalone -d $DOMAIN -d unnamed-studio.com --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
@@ -99,8 +99,8 @@ case "${1:-start}" in
       echo -e "${GREEN}✅ 自签名证书已生成${NC}"
     fi
 
-    # Set up auto-renewal
-    echo "0 3 * * * certbot renew --quiet && cp /etc/letsencrypt/live/$DOMAIN/*.pem $PROJECT_DIR/infra/nginx/ssl/ && docker compose -f $PROJECT_DIR/docker-compose.yml restart nginx" | crontab - 2>/dev/null || true
+    # Set up auto-renewal (使用 docker-compose.deploy.yml 而非 docker-compose.yml)
+    echo "0 3 * * * certbot renew --quiet && cp /etc/letsencrypt/live/$DOMAIN/*.pem $PROJECT_DIR/infra/nginx/ssl/ && docker compose -f $PROJECT_DIR/docker-compose.deploy.yml --env-file $ENV_FILE restart nginx" | crontab - 2>/dev/null || true
     echo -e "${GREEN}✅ SSL 配置完成${NC}"
     ;;
 
@@ -116,7 +116,7 @@ case "${1:-start}" in
     yum install -y certbot || apt-get install -y certbot
 
     # Stop nginx to free port 80
-    docker compose -f $PROJECT_DIR/docker-compose.yml stop nginx 2>/dev/null || true
+    docker compose -f $PROJECT_DIR/docker-compose.deploy.yml --env-file $ENV_FILE stop nginx 2>/dev/null || true
 
     # Generate certificate
     CERTBOT_EMAIL="${SEED_ADMIN_EMAIL:-admin@echolife.ai}"

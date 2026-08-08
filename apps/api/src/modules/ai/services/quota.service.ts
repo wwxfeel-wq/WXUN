@@ -136,6 +136,12 @@ export class QuotaService {
    */
   async decrementUsage(quotaKey: string): Promise<void> {
     const client = this.redis.getClient;
+    // R2-BE-004: 先检查 key 是否存在，避免在 key 过期后创建无 TTL 的 -1 值 key
+    const exists = await client.exists(quotaKey);
+    if (!exists) {
+      this.logger.debug(`Quota key ${quotaKey} no longer exists, skipping decrement`);
+      return;
+    }
     await client.decr(quotaKey);
     this.logger.debug(`Usage decremented for key ${quotaKey}`);
   }

@@ -682,6 +682,14 @@ function TreeScene({
   const innerGlowMatRef = useRef<THREE.LineBasicMaterial>(null);
 
   const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion);
+
+  // prefersReducedMotion 变化时同步更新 autoRotate
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setAutoRotate(false);
+    }
+  }, [prefersReducedMotion]);
+
   const [tooltip, setTooltip] = useState<{ visible: boolean; text: string; position: THREE.Vector3 }>({
     visible: false,
     text: '',
@@ -1079,23 +1087,21 @@ function TreeScene({
   const sapGeometry = useMemo(() => new THREE.SphereGeometry(0.02, 6, 6), []);
 
   // 清理材质和几何体，防止内存泄漏
-  useEffect(() => {
-    return () => {
-      branchMat.dispose();
-      rootMat.dispose();
-      leafMat.dispose();
-      flowerMat.dispose();
-      fruitMat.dispose();
-      sapMat.dispose();
-      innerGlowMat.dispose();
-      branchGeometry.dispose();
-      rootGeometry.dispose();
-      leafGeometry.dispose();
-      flowerGeometry.dispose();
-      fruitGeometry.dispose();
-      sapGeometry.dispose();
-    };
-  }, [branchMat, rootMat, leafMat, flowerMat, fruitMat, sapMat, innerGlowMat, branchGeometry, rootGeometry, leafGeometry, flowerGeometry, fruitGeometry, sapGeometry]);
+  // 为每个材质/几何体使用独立的清理 effect，只 dispose 真正变化的资源，
+  // 避免部分材质变化时 dispose 所有材质（包括未变化的）导致 GPU 资源释放后仍被使用
+  useEffect(() => () => void branchMat.dispose(), [branchMat]);
+  useEffect(() => () => void rootMat.dispose(), [rootMat]);
+  useEffect(() => () => void leafMat.dispose(), [leafMat]);
+  useEffect(() => () => void flowerMat.dispose(), [flowerMat]);
+  useEffect(() => () => void fruitMat.dispose(), [fruitMat]);
+  useEffect(() => () => void sapMat.dispose(), [sapMat]);
+  useEffect(() => () => void innerGlowMat.dispose(), [innerGlowMat]);
+  useEffect(() => () => void branchGeometry.dispose(), [branchGeometry]);
+  useEffect(() => () => void rootGeometry.dispose(), [rootGeometry]);
+  useEffect(() => () => void leafGeometry.dispose(), [leafGeometry]);
+  useEffect(() => () => void flowerGeometry.dispose(), [flowerGeometry]);
+  useEffect(() => () => void fruitGeometry.dispose(), [fruitGeometry]);
+  useEffect(() => () => void sapGeometry.dispose(), [sapGeometry]);
 
   // 家庭成员主枝悬停 hitbox
   const familyBranches = useMemo(() => assets.branches.filter((b) => b.depth === 1), [assets]);
@@ -1110,13 +1116,20 @@ function TreeScene({
 
   const castShadow = perfLevel !== 'low';
 
+  // 缓存灯光 Color 对象，避免每次渲染都创建新实例
+  const ambientLightColor = useMemo(() => new THREE.Color(resolveColor('var(--color-light-ambient)')), []);
+  const mainLightColor = useMemo(() => new THREE.Color(resolveColor('var(--color-light-main)')), []);
+  const rimLightColor = useMemo(() => new THREE.Color(resolveColor('var(--color-light-rim)')), []);
+  const roseLightColor = useMemo(() => new THREE.Color(resolveColor('var(--color-rose)')), []);
+  const sapLightColor = useMemo(() => new THREE.Color(resolveColor('var(--color-tree-sap)')), []);
+
   return (
     <>
-      <ambientLight intensity={0.62} color={new THREE.Color(resolveColor('var(--color-light-ambient)'))} />
+      <ambientLight intensity={0.62} color={ambientLightColor} />
       <directionalLight
         position={[4, 6, 3]}
         intensity={1.25}
-        color={new THREE.Color(resolveColor('var(--color-light-main)'))}
+        color={mainLightColor}
         castShadow={castShadow}
         shadow-mapSize={[1024, 1024]}
       />
@@ -1124,10 +1137,10 @@ function TreeScene({
       <directionalLight
         position={[-3, 2, -4]}
         intensity={0.45}
-        color={new THREE.Color(resolveColor('var(--color-light-rim)'))}
+        color={rimLightColor}
       />
-      <pointLight position={[-3, 1.5, -3]} intensity={0.45} color={new THREE.Color(resolveColor('var(--color-rose)'))} />
-      <pointLight position={[0, -1.5, 1]} intensity={0.32} color={new THREE.Color(resolveColor('var(--color-tree-sap)'))} />
+      <pointLight position={[-3, 1.5, -3]} intensity={0.45} color={roseLightColor} />
+      <pointLight position={[0, -1.5, 1]} intensity={0.32} color={sapLightColor} />
 
       <group ref={groupRef} onClick={() => setAutoRotate((v) => !v)}>
         {/* 枝干 */}

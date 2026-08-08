@@ -233,6 +233,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
           setIsStreaming(false);
         },
         onError: (message) => {
+          if (stoppedRef.current) return;
           errorOccurredRef.current = true;
           setIsThinking(false);
           setMessages((prev) => {

@@ -327,7 +327,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           const [metricsRes, treeStatsRes, shimoCoreRes, agentsRes, skillsRes, timelineRes, devicesRes, familyStatusRes] =
         await Promise.all([
           fetchWithFallback('family-hub/metrics', defaultMetrics),
-          fetchWithFallback('life-tree/stats', defaultMetrics),
+          fetchWithFallback<Partial<FamilyMetrics>>('life-tree/stats', {}),
           fetchWithFallback('family-hub/shimo-core', defaultShimoCore),
           fetchWithFallback('family-hub/agents', defaultAgents),
           fetchWithFallback('family-hub/skills', defaultSkills),
@@ -492,42 +492,38 @@ export const useFamilyHubStore = create<FamilyHubState>()(
             { message },
           );
 
-          // Update agent status back to running and increment calls
+          // 合并为一次 set 调用，避免两次独立渲染
           set((s) => ({
             agents: s.agents.map((a) =>
               a.id === agentCode
                 ? { ...a, status: 'running' as const, calls: a.calls + 1, lastActive: '刚刚' }
                 : a,
             ),
+            skills: result?.skillName
+              ? s.skills.map((sk) => {
+                  const matchesAgent =
+                    sk.sourceAgentCode === agentCode ||
+                    sk.sourceAgent === result.agentName;
+                  if (!matchesAgent || sk.name !== result.skillName) return sk;
+
+                  const nextLevel = result.skillLevel ?? sk.level;
+                  const nextProgress = result.skillProgress ?? sk.progress;
+                  let nextStatus = sk.status;
+                  if (result.leveledUp) {
+                    nextStatus = nextLevel >= 10 ? 'mastered' : 'learning';
+                  } else if (sk.status === 'new' && (result.expGained ?? 0) > 0) {
+                    nextStatus = 'learning';
+                  }
+
+                  return {
+                    ...sk,
+                    level: nextLevel,
+                    progress: nextProgress,
+                    status: nextStatus,
+                  };
+                })
+              : s.skills,
           }));
-
-          // Sync skill level/progress returned by backend so UI reflects evolution immediately
-          if (result?.skillName) {
-            set((s) => ({
-              skills: s.skills.map((sk) => {
-                const matchesAgent =
-                  sk.sourceAgentCode === agentCode ||
-                  sk.sourceAgent === result.agentName;
-                if (!matchesAgent || sk.name !== result.skillName) return sk;
-
-                const nextLevel = result.skillLevel ?? sk.level;
-                const nextProgress = result.skillProgress ?? sk.progress;
-                let nextStatus = sk.status;
-                if (result.leveledUp) {
-                  nextStatus = nextLevel >= 10 ? 'mastered' : 'learning';
-                } else if (sk.status === 'new' && (result.expGained ?? 0) > 0) {
-                  nextStatus = 'learning';
-                }
-
-                return {
-                  ...sk,
-                  level: nextLevel,
-                  progress: nextProgress,
-                  status: nextStatus,
-                };
-              }),
-            }));
-          }
 
           return result || {
             success: false,

@@ -138,6 +138,14 @@ function ApiKeyManagement() {
   const [deletingProvider, setDeletingProvider] = React.useState<string | null>(
     null,
   );
+  /** 跟踪 savedProvider 的 setTimeout，组件卸载时清除 */
+  const savedProviderTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (savedProviderTimerRef.current) clearTimeout(savedProviderTimerRef.current);
+    };
+  }, []);
 
   const providers = data?.providers ?? [];
   const activeProvider = data?.activeProvider ?? "glm";
@@ -156,7 +164,8 @@ function ApiKeyManagement() {
       setEditingProvider(null);
       setShowKey(false);
       await mutate();
-      setTimeout(() => setSavedProvider(null), 2500);
+      if (savedProviderTimerRef.current) clearTimeout(savedProviderTimerRef.current);
+      savedProviderTimerRef.current = setTimeout(() => setSavedProvider(null), 2500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败");
     } finally {

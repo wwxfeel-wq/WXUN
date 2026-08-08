@@ -3,6 +3,7 @@
  *
  * 使用方式：
  *   if (!isSafeUrl(url)) { throw new Error('URL 被拒绝（SSRF 防护）'); }
+ *   // 异步版本（推荐用于 fetch 前）：await isSafeUrlAsync(url)
  *
  * 阻止的地址范围：
  *  - 回环地址：127.0.0.0/8, ::1, localhost
@@ -12,6 +13,8 @@
  *  - 云元数据域名：metadata.google.internal, metadata, metadata.azure.com
  *  - IPv6 本地地址：fc00::/7（唯一本地）, fe80::/10（链路本地）
  */
+
+import * as dns from 'node:dns';
 
 /** 被禁止的云元数据域名 */
 const BLOCKED_HOSTNAMES = new Set([
@@ -110,4 +113,58 @@ export function isSafeUrl(url: string): boolean {
   if (isPrivateIp(hostname)) return false;
 
   return true;
+}
+
+/**
+ * 判断字符串是否为 IP 地址（IPv4 或 IPv6）。
+ */
+function isIpAddress(hostname: string): boolean {
+  // IPv4
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  // IPv6（包含冒号，可能被方括号包裹但此处已去除）
+  if (hostname.includes(':')) return true;
+  return false;
+}
+
+/**
+ * 异步版本：解析域名后检查实际 IP 是否安全。
+ *
+ * 同步版本 {@link isSafeUrl} 仅检查 URL 字符串中的 IP / 域名，
+ * 无法防御 DNS rebinding 攻击（攻击者在 URL 中使用公网域名，
+ * 但 DNS 解析时返回内网地址）。
+ *
+ * 本函数在同步检查通过后，额外进行 DNS 解析并检查所有解析结果。
+ *
+ * @param url 待检查的 URL 字符串
+ * @returns true 表示安全可访问，false 表示被 SSRF 防护拦截
+ */
+export async function isSafeUrlAsync(url: string): Promise<boolean> {
+  // 第一层：同步快速检查 URL 字符串
+  if (!isSafeUrl(url)) return false;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  // 如果 hostname 已经是 IP 地址，同步检查已充分
+  if (isIpAddress(hostname)) return true;
+
+  // 第二层：DNS 解析后检查实际 IP
+  try {
+    const addresses = await dns.promises.lookup(hostname, { all: true });
+    for (const addr of addresses) {
+      if (isPrivateIp(addr.address)) {
+        return false;
+      }
+    }
+    return addresses.length > 0;
+  } catch {
+    // DNS 解析失败，保守拒绝
+    return false;
+  }
 }

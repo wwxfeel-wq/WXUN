@@ -692,6 +692,24 @@ export function createGETSSEStream(
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // 重连调度：初始 fetch 失败、流读取异常和正常关闭均使用此逻辑，
+    // 确保连接中断后自动重连（与异常中断行为一致）
+    const scheduleReconnect = () => {
+      if (isAborted) {
+        onClose?.();
+        return;
+      }
+      if (retryCount >= MAX_RETRIES) {
+        // 超过最大重试次数，永久关闭
+        onClose?.();
+        return;
+      }
+      const delay = Math.min(INITIAL_DELAY * Math.pow(2, retryCount), MAX_DELAY);
+      retryCount++;
+      onError?.('数据流中断');
+      reconnectTimer = setTimeout(() => connect(), delay);
+    };
+
     let response: Response;
     try {
       response = await fetch(url, {
@@ -702,16 +720,21 @@ export function createGETSSEStream(
     } catch (err) {
       if ((err as Error).name === 'AbortError' || isAborted) return;
       onError?.('实时连接失败');
-      onClose?.();
+      // 初始 fetch 失败也纳入重连逻辑
+      scheduleReconnect();
       return;
     }
 
     if (!response.ok || !response.body) {
       if (response.status === 401) {
+        // 401 表示认证失败，用户将被重定向到登录页，无需重连
         handleUnauthorized();
+        onClose?.();
+        return;
       }
       onError?.(`连接错误: ${response.status}`);
-      onClose?.();
+      // 非 401 错误也纳入重连逻辑
+      scheduleReconnect();
       return;
     }
 
@@ -753,19 +776,12 @@ export function createGETSSEStream(
           }
         }
       }
-      onClose?.();
+      // 正常关闭（done=true）后也触发重连，与异常中断行为一致
+      scheduleReconnect();
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && !isAborted) {
         // Non-manual error: set up reconnect with exponential backoff
-        if (retryCount >= MAX_RETRIES) {
-          // 超过最大重试次数，永久关闭
-          onClose?.();
-          return;
-        }
-        const delay = Math.min(INITIAL_DELAY * Math.pow(2, retryCount), MAX_DELAY);
-        retryCount++;
-        onError?.('数据流中断');
-        reconnectTimer = setTimeout(() => connect(), delay);
+        scheduleReconnect();
       } else {
         // Manual abort or AbortError — notify the consumer that the
         // stream is permanently closed.

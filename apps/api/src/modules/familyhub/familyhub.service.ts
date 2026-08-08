@@ -7,6 +7,7 @@ import { SkillsEvolutionService } from './skills-evolution.service';
 import { AgentToolService, AgentToolResult } from './agent-tool.service';
 import { AgentWorkflowService, WorkflowResult } from './agent-workflow.service';
 import { RagService } from '../ai/services/rag.service';
+import { QuotaService } from '../ai/services/quota.service';
 import { RAG_DEFAULTS } from '@echolife/shared';
 import { LifeTreeService } from '../lifetree/lifetree.service';
 
@@ -612,6 +613,7 @@ export class FamilyHubService {
     private readonly agentToolService: AgentToolService,
     private readonly agentWorkflowService: AgentWorkflowService,
     private readonly lifeTreeService: LifeTreeService,
+    private readonly quotaService: QuotaService,
   ) {}
 
   /**
@@ -864,6 +866,7 @@ export class FamilyHubService {
     let toolResults: AgentToolResult[] = [];
     let status: 'success' | 'failed' = 'success';
     let errorMessage: string | undefined;
+    let quotaKey: string | undefined;
 
     try {
       // ===== 2. 工具调用 =====
@@ -932,6 +935,25 @@ export class FamilyHubService {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message },
       ];
+
+      // ===== 配额检查（原子性 check-and-increment）=====
+      const quotaCheck = await this.quotaService.checkAndIncrement(userId);
+      if (!quotaCheck.allowed) {
+        await this.prisma.agentRuntime.update({
+          where: { code },
+          data: { status: 'idle' },
+        });
+        return {
+          success: false,
+          agentName: agent.name,
+          agentCode: agent.code,
+          response: '您的 AI 对话配额已用完，请下月重置或升级订阅计划。',
+          tokensUsed: 0,
+          model: '',
+          toolResults,
+        };
+      }
+      quotaKey = quotaCheck.quotaKey;
 
       const result = await this.llmAdapter.chatComplete(messages, {
         temperature: 0.7,
@@ -1036,6 +1058,15 @@ export class FamilyHubService {
       status = 'failed';
       errorMessage = error instanceof Error ? error.message : '未知错误';
 
+      // 回退配额：AI 调用失败时将已扣除的配额返还
+      if (quotaKey) {
+        try {
+          await this.quotaService.decrementUsage(quotaKey);
+        } catch (e) {
+          this.logger.warn(`Quota rollback failed for ${code}: ${(e as Error).message}`);
+        }
+      }
+
       // Reset status on error
       await this.prisma.agentRuntime.update({
         where: { code },
@@ -1075,11 +1106,17 @@ export class FamilyHubService {
         diagHint = 'AI 调用额度已用完或请求过于频繁，请稍后重试。';
       }
 
+      // R2-BE-003: 生产环境下不返回原始错误消息，避免泄露内部信息
+      const isProduction = process.env.NODE_ENV === 'production';
+      const userFacingMessage = isProduction
+        ? `抱歉，我暂时无法响应。${diagHint}`
+        : `抱歉，我暂时无法响应。错误信息：${errorMessage}。${diagHint}`;
+
       return {
         success: false,
         agentName: agent.name,
         agentCode: agent.code,
-        response: `抱歉，我暂时无法响应。错误信息：${errorMessage}。${diagHint}`,
+        response: userFacingMessage,
         tokensUsed: 0,
         model: '',
         toolResults,
