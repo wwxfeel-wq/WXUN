@@ -28,7 +28,7 @@ RUN pnpm --filter @echolife/api exec prisma generate
 RUN pnpm --filter @echolife/api build
 
 # Prune devDependencies for smaller production image
-RUN pnpm install --prod --frozen-lockfile
+RUN NODE_ENV=production pnpm install --prod --no-frozen-lockfile
 
 # ===== Production =====
 FROM base AS runner
@@ -62,4 +62,4 @@ EXPOSE 3001
 # Run migrations then start (migration failure stops startup)
 WORKDIR /app/apps/api
 USER appuser
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]
