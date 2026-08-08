@@ -27,9 +27,6 @@ RUN pnpm --filter @echolife/shared build
 RUN pnpm --filter @echolife/api exec prisma generate
 RUN pnpm --filter @echolife/api build
 
-# Prune devDependencies for smaller production image
-RUN NODE_ENV=production pnpm install --prod --no-frozen-lockfile
-
 # ===== Production =====
 FROM base AS runner
 WORKDIR /app
