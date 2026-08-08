@@ -70,6 +70,7 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stoppedRef.current = true;
       streamRef.current?.abort();
     };
   }, []);

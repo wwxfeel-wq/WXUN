@@ -158,6 +158,8 @@ export default function WeChatBotPage() {
   const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
   /** Agent 是否正在处理消息 */
   const [agentProcessing, setAgentProcessing] = useState(false);
+  /** SSE 消息流是否活跃（活跃时取消轮询） */
+  const [sseConnected, setSseConnected] = useState(false);
 
   const invokeAgent = useFamilyHubStore((s) => s.invokeAgent);
   const shimoCore = useFamilyHubStore((s) => s.shimoCore);
@@ -393,9 +395,11 @@ export default function WeChatBotPage() {
     if (!wechatStatus?.loggedIn) return;
     if (activeContactId === AI_CONTACT.id) return;
     loadMessages(activeContactId);
+    // SSE连接活跃时取消轮询，仅首次加载时拉取历史
+    if (sseConnected) return;
     const interval = setInterval(() => loadMessages(activeContactId), 3000);
     return () => clearInterval(interval);
-  }, [activeContactId, wechatStatus?.loggedIn, loadMessages]);
+  }, [activeContactId, wechatStatus?.loggedIn, loadMessages, sseConnected]);
 
   /* ── Logout ── */
   const handleLogout = useCallback(async () => {
@@ -418,10 +422,10 @@ export default function WeChatBotPage() {
       (eventType, data) => {
         const activity: AgentActivity = {
           type: eventType as AgentActivity['type'],
-          content: data.content as string | undefined,
-          toolName: data.toolName as string | undefined,
-          senderName: data.senderName as string | undefined,
-          timestamp: data.timestamp as number,
+          content: typeof data.content === 'string' ? data.content : undefined,
+          toolName: typeof data.toolName === 'string' ? data.toolName : undefined,
+          senderName: typeof data.senderName === 'string' ? data.senderName : undefined,
+          timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
         };
 
         // thinking/tool_call/observation 表示 agent 正在工作
@@ -445,31 +449,37 @@ export default function WeChatBotPage() {
   useEffect(() => {
     if (!wechatStatus?.loggedIn) return;
 
+    setSseConnected(true);
     const handle = createGETSSEStream(
       'wechat/stream',
       (_eventType, data) => {
         // 收到新消息时，刷新联系人列表和当前对话消息
-        const contactId = data.contactId as string;
+        const contactId = typeof data.contactId === 'string' ? data.contactId : undefined;
         if (contactId) {
           // 如果是当前活跃对话，追加消息
           setMessagesByContact((prev) => {
             const existing = prev[contactId] ?? [];
             // 避免重复
-            const msgId = data.id as string;
+            const msgId = typeof data.id === 'string' ? data.id : undefined;
             if (msgId && existing.some((m) => m.id === msgId)) return prev;
             const newMsg: ChatMessage = {
               id: msgId || genId(),
               role: data.isSelf ? 'user' : 'contact',
-              content: data.content as string,
-              timestamp: data.timestamp as number,
+              content: typeof data.content === 'string' ? data.content : '',
+              timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
             };
             return { ...prev, [contactId]: [...existing, newMsg] };
           });
         }
       },
+      undefined,
+      () => setSseConnected(false),
     );
 
-    return () => handle.abort();
+    return () => {
+      setSseConnected(false);
+      handle.abort();
+    };
   }, [wechatStatus?.loggedIn]);
 
   /* ── All contacts (AI first, then real) — MUST be before handleSend ── */

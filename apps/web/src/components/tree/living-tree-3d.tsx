@@ -1078,6 +1078,25 @@ function TreeScene({
   const fruitGeometry = useMemo(() => new THREE.SphereGeometry(0.08, 10, 10), []);
   const sapGeometry = useMemo(() => new THREE.SphereGeometry(0.02, 6, 6), []);
 
+  // 清理材质和几何体，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      branchMat.dispose();
+      rootMat.dispose();
+      leafMat.dispose();
+      flowerMat.dispose();
+      fruitMat.dispose();
+      sapMat.dispose();
+      innerGlowMat.dispose();
+      branchGeometry.dispose();
+      rootGeometry.dispose();
+      leafGeometry.dispose();
+      flowerGeometry.dispose();
+      fruitGeometry.dispose();
+      sapGeometry.dispose();
+    };
+  }, [branchMat, rootMat, leafMat, flowerMat, fruitMat, sapMat, innerGlowMat, branchGeometry, rootGeometry, leafGeometry, flowerGeometry, fruitGeometry, sapGeometry]);
+
   // 家庭成员主枝悬停 hitbox
   const familyBranches = useMemo(() => assets.branches.filter((b) => b.depth === 1), [assets]);
 
@@ -1295,9 +1314,15 @@ export default function LivingTree3D(props: LivingTree3DProps): JSX.Element {
   const webglSupported = useWebGLSupport();
   const perfLevel = usePerformanceLevel();
   const multiplier = perfMultiplier(perfLevel);
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+    const handleChange = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   const familyKey = family.map((f) => `${f.id}:${f.color}`).join('|');
   const assets = useMemo(

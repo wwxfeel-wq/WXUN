@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebSearchService } from '../../../ai/services/web-search.service';
+import { isSafeUrl } from '../../../common/utils/ssrf-guard.util';
 import type {
   McpToolDefinition,
   McpToolContext,
@@ -137,6 +138,16 @@ export class WebBrowseTools {
         tool: 'browse_webpage',
         success: false,
         summary: '请提供完整的 http(s) 网址',
+      };
+    }
+
+    // SSRF 防护：阻止内网地址与元数据端点
+    if (!isSafeUrl(url)) {
+      this.logger.warn(`browse_webpage URL 被 SSRF 防护拦截：${url}`);
+      return {
+        tool: 'browse_webpage',
+        success: false,
+        summary: '该网址被安全策略拦截，无法访问内网地址',
       };
     }
 
@@ -441,6 +452,12 @@ export class WebBrowseTools {
    * 安全浏览网页，失败时返回 null 而不抛出异常。
    */
   private async safeBrowse(url: string): Promise<BrowsedPage | null> {
+    // SSRF 防护：阻止内网地址与元数据端点
+    if (!isSafeUrl(url)) {
+      this.logger.debug(`safeBrowse 跳过（SSRF 拦截）：${url}`);
+      return null;
+    }
+
     try {
       const response = await fetch(url, {
         headers: {

@@ -64,7 +64,7 @@ export interface DeviceControl {
   /** set_property 动作时指定的属性名 */
   property?: string;
   /** set_property 动作时设定的属性值 */
-  value?: unknown;
+  value?: string | number;
 }
 
 /** 平台绑定凭证（米家使用 token，HomeKit 使用 homebridgeUrl + authToken） */

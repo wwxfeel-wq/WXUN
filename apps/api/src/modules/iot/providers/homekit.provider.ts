@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EncryptionUtil } from '../../../common/utils/encryption.util';
+import { isSafeUrl } from '../../../common/utils/ssrf-guard.util';
 import type { IoTProviderInterface } from './iot-provider.interface';
 import type {
   IoTDevice,
@@ -214,17 +215,8 @@ export class HomekitProvider implements IoTProviderInterface {
   }
 
   private validateUrl(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-      const hostname = parsed.hostname;
-      if (hostname === '169.254.169.254' || hostname.startsWith('169.254.')) return false;
-      if (hostname === 'metadata.google.internal') return false;
-      if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1' || hostname === '0.0.0.0') return false;
-      return true;
-    } catch {
-      return false;
-    }
+    // 使用公共 SSRF 防护函数，覆盖所有内网/保留地址范围
+    return isSafeUrl(url);
   }
 
   /** 构造 Homebridge 请求头 */

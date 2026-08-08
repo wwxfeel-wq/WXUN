@@ -40,7 +40,8 @@ export default function FloatingDock() {
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const dockRef = useRef<HTMLDivElement>(null);
   const mouseXRef = useRef<number | null>(null);
   const rafRef = useRef<number | undefined>(undefined);

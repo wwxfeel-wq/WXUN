@@ -674,6 +674,10 @@ export function createGETSSEStream(
   const controller = new AbortController();
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let isAborted = false;
+  let retryCount = 0;
+  const MAX_RETRIES = 10;
+  const INITIAL_DELAY = 1000;
+  const MAX_DELAY = 30000;
 
   const connect = async () => {
     const url = endpoint.startsWith('/')
@@ -710,6 +714,9 @@ export function createGETSSEStream(
       onClose?.();
       return;
     }
+
+    // 连接成功，重置重试计数
+    retryCount = 0;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -749,11 +756,16 @@ export function createGETSSEStream(
       onClose?.();
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && !isAborted) {
-        // Non-manual error: set up reconnect without calling onClose,
-        // because the consumer may clean up handlers in onClose and break
-        // the reconnect attempt.
+        // Non-manual error: set up reconnect with exponential backoff
+        if (retryCount >= MAX_RETRIES) {
+          // 超过最大重试次数，永久关闭
+          onClose?.();
+          return;
+        }
+        const delay = Math.min(INITIAL_DELAY * Math.pow(2, retryCount), MAX_DELAY);
+        retryCount++;
         onError?.('数据流中断');
-        reconnectTimer = setTimeout(() => connect(), 5000);
+        reconnectTimer = setTimeout(() => connect(), delay);
       } else {
         // Manual abort or AbortError — notify the consumer that the
         // stream is permanently closed.

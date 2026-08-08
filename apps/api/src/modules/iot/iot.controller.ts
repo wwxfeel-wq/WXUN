@@ -14,6 +14,7 @@ import { IoTSchedulerService } from './iot-scheduler.service';
 import { MockProvider } from './providers/mock.provider';
 import { ControlDeviceDto } from './dto/control-device.dto';
 import { BindPlatformDto } from './dto/bind-platform.dto';
+import { StartVacuumDto } from './dto/start-vacuum.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { IoTPlatform } from './types/iot.types';
@@ -128,9 +129,9 @@ export class IoTController {
   })
   async startVacuum(
     @CurrentUser('userId') userId: string,
-    @Body() body: { mode?: 'quick' | 'deep' | 'spot' },
+    @Body() dto: StartVacuumDto,
   ) {
-    const mode = body.mode ?? 'deep';
+    const mode = dto.mode ?? 'deep';
     const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     const battery = Number(vacuum?.properties.battery ?? 85);
 

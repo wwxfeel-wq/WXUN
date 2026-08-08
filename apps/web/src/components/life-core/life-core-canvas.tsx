@@ -564,10 +564,12 @@ export function LifeCoreCanvas({
   const BURST_DURATION = 2.5;
   const screenPositionsRef = useRef<Array<{ kind: NodeKind; sx: number; sy: number }>>([]);
 
-  // 预渲染 sprite
-  const [particleSprite, setParticleSprite] = useState<HTMLCanvasElement | null>(null);
-  const [coreSprite, setCoreSprite] = useState<HTMLCanvasElement | null>(null);
-  const [glowSprite, setGlowSprite] = useState<HTMLCanvasElement | null>(null);
+  // 预渲染 sprite — 合并为单个 state 以避免三次独立 setState 导致动画循环重建
+  const [sprites, setSprites] = useState<{
+    particle: HTMLCanvasElement | null;
+    core: HTMLCanvasElement | null;
+    glow: HTMLCanvasElement | null;
+  }>({ particle: null, core: null, glow: null });
 
   useEffect(() => {
     // 粒子光晕 — 翡翠绿 V13 加粗版（更大、更浓的光晕）
@@ -583,7 +585,6 @@ export function LifeCoreCanvas({
     grad.addColorStop(1, 'rgba(0,100,50,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
-    setParticleSprite(canvas);
 
     // 核心 sprite — 白绿
     const coreSize = 128;
@@ -598,7 +599,6 @@ export function LifeCoreCanvas({
     coreGrad.addColorStop(1, 'rgba(0,100,50,0)');
     cctx.fillStyle = coreGrad;
     cctx.fillRect(0, 0, coreSize, coreSize);
-    setCoreSprite(coreCanvas);
 
     // 背景光晕 — 翡翠绿
     const glowSize = 512;
@@ -613,7 +613,9 @@ export function LifeCoreCanvas({
     glowGrad.addColorStop(1, 'rgba(0,60,30,0)');
     gctx.fillStyle = glowGrad;
     gctx.fillRect(0, 0, glowSize, glowSize);
-    setGlowSprite(glowCanvas);
+
+    // 合并为一次 setState，避免动画循环被拆销重建三次
+    setSprites({ particle: canvas, core: coreCanvas, glow: glowCanvas });
   }, []);
 
   const draw = useCallback(() => {
@@ -638,7 +640,7 @@ export function LifeCoreCanvas({
     ctx.clearRect(0, 0, width, height);
 
     const { branches, particles, cloudParticles, signals, bgStars } = neuronRef.current;
-    if (!branches.length || !particleSprite || !coreSprite || !glowSprite) return;
+    if (!branches.length || !sprites.particle || !sprites.core || !sprites.glow) return;
 
     const now = performance.now() / 1000;
     if (startTimeRef.current === 0) {
@@ -734,7 +736,7 @@ export function LifeCoreCanvas({
     // ═══ 2. 背景光晕 ═══
     ctx.globalAlpha = 0.5 * burstAlpha;
     const gw = scale * 2.2, gh = scale * 1.9;
-    ctx.drawImage(glowSprite, cx - gw / 2, cy - gh / 2, gw, gh);
+    ctx.drawImage(sprites.glow, cx - gw / 2, cy - gh / 2, gw, gh);
 
     // ═══ 3. 更新粒子位置 ═══
     if (!reducedMotion) {
@@ -821,7 +823,7 @@ export function LifeCoreCanvas({
       // 外层光晕（sprite）— V14 细密：光晕缩小匹配粒子尺寸
       const spriteSize = cp.baseSize * 8 * persp * burstScale;
       ctx.globalAlpha = Math.min(0.55, alpha * 0.45);
-      ctx.drawImage(particleSprite, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
+      ctx.drawImage(sprites.particle, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
 
       // 核心亮点 — V14 细密：核心点缩小
       ctx.globalAlpha = Math.min(0.9, alpha);
@@ -854,7 +856,7 @@ export function LifeCoreCanvas({
       // 信号脉冲光晕
       const pulseSize = 15 * sig.intensity * persp * burstScale;
       ctx.globalAlpha = Math.min(0.8, alpha * 0.5);
-      ctx.drawImage(particleSprite, sx - pulseSize / 2, sy - pulseSize / 2, pulseSize, pulseSize);
+      ctx.drawImage(sprites.particle, sx - pulseSize / 2, sy - pulseSize / 2, pulseSize, pulseSize);
 
       // 信号脉冲核心
       ctx.globalAlpha = Math.min(1, alpha);
@@ -913,7 +915,7 @@ export function LifeCoreCanvas({
         // 外层光晕（sprite）
         const haloSize = dotSize * 6;
         ctx.globalAlpha = Math.min(0.35, trailAlpha * 0.5);
-        ctx.drawImage(particleSprite, sx - haloSize / 2, sy - haloSize / 2, haloSize, haloSize);
+        ctx.drawImage(sprites.particle, sx - haloSize / 2, sy - haloSize / 2, haloSize, haloSize);
 
         // 核心亮点
         ctx.globalAlpha = trailAlpha;
@@ -948,7 +950,7 @@ export function LifeCoreCanvas({
 
       const spriteSize = p.size * 10 * pulse * persp * branch.thickness;
       ctx.globalAlpha = Math.min(0.85, alpha);
-      ctx.drawImage(particleSprite, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
+      ctx.drawImage(sprites.particle, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize);
 
       ctx.globalAlpha = Math.min(1, alpha * 1.8);
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
@@ -999,7 +1001,7 @@ export function LifeCoreCanvas({
     // 核心 sprite
     ctx.globalAlpha = Math.min(0.95, corePulse * 1.3 * burstAlpha);
     const csSize = coreR * 1.8;
-    ctx.drawImage(coreSprite, coreX - csSize / 2, coreY - csSize / 2, csSize, csSize);
+    ctx.drawImage(sprites.core, coreX - csSize / 2, coreY - csSize / 2, csSize, csSize);
 
     // 白热点
     ctx.globalAlpha = Math.min(1, corePulse * 2.0 * burstAlpha);
@@ -1039,7 +1041,7 @@ export function LifeCoreCanvas({
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-  }, [state, particleSprite, coreSprite, glowSprite, reducedMotion]);
+  }, [state, sprites, reducedMotion]);
 
   // 动画循环 — 桌面 30fps，移动端 24fps 以节省电量
   useEffect(() => {
@@ -1207,6 +1209,8 @@ export function LifeCoreCanvas({
     <div
       ref={containerRef}
       className={className}
+      role="img"
+      aria-label="生命核心可视化画布，展示记忆、事件、知识与温暖瞬间等节点，可拖拽旋转和缩放查看"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

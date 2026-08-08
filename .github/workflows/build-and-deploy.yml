@@ -73,6 +73,8 @@ jobs:
     name: Deploy to Aliyun ECS
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.2.0
@@ -114,8 +116,7 @@ jobs:
               curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
               -o infra/nginx/nginx.conf
             if grep -q "Strict-Transport-Security" infra/nginx/nginx.conf; then
-              echo "WARNING: removing HSTS..."
-              sed -i '/Strict-Transport-Security/d' infra/nginx/nginx.conf
+              echo "NOTE: HSTS header detected in nginx.conf (expected if HTTPS is enabled)"
             fi
             echo "== 确保 DeepSeek API 配置 =="
             if [ -n "$DEEPSEEK_KEY" ]; then
@@ -179,27 +180,14 @@ jobs:
               -u "${{ secrets.ACR_USERNAME }}" --password-stdin
             echo "== 检查 .env.production =="
             if [ ! -f .env.production ]; then
-              echo "ERROR: .env.production not found! Creating minimal config..."
-              # WARNING: These are fallback defaults — replace with strong secrets immediately after first deploy!
-              echo "POSTGRES_USER=echolife" > .env.production
-              echo "POSTGRES_PASSWORD=Xr9mK2vLp7nQ4wFs8jBh6tNy3cVd5aZ1" >> .env.production
-              echo "POSTGRES_DB=echolife" >> .env.production
-              echo "REDIS_PASSWORD=Rz7kP3wMq9nL2vHs5jBf8tCy6cUd4aZ0" >> .env.production
-              echo "JWT_SECRET=f3a7c1e9b4d8a2f6c0e5d1b3a7f9c4e8a2b6d0f4c8e1a3b7d9f5c2e6a8b4d1f7" >> .env.production
-              echo "JWT_REFRESH_SECRET=e2b6d0f4c8e1a3b7d9f5c2e6a8b4d1f7f3a7c1e9b4d8a2f6c0e5d1b3a7f9c4e8" >> .env.production
-              echo "ENCRYPTION_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" >> .env.production
-              echo "OPENCLAW_WEBHOOK_SECRET=suiyan-openclaw-2026" >> .env.production
-              echo "CORS_ORIGINS=http://47.103.20.211,https://47.103.20.211" >> .env.production
-              echo "NEXT_PUBLIC_API_URL=http://47.103.20.211/api/v1" >> .env.production
-              echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
-              echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
-              echo "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium" >> .env.production
-              echo "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true" >> .env.production
+              echo "ERROR: .env.production not found! Deployment aborted."
+              echo "Please create .env.production on the server with required secrets before deploying."
+              exit 1
             fi
             # 确保关键变量存在
             grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
             grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
-            grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=http://47.103.20.211/api/v1" >> .env.production
+            grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
             echo ".env.production check OK"
             echo "== 拉取新镜像 =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || echo "WARNING: pull failed"

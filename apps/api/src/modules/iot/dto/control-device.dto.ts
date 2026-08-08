@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import type { DeviceAction } from '../types/iot.types';
 
 /** 控制设备请求 DTO */
@@ -29,8 +29,11 @@ export class ControlDeviceDto {
 
   @ApiPropertyOptional({
     example: 60,
-    description: 'set_property 动作时设定的属性值',
+    description: 'set_property 动作时设定的属性值（字符串或数字）',
   })
   @IsOptional()
-  value?: unknown;
+  @ValidateIf((o) => typeof o.value === 'string')
+  @IsString()
+  @MaxLength(500)
+  value?: string | number;
 }

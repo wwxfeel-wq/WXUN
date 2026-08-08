@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   KeyRound,
-  Shield,
   Cpu,
   Zap,
   Save,
@@ -43,32 +43,21 @@ const springHover = {
 
 export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
+  const router = useRouter();
 
   const isAdmin =
     user?.roles?.some((r) => r === "super_admin" || r === "operator") ?? false;
 
-  if (!user) {
-    return <FullScreenLoader />;
-  }
+  // 客户端角色守卫：非 admin 用户重定向到首页
+  React.useEffect(() => {
+    if (user && !isAdmin) {
+      router.replace("/");
+    }
+  }, [user, isAdmin, router]);
 
-  if (!isAdmin) {
-    return (
-      <PageTransition>
-        <div className="mx-auto max-w-3xl pt-12 text-center">
-          <Shield className="mx-auto h-12 w-12 text-text-muted opacity-40" />
-          <h1 className="mt-4 text-lg font-semibold text-text">需要管理员权限</h1>
-          <p className="mt-2 text-sm text-text-muted">
-            当前账号无法访问系统管理页面。
-          </p>
-          <Link
-            href="/"
-            className="mt-6 inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-text-inverse transition-colors hover:bg-accent/90 focus-ring"
-          >
-            返回首页
-          </Link>
-        </div>
-      </PageTransition>
-    );
+  // 角色未确定前显示加载状态
+  if (!user || !isAdmin) {
+    return <FullScreenLoader />;
   }
 
   return (

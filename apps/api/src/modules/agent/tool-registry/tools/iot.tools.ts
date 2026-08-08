@@ -195,7 +195,10 @@ export class IoTTools {
       control.property = args.property.trim();
     }
     if (args.value !== undefined && args.value !== null) {
-      control.value = args.value;
+      // R1-BE-007: value 字段仅接受 string | number
+      if (typeof args.value === 'string' || typeof args.value === 'number') {
+        control.value = args.value;
+      }
     }
 
     // set_property 必须提供 property

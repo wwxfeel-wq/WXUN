@@ -14,6 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FamilyHubService } from './familyhub.service';
 import { SkillsInvocationService } from './skills-invocation.service';
 import { WechatService } from '../wechat/wechat.service';
+import { InvokeAgentDto } from './dto/invoke-agent.dto';
 import type { InvokeSkillAbilityDto } from '@echolife/shared';
 
 @ApiTags('Family Hub')
@@ -65,10 +66,10 @@ export class FamilyHubController implements OnModuleInit {
   @ApiOperation({ summary: '调用 Agent（真实 AI 对话）' })
   async invokeAgent(
     @Param('code') code: string,
-    @Body() body: { message: string },
+    @Body() dto: InvokeAgentDto,
     @CurrentUser() user: { userId: string },
   ) {
-    return this.service.invokeAgent(code, body.message || '', user.userId);
+    return this.service.invokeAgent(code, dto.message, user.userId);
   }
 
   @Get('skills')
@@ -106,7 +107,8 @@ export class FamilyHubController implements OnModuleInit {
     @Query('agentCode') agentCode?: string,
     @Query('limit') limit?: string,
   ) {
-    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+    // R1-BE-013: 限制 limit 最大 100 条
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : 20;
     return this.service.getExecutionLogs(
       user.userId,
       agentCode,

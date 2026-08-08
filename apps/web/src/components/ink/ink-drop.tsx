@@ -69,7 +69,10 @@ export default function InkDrop() {
   const [chatAgent, setChatAgent] = useState<AgentRuntime | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { agents, skills, shimoCore, fetchAll } = useFamilyHubStore();
+  const agents = useFamilyHubStore((s) => s.agents);
+  const skills = useFamilyHubStore((s) => s.skills);
+  const shimoCore = useFamilyHubStore((s) => s.shimoCore);
+  const fetchAll = useFamilyHubStore((s) => s.fetchAll);
 
   useEffect(() => {
     fetchAll();
@@ -126,6 +129,8 @@ export default function InkDrop() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
         aria-label="打开时墨"
+        aria-expanded={expanded}
+        aria-controls="ink-drop-panel"
         className={`
           relative w-12 h-12 rounded-full flex items-center justify-center cursor-pointer
           border border-glass-border backdrop-blur-2xl transition-[color,background-color,border-color] duration-500 focus-ring
@@ -174,6 +179,7 @@ export default function InkDrop() {
       <AnimatePresence>
         {expanded && (
           <div
+            id="ink-drop-panel"
             className="glass-card absolute bottom-14 left-0 p-4 w-80 max-h-70vh overflow-y-auto rounded-2xl"
             style={{ scrollbarWidth: 'thin' }}
           >

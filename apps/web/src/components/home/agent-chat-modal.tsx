@@ -63,7 +63,27 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
   >(null);
   const [showDetails, setShowDetails] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
   const invokeAgent = useFamilyHubStore((s) => s.invokeAgent);
+
+  // 组件卸载时标记，防止异步回调更新已卸载组件的状态
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Escape 键关闭 Modal
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [open, onClose]);
 
   // Auto-dismiss skill level-up / exp notice
   useEffect(() => {
@@ -117,6 +137,8 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
     try {
       const result = await invokeAgent(agent.id, userMessage);
 
+      if (!isMountedRef.current) return;
+
       if (result.leveledUp && result.skillName) {
         setSkillNotice({
           type: 'levelup',
@@ -149,6 +171,7 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
         setShowDetails(true);
       }
     } catch {
+      if (!isMountedRef.current) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -158,8 +181,10 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
         },
       ]);
     } finally {
-      setLoading(false);
-      setExecuting(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setExecuting(false);
+      }
     }
   }, [input, agent, loading, invokeAgent]);
 
@@ -186,7 +211,9 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-background/60 backdrop-blur-sm"
-          role="presentation"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="agent-chat-modal-title"
           onClick={onClose}
         >
           <GlassLayer
@@ -215,7 +242,7 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-text truncate">
+                <h3 className="text-sm font-semibold text-text truncate" id="agent-chat-modal-title">
                   {agent.name}
                 </h3>
                 <div className="flex items-center gap-2">

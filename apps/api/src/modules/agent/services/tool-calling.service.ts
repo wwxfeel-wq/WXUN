@@ -175,6 +175,13 @@ export class ToolCallingService {
           return `字段 ${key} 数组超过最大长度 ${maxLen}`;
         }
       }
+      // R1-BE-010: 字符串 pattern 正则校验
+      if (expectedType === 'string' && typeof value === 'string' && propSchema.pattern) {
+        const regex = new RegExp(propSchema.pattern);
+        if (!regex.test(value)) {
+          return `字段 ${key} 不符合格式要求: ${propSchema.pattern}`;
+        }
+      }
     }
 
     // R4-BUG-011: 剥离 schema 中未定义的额外字段
@@ -336,7 +343,7 @@ export class ToolCallingService {
         break;
       case 'browse_webpage':
         base.parameters.properties = {
-          url: { type: 'string', description: '要浏览的网页 URL' },
+          url: { type: 'string', description: '要浏览的网页 URL', pattern: '^https?://' },
           selector: { type: 'string', description: '可选的关键词，用于定位正文区域' },
         };
         base.parameters.required = ['url'];

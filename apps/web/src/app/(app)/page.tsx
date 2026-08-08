@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { PageTransition } from '@/components/page-transition';
 import { SpatialHome } from '@/components/home/spatial-home';
-import { useFamilyHubStore } from '@/stores/family-hub-store';
+import { useFamilyHubStore, clearPendingTimers } from '@/stores/family-hub-store';
 
 /**
  * 岁言意识空间 —— 首页 V3 Spatial
@@ -24,6 +24,11 @@ export default function HomePage() {
     }, 60_000);
     return () => clearInterval(interval);
   }, [fetchAll]);
+
+  // 组件卸载时清除所有 pending timers，防止内存泄漏
+  useEffect(() => {
+    return () => clearPendingTimers();
+  }, []);
 
   return (
     <PageTransition>

@@ -200,6 +200,11 @@ model Memory {
 }
 
 model MemoryEmbedding {
+  // TODO: pgvector extension is installed (pgvector/pgvector:pg16 image) but not used.
+  // The embedding field is stored as String instead of Unsupported("vector").
+  // To enable vector similarity search, migrate this field to pgvector type
+  // and update the search queries accordingly. This requires a data migration
+  // to convert existing embeddings, so it is deferred for now.
   memoryId  String                          @id @map("memory_id") @db.Uuid
   memory    Memory                          @relation(fields: [memoryId], references: [id], onDelete: Cascade)
   embedding String
@@ -487,6 +492,7 @@ model WechatMessage {
 
   @@index([contactId, createdAt])
   @@index([fromId, createdAt])
+  @@index([toId, createdAt])
   @@index([familyMemberId])
   @@map("wechat_messages")
 }

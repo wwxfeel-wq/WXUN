@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
 import { Public } from './decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -16,7 +17,7 @@ export class HealthController {
 
   @Public()
   @Get()
-  async check() {
+  async check(@Res() response: Response) {
     const checks: Record<string, string> = {};
 
     // Check database
@@ -48,10 +49,15 @@ export class HealthController {
     checks.aiService = hasAiKey ? 'configured' : 'not_configured';
 
     const allOk = ['database', 'redis'].every((k) => checks[k] === 'ok');
-    return {
-      status: allOk ? 'healthy' : 'degraded',
+    const status = allOk ? 'healthy' : 'degraded';
+
+    // Return HTTP 503 when degraded so load balancers and health checks
+    // can correctly detect the service as unavailable.
+    response.status(allOk ? 200 : 503);
+    response.json({
+      status,
       checks,
       timestamp: new Date().toISOString(),
-    };
+    });
   }
 }

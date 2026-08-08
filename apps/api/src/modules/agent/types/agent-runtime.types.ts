@@ -18,6 +18,7 @@ export interface ToolParameterSchema {
   min?: number;
   max?: number;
   maxLength?: number;
+  pattern?: string;
 }
 
 export interface ToolSchema {

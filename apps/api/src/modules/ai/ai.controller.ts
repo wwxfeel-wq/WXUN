@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import type { IncomingMessage } from 'http';
 import { AgentOrchestratorService } from './services/agent-orchestrator.service';
@@ -28,6 +29,7 @@ export class AiController {
    */
   @Post('chat')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: 'AI访谈对话（SSE流式）',
     description: '与AI生命教练进行访谈对话，响应以SSE流式返回',
@@ -77,6 +79,7 @@ export class AiController {
    */
   @Post('digital-life')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: '数字生命对话（SSE流式）',
     description: '与用户的数字生命分身对话，响应以SSE流式返回',

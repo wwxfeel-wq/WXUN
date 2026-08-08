@@ -27,6 +27,9 @@ RUN pnpm --filter @echolife/shared build
 RUN pnpm --filter @echolife/api exec prisma generate
 RUN pnpm --filter @echolife/api build
 
+# Prune devDependencies for smaller production image
+RUN pnpm install --prod --frozen-lockfile
+
 # ===== Production =====
 FROM base AS runner
 WORKDIR /app
@@ -35,9 +38,6 @@ ENV NODE_ENV=production
 # Install Chromium for Puppeteer screenshot support
 RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Install prisma for migrations
-RUN npm install -g prisma@5.22.0
 
 # Create non-root user
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
@@ -59,7 +59,7 @@ RUN chown -R appuser:appgroup /app
 
 EXPOSE 3001
 
-# Run migrations then start (migration failure does NOT block API startup)
+# Run migrations then start (migration failure stops startup)
 WORKDIR /app/apps/api
 USER appuser
-CMD ["sh", "-c", "npx prisma migrate deploy 2>&1 && echo 'Migrations OK' || echo 'WARNING: Migration failed, starting API anyway for debugging'; node dist/main.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]

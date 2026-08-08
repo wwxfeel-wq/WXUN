@@ -343,15 +343,18 @@ export class AuthService {
 
   async logout(userId: string, refreshToken?: string): Promise<void> {
     if (refreshToken) {
-      // Decode the refresh token to get the tokenId and revoke it
+      // R1-BE-012: 使用 verify 替代 decode，验证 JWT 签名
       try {
-        const payload = this.jwtService.decode(refreshToken) as JwtPayload | null;
+        const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
+          secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+          issuer: JWT_CONFIG.ISSUER,
+          audience: JWT_CONFIG.AUDIENCE,
+        });
         if (payload && payload.sub === userId && payload.tokenId) {
           await this.redis.revokeRefreshToken(userId, payload.tokenId);
         }
       } catch {
-        // If decoding fails, revoke all tokens as a safety measure
-        await this.redis.revokeAllRefreshTokens(userId);
+        // verify 失败（签名无效/过期）则忽略，不撤销令牌
       }
     } else {
       // No specific token provided, revoke all refresh tokens
@@ -442,9 +445,10 @@ export class AuthService {
    * Request a password reset. Generates a reset token and stores it in Redis.
    * Does not reveal whether the email exists — always returns the same message.
    *
-   * H-005: The reset token is NEVER returned in the API response. It is only
-   * logged server-side for development/testing convenience. In production,
-   * the token should be delivered via a secure email link.
+   * H-005 / R1-BE-005: The reset token is NEVER returned in the API response
+   * and is NEVER logged. The token is only stored in Redis for later
+   * verification. In production, the token should be delivered via a secure
+   * email link.
    * TODO: Integrate an email service to send the reset link in production.
    */
   async requestPasswordReset(
@@ -463,8 +467,8 @@ export class AuthService {
         user.id,
         REDIS_TTL.OTP,
       );
-      // H-005: Log the token server-side only — never return it in the response
-      this.logger.log(`Password reset requested for: ${email} (token: ${resetToken})`);
+      // R1-BE-005: 移除 token 日志记录，仅记录邮箱
+      this.logger.log(`Password reset requested for: ${email}`);
     }
 
     // 始终返回相同的消息，不泄露邮箱是否已注册
