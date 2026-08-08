@@ -27,13 +27,6 @@ RUN pnpm --filter @echolife/shared build
 RUN pnpm --filter @echolife/api exec prisma generate
 RUN pnpm --filter @echolife/api build
 
-# R3-DOCKERFILE-001: Prune devDependencies to reduce production image size.
-# pnpm prune --prod has known issues in workspace setups, so we use npx pnpm
-# prune at the repo root which removes dev-only packages from node_modules.
-# If this fails due to workspace resolution, the fallback is to manually
-# delete dev-only node_modules folders (e.g. jest, eslint, prettier).
-RUN cd /app && npx pnpm prune --prod || echo "WARN: pnpm prune failed, devDependencies will be included"
-
 # ===== Production =====
 FROM base AS runner
 WORKDIR /app
