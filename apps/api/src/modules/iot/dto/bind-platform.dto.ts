@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUrl } from 'class-validator';
 
 /** 绑定平台凭证请求 DTO（米家使用 token，HomeKit 使用 homebridgeUrl + authToken） */
 export class BindPlatformDto {
@@ -37,4 +37,12 @@ export class BindPlatformDto {
   @IsString()
   @IsOptional()
   authToken?: string;
+
+  @ApiPropertyOptional({
+    example: 2592000,
+    description: '米家 token 过期时间（秒），用于计算 expiresAt',
+  })
+  @IsInt()
+  @IsOptional()
+  expiresInSeconds?: number;
 }

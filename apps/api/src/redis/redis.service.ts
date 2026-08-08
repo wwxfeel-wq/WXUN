@@ -14,6 +14,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const redisUrl = this.configService.get<string>('REDIS_URL', 'redis://localhost:6379');
     this.client = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
+      lazyConnect: true,
+      keepAlive: 30000,
       retryStrategy: (times) => {
         if (times > 3) {
           this.logger.error('Redis connection retries exhausted');
@@ -29,6 +31,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on('error', (error) => {
       this.logger.error(`Redis error: ${error.message}`);
+    });
+
+    this.client.connect().catch((error) => {
+      this.logger.error(`Redis initial connection failed: ${error.message}`);
     });
   }
 
@@ -62,6 +68,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async exists(key: string): Promise<boolean> {
     const result = await this.client.exists(key);
     return result === 1;
+  }
+
+  async getDel(key: string): Promise<string | null> {
+    return this.client.getdel(key);
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
@@ -141,7 +151,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async revokeAllRefreshTokens(userId: string): Promise<void> {
     const pattern = `${REDIS_KEYS.REFRESH_TOKEN}${userId}:*`;
-    const keys = await this.client.keys(pattern);
+    const keys = await this.scanKeys(pattern);
     if (keys.length > 0) {
       await this.client.del(...keys);
     }
@@ -158,9 +168,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async cacheInvalidate(pattern: string): Promise<void> {
-    const keys = await this.client.keys(pattern);
+    const keys = await this.scanKeys(pattern);
     if (keys.length > 0) {
       await this.client.del(...keys);
     }
+  }
+
+  private async scanKeys(pattern: string): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await this.client.scan(
+        cursor, 'MATCH', pattern, 'COUNT', 100,
+      );
+      cursor = nextCursor;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    return keys;
   }
 }

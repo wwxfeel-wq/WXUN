@@ -48,6 +48,30 @@ export class ToolCallingService {
     call: AgentToolCall,
     originalMessage?: string,
   ): Promise<AgentToolCallResult> {
+    // 验证工具名是否在允许的白名单中
+    const allowedTools = this.getToolNamesForAgent(agentCode);
+    if (!allowedTools.includes(call.tool)) {
+      this.logger.warn(`Tool name not in whitelist for agent ${agentCode}: ${call.tool}`);
+      return {
+        tool: call.tool,
+        args: call.args,
+        success: false,
+        summary: `工具 ${call.tool} 不在允许列表中`,
+      };
+    }
+
+    const schema = this.buildSchema(call.tool);
+    const validationError = this.validateToolArgs(call, schema);
+    if (validationError) {
+      this.logger.warn(`Tool args validation failed for ${call.tool}: ${validationError}`);
+      return {
+        tool: call.tool,
+        args: call.args,
+        success: false,
+        summary: `参数校验失败: ${validationError}`,
+      };
+    }
+
     try {
       const result = await this.agentToolService.executeTool(
         agentCode,
@@ -87,6 +111,81 @@ export class ToolCallingService {
     return Promise.all(
       calls.map((call) => this.executeToolCall(agentCode, userId, call, originalMessage)),
     );
+  }
+
+  /**
+   * Lightweight validation of tool call args against the tool's JSON schema.
+   * Checks required fields and basic type correctness.
+   * Returns an error message string if invalid, or null if valid.
+   */
+  private validateToolArgs(call: AgentToolCall, schema: ToolSchema): string | null {
+    const args = call.args ?? {};
+    const required = schema.parameters.required ?? [];
+
+    for (const field of required) {
+      if (args[field] === undefined || args[field] === null) {
+        return `缺少必需字段 ${field}`;
+      }
+    }
+
+    const properties = schema.parameters.properties ?? {};
+    for (const [key, propSchema] of Object.entries(properties)) {
+      const value = args[key];
+      if (value === undefined || value === null) continue;
+
+      const expectedType = propSchema.type;
+      if (expectedType === 'string' && typeof value !== 'string') {
+        return `字段 ${key} 应为 string 类型`;
+      }
+      if (expectedType === 'number' && typeof value !== 'number') {
+        return `字段 ${key} 应为 number 类型`;
+      }
+      if (expectedType === 'boolean' && typeof value !== 'boolean') {
+        return `字段 ${key} 应为 boolean 类型`;
+      }
+      if (expectedType === 'array' && !Array.isArray(value)) {
+        return `字段 ${key} 应为 array 类型`;
+      }
+      if (expectedType === 'object' && (typeof value !== 'object' || Array.isArray(value))) {
+        return `字段 ${key} 应为 object 类型`;
+      }
+      if (propSchema.enum && !propSchema.enum.includes(String(value))) {
+        return `字段 ${key} 的值不在允许范围内: ${propSchema.enum.join(', ')}`;
+      }
+      // R4-BUG-006: 字符串最大长度校验（默认 2000 字符）
+      if (expectedType === 'string' && typeof value === 'string') {
+        const maxLen = propSchema.maxLength ?? 2000;
+        if (value.length > maxLen) {
+          return `字段 ${key} 超过最大长度 ${maxLen} 字符`;
+        }
+      }
+      // R4-BUG-006: 数值范围校验
+      if (expectedType === 'number' && typeof value === 'number') {
+        if (propSchema.min !== undefined && value < propSchema.min) {
+          return `字段 ${key} 小于最小值 ${propSchema.min}`;
+        }
+        if (propSchema.max !== undefined && value > propSchema.max) {
+          return `字段 ${key} 超过最大值 ${propSchema.max}`;
+        }
+      }
+      // R4-BUG-006: 数组最大长度校验
+      if (expectedType === 'array' && Array.isArray(value)) {
+        const maxLen = propSchema.maxLength ?? 100;
+        if (value.length > maxLen) {
+          return `字段 ${key} 数组超过最大长度 ${maxLen}`;
+        }
+      }
+    }
+
+    // R4-BUG-011: 剥离 schema 中未定义的额外字段
+    const allowedKeys = new Set(Object.keys(properties));
+    for (const key of Object.keys(args)) {
+      if (!allowedKeys.has(key)) {
+        delete args[key];
+      }
+    }
+
+    return null;
   }
 
   /**

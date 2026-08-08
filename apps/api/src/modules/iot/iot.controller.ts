@@ -100,7 +100,6 @@ export class IoTController {
     @CurrentUser('userId') userId: string,
     @Param('scene') scene: string,
   ) {
-    this.schedulerService.setUserId(userId);
     const result = await this.schedulerService.triggerScene(scene, userId);
     return {
       success: true,
@@ -118,8 +117,8 @@ export class IoTController {
     summary: '获取扫地机器人清洗状态',
     description: '返回扫地机器人的实时清洗状态，包括路线规划、当前进度、覆盖面积、电量和事件列表',
   })
-  async getVacuumStatus() {
-    return this.mockProvider.getVacuumState();
+  async getVacuumStatus(@CurrentUser('userId') userId: string) {
+    return this.mockProvider.getVacuumState(userId);
   }
 
   @Post('vacuum/start')
@@ -132,10 +131,10 @@ export class IoTController {
     @Body() body: { mode?: 'quick' | 'deep' | 'spot' },
   ) {
     const mode = body.mode ?? 'deep';
-    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     const battery = Number(vacuum?.properties.battery ?? 85);
 
-    const route = this.mockProvider.startCleaning(mode, battery);
+    const route = this.mockProvider.startCleaning(userId, mode, battery);
 
     const roomSequence = route.waypoints
       .filter((w) => w.action === 'enter')
@@ -143,8 +142,6 @@ export class IoTController {
       .join(' → ');
 
     const durationMin = Math.floor(route.estimatedDurationSec / 60);
-
-    this.schedulerService.setUserId(userId);
 
     return {
       success: true,
@@ -165,8 +162,8 @@ export class IoTController {
     summary: '停止扫地机器人清扫',
     description: '停止当前清扫任务，扫地机器人回到待机状态',
   })
-  async stopVacuum() {
-    this.mockProvider.stopCleaning();
+  async stopVacuum(@CurrentUser('userId') userId: string) {
+    this.mockProvider.stopCleaning(userId);
     return { success: true, message: '扫地机器人已停止清扫' };
   }
 }

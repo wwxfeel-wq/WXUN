@@ -97,6 +97,10 @@ export class ApiKeyController {
     @Param('provider') provider: string,
     @CurrentUser('userId') userId: string,
   ) {
+    // R1-005: Validate provider against whitelist before proceeding
+    if (!VALID_PROVIDERS.includes(provider as ApiKeyProvider)) {
+      return { success: false, message: `不支持的 provider: ${provider}` };
+    }
     await this.apiKeyService.deleteApiKey(provider as ApiKeyProvider, userId);
     return { success: true, provider };
   }
@@ -105,6 +109,10 @@ export class ApiKeyController {
   @Post(':provider/test')
   @ApiOperation({ summary: '测试 API Key 连通性' })
   async testKey(@Param('provider') provider: string) {
+    // R1-005: Validate provider against whitelist before proceeding
+    if (!VALID_PROVIDERS.includes(provider as ApiKeyProvider)) {
+      return { success: false, message: `不支持的 provider: ${provider}` };
+    }
     return this.apiKeyService.testConnection(provider as ApiKeyProvider);
   }
 }

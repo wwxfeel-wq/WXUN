@@ -9,7 +9,6 @@ export const glassLayerVariants = cva(
   [
     'glass-layer relative isolate overflow-hidden',
     'transition-[transform,box-shadow,border-color,background-color] duration-300 ease-liquid',
-    'will-change-transform',
   ],
   {
     variants: {
@@ -24,7 +23,7 @@ export const glassLayerVariants = cva(
           'rounded-3xl border border-[var(--color-glass-border-strong)] bg-[var(--color-glass-strong)] backdrop-blur-heavy',
       },
       interactive: {
-        true: 'cursor-pointer hover:bg-[var(--color-glass-hover)] hover:border-[var(--color-glass-border-hover)] hover:shadow-glass active:scale-[var(--state-active-scale)]',
+        true: 'cursor-pointer hover:bg-[var(--color-glass-hover)] hover:border-[var(--color-glass-border-hover)] hover:shadow-glass active:scale-[var(--state-active-scale)] hover:will-change-transform active:will-change-transform',
         false: '',
       },
     },
@@ -247,6 +246,12 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
       [lightingRef, forwardedRef, innerRef],
     );
 
+    // L-004: Only apply will-change-transform when mouse/scroll/orientation
+    // tracking is enabled (continuous animation). For interactive elements,
+    // will-change is handled via hover/active CSS variants in the cva.
+    const trackingWillChange =
+      trackMouse || trackScroll || trackOrientation ? 'will-change-transform' : '';
+
     const mergedStyle = React.useMemo(
       () => ({ ...GLASS_CSS_VARS, ...style } as React.CSSProperties),
       [style],
@@ -262,7 +267,7 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
         return (
           <div
             ref={setRefs}
-            className={cn(glassLayerVariants({ intensity, interactive }), className)}
+            className={cn(glassLayerVariants({ intensity, interactive }), trackingWillChange, className)}
             style={mergedStyle}
             {...props}
           >
@@ -275,11 +280,21 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
       const child = children as React.ReactElement<
         React.PropsWithChildren<{ className?: string; style?: React.CSSProperties }>
       >;
+      // Merge the child's own ref with GlassLayer's internal ref so both receive the node.
+      const childRef = (child as React.ReactElement<{ ref?: React.Ref<HTMLElement> }>).ref;
+      const mergedRef = (node: HTMLElement | null) => {
+        setRefs(node);
+        if (typeof childRef === 'function') {
+          childRef(node);
+        } else if (childRef) {
+          (childRef as React.MutableRefObject<HTMLElement | null>).current = node;
+        }
+      };
       return React.cloneElement(
         child,
         {
-          ref: setRefs,
-          className: cn(glassLayerVariants({ intensity, interactive }), child.props.className, className),
+          ref: mergedRef,
+          className: cn(glassLayerVariants({ intensity, interactive }), trackingWillChange, child.props.className, className),
           style: { ...mergedStyle, ...child.props.style },
           ...props,
           children: (
@@ -295,7 +310,7 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
     return (
       <div
         ref={setRefs}
-        className={cn(glassLayerVariants({ intensity, interactive }), className)}
+        className={cn(glassLayerVariants({ intensity, interactive }), trackingWillChange, className)}
         style={mergedStyle}
         {...props}
       >

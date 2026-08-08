@@ -11,6 +11,8 @@ export interface QuotaCheckResult {
   allowed: boolean;
   remaining: number;
   limit: number;
+  /** The Redis quota key used during checkAndIncrement, for rollback via decrementUsage */
+  quotaKey?: string;
 }
 
 /** Current usage information */
@@ -56,6 +58,52 @@ export class QuotaService {
   }
 
   /**
+   * Atomically checks quota and increments usage in a single Redis operation.
+   *
+   * Uses a Lua script to ensure the check-and-increment is atomic, preventing
+   * concurrent requests from bypassing the quota limit (TOCTOU race condition).
+   *
+   * @param userId - The user ID
+   * @returns Whether the request is allowed, remaining count, and the limit
+   */
+  async checkAndIncrement(userId: string): Promise<QuotaCheckResult> {
+    const tier = await this.getUserTier(userId);
+    const limit = this.getLimit(tier);
+
+    // Unlimited quota (lifetime tier) — just increment
+    if (limit === Infinity) {
+      const key = this.getQuotaKey(userId);
+      await this.incrementUsage(userId);
+      return { allowed: true, remaining: Infinity, limit, quotaKey: key };
+    }
+
+    const key = this.getQuotaKey(userId);
+    const ttlSeconds = this.getSecondsUntilMonthEnd();
+    const client = this.redis.getClient;
+
+    const script = `
+      local current = redis.call('INCR', KEYS[1])
+      if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+      if current > tonumber(ARGV[2]) then
+        redis.call('DECR', KEYS[1])
+        return {0, current - 1}
+      end
+      return {1, current}
+    `;
+
+    const result = (await client.eval(script, 1, key, String(ttlSeconds), String(limit))) as number[];
+    const allowed = result[0] === 1;
+    const used = result[1];
+
+    return {
+      allowed,
+      remaining: Math.max(0, limit - used),
+      limit,
+      quotaKey: key,
+    };
+  }
+
+  /**
    * Increments the user's monthly AI message usage counter.
    * Should be called after a successful AI interaction.
    *
@@ -73,6 +121,23 @@ export class QuotaService {
     }
 
     this.logger.debug(`Usage incremented for user ${userId}: ${current}`);
+  }
+
+  /**
+   * Decrements the user's monthly AI message usage counter.
+   * Used to roll back quota increments when a request fails after
+   * the quota was already incremented.
+   *
+   * Accepts the quota key returned by checkAndIncrement to avoid
+   * cross-month boundary issues where getQuotaKey would generate
+   * a different key after midnight.
+   *
+   * @param quotaKey - The Redis quota key returned by checkAndIncrement
+   */
+  async decrementUsage(quotaKey: string): Promise<void> {
+    const client = this.redis.getClient;
+    await client.decr(quotaKey);
+    this.logger.debug(`Usage decremented for key ${quotaKey}`);
   }
 
   /**

@@ -129,23 +129,70 @@ const STARTERS: { text: string; icon: LucideIcon }[] = [
   { text: "我想回忆一段童年的夏天", icon: Heart },
 ];
 
+const STORAGE_KEY = "echolife_interview_messages";
+
 export default function InterviewPage() {
   const user = useAuthStore((s) => s.user);
+
+  // H-022: 从 localStorage 恢复历史消息
+  const [initialMessages] = React.useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as ChatMessage[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const { messages, isStreaming, isThinking, error, skillNotice, sendMessage, stopStream } =
-    useSSEChat();
+    useSSEChat({ initialMessages });
 
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to the latest message
+  // H-022: 防抖保存消息到 localStorage（最多保存 50 条）
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
   React.useEffect(() => {
-    if (scrollRef.current) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        const toSave = messages.slice(-50).map(m => ({ ...m, streaming: false }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      } catch {
+        // localStorage 满或不可用时静默失败
+      }
+    }, 500);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [messages]);
+
+  // H-037: 跟踪用户是否在底部附近，决定是否自动滚动
+  const isNearBottomRef = React.useRef(true);
+  const scrollRafRef = React.useRef<number | null>(null);
+
+  const handleScroll = React.useCallback(() => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 100;
+  }, []);
+
+  // H-037: 仅在用户位于底部附近时自动滚动
+  React.useEffect(() => {
+    if (!scrollRef.current || !isNearBottomRef.current) return;
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      if (!scrollRef.current || !isNearBottomRef.current) return;
+      const lastMessage = messages[messages.length - 1];
+      const isStreamingMessage = lastMessage?.streaming === true;
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
+        behavior: isStreamingMessage ? "auto" : "smooth",
       });
-    }
+    });
   }, [messages]);
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -172,7 +219,7 @@ export default function InterviewPage() {
     // Auto-resize textarea
     const el = e.target;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
   return (
@@ -187,6 +234,7 @@ export default function InterviewPage() {
           {/* Messages */}
           <div
             ref={scrollRef}
+            onScroll={handleScroll}
             className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-8 sm:py-8 space-y-4 sm:space-y-6"
           >
             {messages.length === 0 ? (

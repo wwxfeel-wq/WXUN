@@ -3,9 +3,14 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { randomUUID } from 'crypto';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { validateEnv } from './common/config/env.validation';
+
+// H-043: 启动前验证必需的环境变量
+validateEnv();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -16,46 +21,43 @@ async function bootstrap() {
   const corsOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:3000');
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
-  // Expand CORS origins: auto-add HTTP versions of HTTPS origins
-  // so that HTTP access (e.g. http://47.103.20.211) also works
-  const rawOrigins = corsOrigins.split(',').map((o) => o.trim()).filter(Boolean);
-  const expandedOrigins = rawOrigins.flatMap((o) => {
-    if (o.startsWith('https://')) {
-      return [o, o.replace('https://', 'http://')];
-    }
-    return [o];
-  });
+  // Parse CORS origins — 不再自动将 HTTPS 降级为 HTTP
+  const corsOriginList = corsOrigins.split(',').map((o) => o.trim()).filter(Boolean);
 
   // Security: Helmet middleware
+  // CSP 由 Nginx 处理，此处禁用以避免重复 header 冲突
+  // HSTS 仅在配置了 HTTPS origin 的生产环境中启用
   app.use(
     helmet({
-      contentSecurityPolicy: isProduction
-        ? {
-            directives: {
-              defaultSrc: ["'self'"],
-              scriptSrc: ["'self'", "'unsafe-inline'"],
-              styleSrc: ["'self'", "'unsafe-inline'"],
-              imgSrc: ["'self'", 'data:', 'blob:'],
-              connectSrc: ["'self'"],
-              fontSrc: ["'self'"],
-              objectSrc: ["'none'"],
-              mediaSrc: ["'self'"],
-              frameSrc: ["'none'"],
-            },
-          }
-        : false,
-      // Disable HSTS — the site is served via HTTP without SSL,
-      // HSTS would force browsers to HTTPS and break access
-      hsts: false,
+      contentSecurityPolicy: false, // 由 Nginx 处理 CSP
+      hsts: isProduction && corsOriginList.some((o) => o.startsWith('https://')),
     }),
   );
 
+  // M-040: Request ID tracing
+  app.use((req: any, _res: any, next: any) => {
+    if (!req.headers['x-request-id']) {
+      req.headers['x-request-id'] = randomUUID();
+    }
+    next();
+  });
+
   // Enable CORS
   app.enableCors({
-    origin: expandedOrigins,
+    origin: corsOriginList,
     credentials: true,
+    exposedHeaders: ['Content-Type', 'X-Accel-Buffering'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With'],
+  });
+
+  // Request logging middleware
+  const httpLogger = new Logger('HttpRequest');
+  app.use((req: any, res: any, next: any) => {
+    res.on('finish', () => {
+      httpLogger.log(`${req.method} ${req.originalUrl} ${res.statusCode}`);
+    });
+    next();
   });
 
   // Global prefix
@@ -101,6 +103,11 @@ async function bootstrap() {
 
   // Graceful shutdown
   app.enableShutdownHooks();
+
+  process.on('SIGTERM', () => {
+    Logger.log('Received SIGTERM, shutting down gracefully', 'Bootstrap');
+    app.close();
+  });
 
   await app.listen(port);
   Logger.log(`EchoLife API is running on http://localhost:${port}`, 'Bootstrap');

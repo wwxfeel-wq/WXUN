@@ -34,6 +34,7 @@ const config: Config = {
           primary: 'var(--color-text-primary)',
           secondary: 'var(--color-text-secondary)',
           tertiary: 'var(--color-text-tertiary)',
+          subtle: 'var(--color-text-subtle)',
           muted: 'var(--color-text-muted)',
           inverse: 'var(--color-text-inverse)',
         },

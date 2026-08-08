@@ -81,13 +81,14 @@ jobs:
           WECHAT_TOKEN: ${{ secrets.WECHAT_BOT_TOKEN }}
           MIHOME_CLIENT_ID: ${{ secrets.MIHOME_CLIENT_ID }}
           MIHOME_CLIENT_SECRET: ${{ secrets.MIHOME_CLIENT_SECRET }}
+          OPENCLAW_SECRET: ${{ secrets.OPENCLAW_WEBHOOK_SECRET }}
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
-          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,PUPPETEER_EXECUTABLE_PATH
+          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH
           script: |
             cd /www/wwwroot/echolife
             echo "== 同步 docker-compose.deploy.yml =="
@@ -103,9 +104,9 @@ jobs:
               rm -f docker-compose.deploy.yml.new
               echo "WARNING: download failed, using existing docker-compose.deploy.yml"
             fi
-            # 确保所有依赖都是 service_started 而非 service_healthy（避免容器崩溃导致整条链路起不来）
-            sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.deploy.yml
-            echo "Patched service_healthy -> service_started"
+            # 保持 service_healthy 条件不变，确保依赖容器健康后才启动（R5-BUG-002 修复）
+            # sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.deploy.yml
+            # echo "Patched service_healthy -> service_started"
             echo "== 同步 nginx 配置 =="
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
@@ -164,6 +165,14 @@ jobs:
               echo "PUPPETEER_EXECUTABLE_PATH=$PUPPETEER_EXECUTABLE_PATH" >> .env.production
             fi
             grep -q "^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=" .env.production || echo "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true" >> .env.production
+            echo "== 确保 OpenClaw Webhook Secret =="
+            if [ -n "$OPENCLAW_SECRET" ]; then
+              if grep -q "^OPENCLAW_WEBHOOK_SECRET=" .env.production; then
+                sed -i "s|^OPENCLAW_WEBHOOK_SECRET=.*|OPENCLAW_WEBHOOK_SECRET=$OPENCLAW_SECRET|" .env.production
+              else
+                echo "OPENCLAW_WEBHOOK_SECRET=$OPENCLAW_SECRET" >> .env.production
+              fi
+            fi
             echo "== 登录 ACR =="
             echo "${{ secrets.ACR_PASSWORD }}" | docker login \
               ${{ env.ACR_REGISTRY }} \
@@ -171,13 +180,15 @@ jobs:
             echo "== 检查 .env.production =="
             if [ ! -f .env.production ]; then
               echo "ERROR: .env.production not found! Creating minimal config..."
+              # WARNING: These are fallback defaults — replace with strong secrets immediately after first deploy!
               echo "POSTGRES_USER=echolife" > .env.production
-              echo "POSTGRES_PASSWORD=echolife2026" >> .env.production
+              echo "POSTGRES_PASSWORD=Xr9mK2vLp7nQ4wFs8jBh6tNy3cVd5aZ1" >> .env.production
               echo "POSTGRES_DB=echolife" >> .env.production
-              echo "REDIS_PASSWORD=redis2026" >> .env.production
-              echo "JWT_SECRET=echolife-jwt-secret-2026" >> .env.production
-              echo "JWT_REFRESH_SECRET=echolife-jwt-refresh-2026" >> .env.production
-              echo "ENCRYPTION_KEY=echolife-encryption-key-32b!" >> .env.production
+              echo "REDIS_PASSWORD=Rz7kP3wMq9nL2vHs5jBf8tCy6cUd4aZ0" >> .env.production
+              echo "JWT_SECRET=f3a7c1e9b4d8a2f6c0e5d1b3a7f9c4e8a2b6d0f4c8e1a3b7d9f5c2e6a8b4d1f7" >> .env.production
+              echo "JWT_REFRESH_SECRET=e2b6d0f4c8e1a3b7d9f5c2e6a8b4d1f7f3a7c1e9b4d8a2f6c0e5d1b3a7f9c4e8" >> .env.production
+              echo "ENCRYPTION_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" >> .env.production
+              echo "OPENCLAW_WEBHOOK_SECRET=suiyan-openclaw-2026" >> .env.production
               echo "CORS_ORIGINS=http://47.103.20.211,https://47.103.20.211" >> .env.production
               echo "NEXT_PUBLIC_API_URL=http://47.103.20.211/api/v1" >> .env.production
               echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production

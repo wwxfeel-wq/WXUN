@@ -41,6 +41,32 @@ export interface UseGlassLightingOptions {
  *   --glass-refraction-shift-x
  *   --glass-refraction-shift-y
  */
+type MouseMoveCallback = (e: MouseEvent) => void;
+
+const mouseMoveSubscribers = new Set<MouseMoveCallback>();
+let mouseMoveGlobalActive = false;
+
+function globalMouseMoveHandler(e: MouseEvent): void {
+  for (const cb of mouseMoveSubscribers) {
+    cb(e);
+  }
+}
+
+function subscribeMouseMove(cb: MouseMoveCallback): () => void {
+  mouseMoveSubscribers.add(cb);
+  if (!mouseMoveGlobalActive) {
+    mouseMoveGlobalActive = true;
+    window.addEventListener('mousemove', globalMouseMoveHandler, { passive: true });
+  }
+  return () => {
+    mouseMoveSubscribers.delete(cb);
+    if (mouseMoveGlobalActive && mouseMoveSubscribers.size === 0) {
+      mouseMoveGlobalActive = false;
+      window.removeEventListener('mousemove', globalMouseMoveHandler);
+    }
+  };
+}
+
 export function useGlassLighting<T extends HTMLElement = HTMLElement>(
   options: UseGlassLightingOptions = {},
 ) {
@@ -157,8 +183,7 @@ export function useGlassLighting<T extends HTMLElement = HTMLElement>(
       lastMouse.current = { x: e.clientX, y: e.clientY };
     };
 
-    window.addEventListener('mousemove', handleMove, { passive: true });
-    return () => window.removeEventListener('mousemove', handleMove);
+    return subscribeMouseMove(handleMove);
   }, [trackMouse, maxShift]);
 
   useEffect(() => {

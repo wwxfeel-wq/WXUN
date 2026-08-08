@@ -79,7 +79,8 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-suiyan-openclaw-2026}
+      # SECURITY: OPENCLAW_WEBHOOK_SECRET 必须在 .env.production 或 GitHub Secrets 中设置。
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:?OPENCLAW_WEBHOOK_SECRET is required}
       # IoT (Mi Home) - optional, from GitHub Secrets
       MIHOME_CLIENT_ID: ${MIHOME_CLIENT_ID:-}
       MIHOME_CLIENT_SECRET: ${MIHOME_CLIENT_SECRET:-}
@@ -138,7 +139,8 @@ services:
       api:
         condition: service_healthy
     environment:
-      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-suiyan-openclaw-2026}
+      # SECURITY: OPENCLAW_WEBHOOK_SECRET 必须在 .env.production 或 GitHub Secrets 中设置。
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:?OPENCLAW_WEBHOOK_SECRET is required}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
     expose:
@@ -164,6 +166,7 @@ services:
         condition: service_started
     ports:
       - '80:80'
+      - '443:443'
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx_cache:/var/cache/nginx

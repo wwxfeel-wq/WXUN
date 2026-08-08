@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { EncryptionUtil } from '../../../common/utils/encryption.util';
 import type { IoTProviderInterface } from './iot-provider.interface';
 import type {
   IoTDevice,
@@ -54,7 +55,10 @@ export class MihomeProvider implements IoTProviderInterface {
   private readonly logger = new Logger(MihomeProvider.name);
   readonly platform = 'mihome' as const;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionUtil,
+  ) {}
 
   // ============================================================
   // IoTProviderInterface
@@ -65,9 +69,12 @@ export class MihomeProvider implements IoTProviderInterface {
     if (!token) return [];
 
     try {
-      const url = `${MIHOME_API_BASE}/admin/v2/device/list?access_token=${encodeURIComponent(token)}`;
+      const url = `${MIHOME_API_BASE}/admin/v2/device/list`;
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'EchoLife/1.0' },
+        headers: {
+          'User-Agent': 'EchoLife/1.0',
+          Authorization: `Bearer ${token}`,
+        },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
@@ -101,12 +108,13 @@ export class MihomeProvider implements IoTProviderInterface {
 
     try {
       const body = this.buildControlPayload(control);
-      const url = `${MIHOME_API_BASE}/home/devicecontrol?access_token=${encodeURIComponent(token)}`;
+      const url = `${MIHOME_API_BASE}/home/devicecontrol`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'EchoLife/1.0',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -168,7 +176,12 @@ export class MihomeProvider implements IoTProviderInterface {
         return null;
       }
 
-      return credential.accessToken;
+      try {
+        return this.encryption.decrypt(credential.accessToken);
+      } catch {
+        this.logger.warn(`米家 access_token 解密失败，返回 null 以避免使用原始密文 (user=${userId})`);
+        return null;
+      }
     } catch (error) {
       this.logger.warn(
         `读取米家凭证失败：${(error as Error).message}`,

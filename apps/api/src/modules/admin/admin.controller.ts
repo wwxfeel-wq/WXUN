@@ -134,8 +134,8 @@ export class AdminController {
 
   @Get('system-configs')
   @ApiOperation({ summary: '获取系统配置', description: '获取所有系统配置项' })
-  async listSystemConfigs() {
-    return this.adminService.listSystemConfigs();
+  async listSystemConfigs(@CurrentUser('roles') roles: string[]) {
+    return this.adminService.listSystemConfigs(roles);
   }
 
   @Put('system-configs/:key')
@@ -144,9 +144,10 @@ export class AdminController {
     @Param('key') key: string,
     @Body() dto: UpdateSystemConfigDto,
     @CurrentUser('userId') adminId: string,
+    @CurrentUser('roles') roles: string[],
   ) {
     dto.key = key;
-    return this.adminService.updateSystemConfig(dto, adminId);
+    return this.adminService.updateSystemConfig(dto, adminId, roles);
   }
 
   // ============================================================

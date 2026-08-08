@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { Public } from './decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -10,6 +11,7 @@ export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Public()
@@ -33,7 +35,19 @@ export class HealthController {
       checks.redis = 'error';
     }
 
-    const allOk = Object.values(checks).every((v) => v === 'ok');
+    // Check AI service configuration (does not call the AI service)
+    const aiKeys = [
+      'GLM_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'OPENAI_API_KEY',
+      'QWEN_API_KEY',
+    ];
+    const hasAiKey = aiKeys.some(
+      (k) => this.configService.get<string>(k)?.trim(),
+    );
+    checks.aiService = hasAiKey ? 'configured' : 'not_configured';
+
+    const allOk = ['database', 'redis'].every((k) => checks[k] === 'ok');
     return {
       status: allOk ? 'healthy' : 'degraded',
       checks,

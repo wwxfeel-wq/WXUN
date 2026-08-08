@@ -176,6 +176,7 @@ interface FamilyHubState {
   /* ── Meta ── */
   loading: boolean;
   error: string | null;
+  hasError: boolean;
   lastSync: number;
 
   /* ── MCP ── */
@@ -196,78 +197,41 @@ interface FamilyHubState {
 /* ═══════════════ Default State (seed data) ═══════════════ */
 
 const defaultMetrics: FamilyMetrics = {
-  understandingPercent: 89,
-  treeLevel: 8,
-  treeStage: 'Young Tree',
-  treeGrowth: 0.55,
-  longTermMemories: 428,
-  familyMembers: 5,
-  weeklyGrowthPercent: 18,
-  aiLevel: 12,
-  masteredSkills: 53,
-  activeAgents: 16,
-  newAbilities: 3,
-  wechatSync: 'connected',
-  knowledgeDocs: 128,
-  growthValue: 56,
-  timeCapsules: 12,
-  milestones: 8,
-  stories: 312,
-  interviews: 24,
+  understandingPercent: 0,
+  treeLevel: 0,
+  treeStage: '',
+  treeGrowth: 0,
+  longTermMemories: 0,
+  familyMembers: 0,
+  weeklyGrowthPercent: 0,
+  aiLevel: 0,
+  masteredSkills: 0,
+  activeAgents: 0,
+  newAbilities: 0,
+  wechatSync: 'disconnected',
+  knowledgeDocs: 0,
+  growthValue: 0,
+  timeCapsules: 0,
+  milestones: 0,
+  stories: 0,
+  interviews: 0,
 };
 
 const defaultShimoCore: ShimoCore = {
   status: 'online',
-  understanding: 89,
-  mood: 73,
-  level: 12,
-  agentCount: 16,
-  learningCount: 3,
-  recentLearning: ['家庭收纳', '家电维修', '慢病管理'],
+  understanding: 0,
+  mood: 0,
+  level: 0,
+  agentCount: 0,
+  learningCount: 0,
+  recentLearning: [],
 };
 
-const defaultAgents: AgentRuntime[] = [
-  { id: 'life', name: 'Life Agent', role: '生活管理', status: 'running', level: 5, lastActive: '刚刚', calls: 128, icon: 'Heart' },
-  { id: 'kitchen', name: 'Kitchen Agent', role: '智慧厨房', status: 'thinking', level: 8, lastActive: '2分钟前', calls: 89, icon: 'ChefHat' },
-  { id: 'repair', name: 'Repair Agent', role: '家庭维修', status: 'idle', level: 4, lastActive: '1小时前', calls: 45, icon: 'Wrench' },
-  { id: 'knowledge', name: 'Knowledge Agent', role: '知识库', status: 'syncing', level: 6, lastActive: '5分钟前', calls: 156, icon: 'BookOpen' },
-  { id: 'health', name: 'Health Agent', role: '健康监测', status: 'learning', level: 4, lastActive: '10分钟前', calls: 67, icon: 'HeartPulse' },
-  { id: 'travel', name: 'Travel Agent', role: '旅行规划', status: 'ready', level: 3, lastActive: '2天前', calls: 34, icon: 'Plane' },
-  { id: 'care', name: 'Care Agent', role: '老人陪伴', status: 'learning', level: 2, lastActive: '3小时前', calls: 23, icon: 'HandHeart' },
-  { id: 'growth', name: 'Growth Agent', role: '成长追踪', status: 'running', level: 5, lastActive: '刚刚', calls: 203, icon: 'Sprout' },
-  { id: 'emotion', name: 'Emotion Agent', role: '情绪分析', status: 'thinking', level: 4, lastActive: '8分钟前', calls: 98, icon: 'Smile' },
-  { id: 'shopping', name: 'Shopping Agent', role: '购物顾问', status: 'running', level: 4, lastActive: '15分钟前', calls: 112, icon: 'ShoppingCart' },
-  { id: 'pet', name: 'Pet Agent', role: '宠物护理', status: 'idle', level: 2, lastActive: '5小时前', calls: 18, icon: 'PawPrint' },
-  { id: 'finance', name: 'Finance Agent', role: '家庭财务', status: 'learning', level: 1, lastActive: '1天前', calls: 8, icon: 'TrendingUp' },
-  { id: 'life_coach', name: 'Life Coach', role: '生命教练', status: 'running', level: 3, lastActive: '刚刚', calls: 256, icon: 'Sparkles', color: 'var(--color-success)' },
-  { id: 'story_agent', name: 'Story Agent', role: '故事创作', status: 'ready', level: 2, lastActive: '刚刚', calls: 78, icon: 'BookOpen', color: 'var(--color-purple)' },
-];
+const defaultAgents: AgentRuntime[] = [];
 
-const defaultSkills: SkillProgress[] = [
-  { id: 'kitchen', name: '智慧厨房', level: 8, status: 'new', sourceAgent: 'Kitchen Agent', sourceAgentCode: 'kitchen', icon: 'ChefHat', color: 'var(--color-highlight)' },
-  { id: 'elder', name: '老人陪伴', level: 6, status: 'updated', sourceAgent: 'Care Agent', sourceAgentCode: 'care', icon: 'HandHeart', color: 'var(--color-orange)' },
-  { id: 'plant', name: '植物养护', level: 1, status: 'learning', progress: 82, sourceAgent: 'Life Agent', sourceAgentCode: 'life', icon: 'Sprout', color: 'var(--color-success)' },
-  { id: 'repair', name: '维修助手', level: 4, status: 'mastered', sourceAgent: 'Repair Agent', sourceAgentCode: 'repair', icon: 'Wrench', color: 'var(--color-secondary)' },
-  { id: 'cooking', name: '菜谱推荐', level: 7, status: 'mastered', sourceAgent: 'Kitchen Agent', sourceAgentCode: 'kitchen', icon: 'ChefHat', color: 'var(--color-orange)' },
-  { id: 'shopping', name: '购物顾问', level: 5, status: 'mastered', sourceAgent: 'Shopping Agent', sourceAgentCode: 'shopping', icon: 'ShoppingCart', color: 'var(--color-info)' },
-  { id: 'travel', name: '旅行规划', level: 4, status: 'mastered', sourceAgent: 'Travel Agent', sourceAgentCode: 'travel', icon: 'Plane', color: 'var(--color-purple)' },
-  { id: 'health', name: '健康监测', level: 3, status: 'updated', sourceAgent: 'Health Agent', sourceAgentCode: 'health', icon: 'HeartPulse', color: 'var(--color-error)' },
-  { id: 'life_coach_listening', name: '情绪倾听', level: 2, status: 'learning', progress: 45, sourceAgent: 'Life Coach', sourceAgentCode: 'life_coach', icon: 'Heart', color: 'var(--color-error)' },
-  { id: 'life_coach_advice', name: '生活建议', level: 3, status: 'learning', progress: 60, sourceAgent: 'Life Coach', sourceAgentCode: 'life_coach', icon: 'Lightbulb', color: 'var(--color-highlight)' },
-  { id: 'story_agent_narrative', name: '叙事创作', level: 2, status: 'learning', progress: 55, sourceAgent: 'Story Agent', sourceAgentCode: 'story_agent', icon: 'BookOpen', color: 'var(--color-purple)' },
-  { id: 'story_agent_emotion', name: '情感渲染', level: 1, status: 'new', progress: 20, sourceAgent: 'Story Agent', sourceAgentCode: 'story_agent', icon: 'Sparkles', color: 'var(--color-highlight)' },
-];
+const defaultSkills: SkillProgress[] = [];
 
-const defaultTimeline: TimelineEntry[] = [
-  { id: '1', date: '06-28', title: '学习：空气炸锅说明书', detail: 'Kitchen Skill Lv+1', type: 'skill' },
-  { id: '2', date: '06-27', title: '新增：家庭收纳 Skill', detail: 'Life Agent 完成学习', type: 'skill' },
-  { id: '3', date: '06-25', title: '新增：Care Agent', detail: '学习老年心理学知识库', type: 'agent' },
-  { id: '4', date: '06-22', title: '新增 5 段珍贵回忆', detail: '访谈记录归档至长期记忆', type: 'memory' },
-  { id: '5', date: '06-20', title: '新增：Plant Agent', detail: '识别到家庭植物养护需求', type: 'agent' },
-  { id: '6', date: '06-21', title: '新增：植物养护 Skill', detail: '学习多肉植物养护指南', type: 'skill' },
-  { id: '7', date: '06-18', title: '生命树长出新枝', detail: '家庭关系分支进一步繁茂', type: 'tree' },
-  { id: '8', date: '06-15', title: '微信同步已连接', detail: '家庭群消息开始同步', type: 'device' },
-];
+const defaultTimeline: TimelineEntry[] = [];
 
 const defaultDevices: DeviceSync[] = [
   { id: 'web', name: 'Web', status: 'connected', icon: 'Globe' },
@@ -279,23 +243,16 @@ const defaultDevices: DeviceSync[] = [
   { id: 'robot', name: 'Robot', status: 'coming_soon', icon: 'Bot' },
 ];
 
-const defaultFamilyStatus: FamilyStatusItem[] = [
-  { id: 'mood', label: '家庭情绪', value: '温暖', sub: '全员状态良好', color: 'var(--color-highlight)', icon: 'Smile' },
-  { id: 'memory', label: '本周新增回忆', value: '3 段', sub: '昨天新增了1段', color: 'var(--color-info)', icon: 'BookOpen' },
-  { id: 'tree', label: '生命树成长', value: 'Lv.8', sub: 'Young Tree 阶段', color: 'var(--color-success)', icon: 'TreePine' },
-  { id: 'advice', label: '今日家庭建议', value: '给爸妈打个电话', sub: '已3天未联系', color: 'var(--color-error)', icon: 'Heart' },
-  { id: 'todo', label: '本周待办', value: '周末家庭聚餐', sub: '周六晚上', color: 'var(--color-purple)', icon: 'Calendar' },
-  { id: 'ai', label: 'AI理解程度', value: '89%', sub: '持续学习中', color: 'var(--color-secondary)', icon: 'Brain' },
-];
+const defaultFamilyStatus: FamilyStatusItem[] = [];
 
 /* ═══════════════ API Layer (with fallback) ═══════════════ */
 
-async function fetchWithFallback<T>(endpoint: string, fallback: T): Promise<T> {
+async function fetchWithFallback<T>(endpoint: string, fallback: T): Promise<{ data: T; hasError: boolean }> {
   try {
     const data = await apiClient.get<T>(endpoint);
-    return data ?? fallback;
+    return { data: data ?? fallback, hasError: false };
   } catch {
-    return fallback;
+    return { data: fallback, hasError: true };
   }
 }
 
@@ -337,6 +294,13 @@ const MCP_TOOLS: Record<string, (params: Record<string, unknown>, state: FamilyH
   'device.list': (_params, state) => state.devices,
 };
 
+const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+
+export function clearPendingTimers(): void {
+  pendingTimers.forEach((id) => clearTimeout(id));
+  pendingTimers.clear();
+}
+
 /* ═══════════════ Store ═══════════════ */
 
 export const useFamilyHubStore = create<FamilyHubState>()(
@@ -352,6 +316,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
 
       loading: false,
       error: null,
+      hasError: false,
       lastSync: Date.now(),
 
       mcpCalls: [],
@@ -359,7 +324,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
       fetchAll: async () => {
         set({ loading: true, error: null });
         try {
-          const [metrics, treeStats, shimoCore, agents, skills, timeline, devices, familyStatus] =
+          const [metricsRes, treeStatsRes, shimoCoreRes, agentsRes, skillsRes, timelineRes, devicesRes, familyStatusRes] =
         await Promise.all([
           fetchWithFallback('family-hub/metrics', defaultMetrics),
           fetchWithFallback('life-tree/stats', defaultMetrics),
@@ -371,19 +336,23 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           fetchWithFallback('family-hub/family-status', defaultFamilyStatus),
         ]);
 
+      const errorCount = [metricsRes, treeStatsRes, shimoCoreRes, agentsRes, skillsRes, timelineRes, devicesRes, familyStatusRes]
+        .filter((r) => r.hasError).length;
+
       set({
-        metrics: { ...metrics, ...treeStats },
-        shimoCore,
-        agents,
-        skills,
-        timeline,
-        devices,
-        familyStatus,
+        metrics: { ...metricsRes.data, ...treeStatsRes.data },
+        shimoCore: shimoCoreRes.data,
+        agents: agentsRes.data,
+        skills: skillsRes.data,
+        timeline: timelineRes.data,
+        devices: devicesRes.data,
+        familyStatus: familyStatusRes.data,
         loading: false,
         lastSync: Date.now(),
+        hasError: errorCount > 0,
       });
         } catch (err) {
-          set({ loading: false, error: err instanceof Error ? err.message : 'Unknown error' });
+          set({ loading: false, error: err instanceof Error ? err.message : 'Unknown error', hasError: true });
         }
       },
 
@@ -391,7 +360,8 @@ export const useFamilyHubStore = create<FamilyHubState>()(
         // Simulate real-time data updates after interview
         setShimoStatusTransient(set, 'updating_memory');
 
-        setTimeout(() => {
+        const timer1 = setTimeout(() => {
+          pendingTimers.delete(timer1);
           set((s) => ({
             metrics: {
               ...s.metrics,
@@ -418,10 +388,13 @@ export const useFamilyHubStore = create<FamilyHubState>()(
             ],
           }));
         }, 800);
+        pendingTimers.add(timer1);
 
-        setTimeout(() => {
+        const timer2 = setTimeout(() => {
+          pendingTimers.delete(timer2);
           set((s) => ({ shimoCore: { ...s.shimoCore, status: 'online' } }));
         }, 2000);
+        pendingTimers.add(timer2);
       },
 
       triggerSkillLearn: async (skillId: string) => {
@@ -456,23 +429,10 @@ export const useFamilyHubStore = create<FamilyHubState>()(
             }));
           }
         } catch {
-          // Fallback to local simulation if API fails
-          setTimeout(() => {
-            set((s) => ({
-              skills: s.skills.map((sk) =>
-                sk.id === skillId
-                  ? { ...sk, status: 'updated' as const, level: sk.level + 1, progress: 100 }
-                  : sk,
-              ),
-              metrics: {
-                ...s.metrics,
-                masteredSkills: s.metrics.masteredSkills + 1,
-                newAbilities: s.metrics.newAbilities + 1,
-                growthValue: s.metrics.growthValue + 5,
-              },
-              shimoCore: { ...s.shimoCore, status: 'online' },
-            }));
-          }, 1500);
+          set((s) => ({
+            shimoCore: { ...s.shimoCore, status: 'online' },
+            hasError: true,
+          }));
         }
       },
 

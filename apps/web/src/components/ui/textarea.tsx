@@ -46,13 +46,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
               className,
             )}
             aria-invalid={hasError}
+            aria-describedby={error ? `${textareaId}-error` : hint ? `${textareaId}-hint` : undefined}
             {...props}
           />
         </GlassLayer>
         {error ? (
-          <p className="text-xs text-error">{error}</p>
+          <p id={`${textareaId}-error`} className="text-xs text-error">{error}</p>
         ) : hint ? (
-          <p className="text-xs text-text-muted">{hint}</p>
+          <p id={`${textareaId}-hint`} className="text-xs text-text-muted">{hint}</p>
         ) : null}
       </div>
     );

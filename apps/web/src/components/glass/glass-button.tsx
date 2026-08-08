@@ -111,7 +111,7 @@ const GlassButton = React.forwardRef<HTMLButtonElement, GlassButtonProps>(
       <GlassLayer
         ref={ref as React.Ref<HTMLElement>}
         asChild
-        intensity={isTinted ? 'strong' : isTransparent ? 'subtle' : 'subtle'}
+        intensity={isTinted ? 'strong' : 'subtle'}
         interactive={!isTransparent}
         caustic={isTinted && !isDisabled}
         specular={!isTransparent}

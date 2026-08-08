@@ -101,8 +101,9 @@ ${toolGuide}
         tool_calls?: unknown[];
       }>(result.content);
 
+      const validToolNames = new Set(ctx.toolSchemas.map((s) => s.name));
       const toolCalls: AgentToolCall[] = (parsed?.tool_calls ?? [])
-        .map((raw) => this.normalizeToolCall(raw))
+        .map((raw) => this.normalizeToolCall(raw, validToolNames))
         .filter((tc): tc is AgentToolCall => tc !== null && Boolean(tc.tool))
         .slice(0, AGENT_RUNTIME.MAX_TOOL_CALLS_PER_TURN);
 
@@ -172,9 +173,14 @@ ${guides.join('\n')}
     return `家庭上下文：\n${familyLines.join('\n')}\n${memberLines.join('\n')}\n\n知识图谱摘要：\n${familyContext.knowledgeGraphSummary}`;
   }
 
-  private normalizeToolCall(raw: unknown): AgentToolCall | null {
+  private normalizeToolCall(raw: unknown, validToolNames: Set<string>): AgentToolCall | null {
     const tc = raw as Record<string, unknown>;
     if (!tc.tool || typeof tc.tool !== 'string') return null;
+    // 工具名白名单验证：拒绝不在可用 schema 中的工具名
+    if (!validToolNames.has(tc.tool)) {
+      this.logger.warn(`Tool name not in whitelist: ${tc.tool}`);
+      return null;
+    }
     return {
       tool: tc.tool,
       args: tc.args && typeof tc.args === 'object' ? (tc.args as Record<string, unknown>) : {},

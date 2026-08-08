@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>()(
       hydrated: false,
 
       login: async (email, password) => {
-        const res = await apiClient.post<AuthResponse>('/auth/login', { email, password });
+        const res = await apiClient.postAuth<AuthResponse>('/auth/login', { email, password });
         setTokens(res.accessToken, res.refreshToken);
         set({
           user: res.user,
@@ -55,7 +55,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       register: async (email, password, nickname) => {
-        const res = await apiClient.post<AuthResponse>('/auth/register', {
+        const res = await apiClient.postAuth<AuthResponse>('/auth/register', {
           email,
           password,
           nickname,
@@ -98,26 +98,21 @@ export const useAuthStore = create<AuthState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         user: state.user,
-        accessToken: state.accessToken,
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
-        // After rehydration, sync the token into the dedicated token storage
-        // so the api client can read it, then mark as hydrated.
-        if (state?.accessToken) {
-          setTokens(state.accessToken, getRefreshTokenSync());
+        // Token is stored exclusively in token-storage (not in Zustand persist).
+        // Restore it to runtime state from token-storage on rehydration.
+        const storedToken = getToken();
+        if (storedToken && state?.isAuthenticated) {
+          useAuthStore.setState({ accessToken: storedToken });
         }
-        state?.setHydrated();
+        // Always mark as hydrated, even if state is null (e.g. no persisted data)
+        useAuthStore.setState({ hydrated: true });
       },
     },
   ),
 );
-
-/** Synchronously read the refresh token (used during rehydration). */
-function getRefreshTokenSync(): string {
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem('echolife_refresh_token') ?? '';
-}
 
 /**
  * Initialize auth from storage on the client.
@@ -128,10 +123,14 @@ export function initAuth(): void {
   if (typeof window === 'undefined') return;
   const token = getToken();
   if (token) {
-    // Ensure store reflects the persisted token state.
     const state = useAuthStore.getState();
     if (!state.accessToken) {
       useAuthStore.setState({ accessToken: token, isAuthenticated: !!state.user });
+    }
+  } else {
+    const state = useAuthStore.getState();
+    if (state.isAuthenticated && !state.accessToken) {
+      useAuthStore.setState({ isAuthenticated: false, user: null });
     }
   }
   useAuthStore.getState().setHydrated();

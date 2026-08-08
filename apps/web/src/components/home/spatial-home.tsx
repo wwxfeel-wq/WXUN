@@ -52,7 +52,6 @@ export function SpatialHome() {
   const shimoCore = useFamilyHubStore((state) => state.shimoCore);
   const skills = useFamilyHubStore((state) => state.skills);
   const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   const reduceMotion = useReducedMotion();
@@ -78,16 +77,13 @@ export function SpatialHome() {
   const showWelcomeGuide =
     metrics.understandingPercent === 0 && metrics.familyMembers === 0;
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     const value = message.trim();
-    if (!value || sending) return;
-    setSending(true);
-    // 打开浮动聊天面板，由 HomeChatOverlay 通过 SSE 发送消息并展示流式回复
+    if (!value) return;
     setChatMessage(value);
     setChatOpen(true);
     setMessage('');
-    setSending(false);
   };
 
   return (
@@ -255,7 +251,7 @@ export function SpatialHome() {
             placeholder="和时墨聊聊..."
             aria-label="和时墨对话"
           />
-          <button type="submit" disabled={!message.trim() || sending} aria-label="发送消息">
+          <button type="submit" disabled={!message.trim()} aria-label="发送消息">
             <ArrowUp size={17} />
           </button>
         </div>

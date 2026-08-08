@@ -101,12 +101,11 @@ export default function RegisterPage() {
       </div>
 
       {/* Liquid Glass Card */}
-      <GlassLayer intensity="strong" asChild>
+      <GlassLayer intensity="strong" className="p-8">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-          className="p-8"
         >
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <Input

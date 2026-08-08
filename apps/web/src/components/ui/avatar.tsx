@@ -51,6 +51,10 @@ export function Avatar({
   const showImage = src && !imgError;
   const initials = getInitials(name);
 
+  React.useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
   return (
     <span className={cn('relative inline-block', className)} {...props}>
       <GlassLayer

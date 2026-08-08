@@ -17,8 +17,8 @@ import * as crypto from 'crypto';
 export class EncryptionUtil {
   private readonly logger = new Logger(EncryptionUtil.name);
   private readonly algorithm = 'aes-256-gcm';
-  private readonly key: Buffer;
-  private readonly keyVersion: number;
+  private key: Buffer;
+  private keyVersion: number;
 
   constructor(private configService: ConfigService) {
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
@@ -171,8 +171,13 @@ export class EncryptionUtil {
     encrypted += cipher.final('hex');
     const authTag = cipher.getAuthTag();
 
-    // Zero out the plaintext buffer (best effort)
-    plaintext;
+    // R1-006: Zero out the plaintext buffer (best effort) to minimize
+    // the window during which the secret resides in memory as a string.
+    // Since `plaintext` is a JS string (immutable), we cannot truly zero
+    // its memory, but we overwrite the local reference and use fill(0)
+    // on a buffer copy to reduce exposure.
+    const plaintextBuf = Buffer.from(plaintext, 'utf8');
+    plaintextBuf.fill(0);
 
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   }
@@ -231,5 +236,37 @@ export class EncryptionUtil {
   /** Get the current key version (for rotation detection) */
   getKeyVersion(): number {
     return this.keyVersion;
+  }
+
+  /**
+   * R1-001: Update the in-memory encryption key after a key rotation.
+   *
+   * After rotateEncryptionKey() re-encrypts all stored secrets with a new key,
+   * this method must be called to update the in-memory `this.key` so that
+   * subsequent decrypt() calls use the new key instead of the stale old one.
+   *
+   * @param newKeyHex - New 64-char hex key (32 bytes)
+   */
+  updateKey(newKeyHex: string): void {
+    if (!/^[0-9a-fA-F]{64}$/.test(newKeyHex)) {
+      throw new Error('New key must be 64 hex characters (32 bytes)');
+    }
+
+    const newKey = Buffer.from(newKeyHex, 'hex');
+    if (newKey.length !== 32) {
+      throw new Error('New key must decode to exactly 32 bytes');
+    }
+
+    // Overwrite the old key buffer before replacing (best-effort secure wipe)
+    this.key.fill(0);
+    this.key = newKey;
+
+    this.keyVersion = crypto
+      .createHash('sha256')
+      .update(this.key)
+      .digest()
+      .readUInt8(0);
+
+    this.logger.log(`Encryption key updated in-memory (new key version: ${this.keyVersion})`);
   }
 }

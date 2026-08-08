@@ -105,6 +105,8 @@ export interface ChatMessage {
   streaming?: boolean;
   imageUrl?: string;
   toolCalls?: ToolCallInfo[];
+  /** DeepSeek V4 reasoning content accumulated during thinking mode. */
+  reasoning?: string;
 }
 
 /** IoT tool call info for real-time device control feedback in chat. */

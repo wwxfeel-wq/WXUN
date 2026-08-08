@@ -78,7 +78,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               className,
             )}
             aria-invalid={hasError}
-            aria-describedby={error ? `${inputId}-error` : undefined}
+            aria-describedby={
+              error
+                ? `${inputId}-error`
+                : hint
+                  ? `${inputId}-hint`
+                  : undefined
+            }
             {...props}
           />
           {IconRight && (
@@ -93,7 +99,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {error}
           </p>
         ) : hint ? (
-          <p className="text-sm text-text-muted">{hint}</p>
+          <p id={`${inputId}-hint`} className="text-sm text-text-muted">
+            {hint}
+          </p>
         ) : null}
       </div>
     );

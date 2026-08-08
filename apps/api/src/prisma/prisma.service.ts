@@ -6,13 +6,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const dbUrl = process.env.DATABASE_URL || '';
+    const poolParams = 'connection_limit=10&pool_timeout=20';
+    const urlWithPool = dbUrl && !dbUrl.includes('connection_limit')
+      ? `${dbUrl}${dbUrl.includes('?') ? '&' : '?'}${poolParams}`
+      : dbUrl;
     super({
-      log: [
-        { emit: 'event', level: 'query' },
-        { emit: 'event', level: 'info' },
-        { emit: 'event', level: 'warn' },
-        { emit: 'event', level: 'error' },
-      ],
+      ...(urlWithPool ? { datasources: { db: { url: urlWithPool } } } : {}),
+      log: isProduction
+        ? [{ emit: 'event', level: 'error' }]
+        : [
+            { emit: 'event', level: 'query' },
+            { emit: 'event', level: 'info' },
+            { emit: 'event', level: 'warn' },
+            { emit: 'event', level: 'error' },
+          ],
     });
   }
 
@@ -36,6 +45,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   /**
    * Execute raw SQL for vector operations (pgvector)
+   *
+   * Security: tableName and embeddingColumn are validated against whitelists
+   * to prevent SQL injection. additionalWhere is restricted to safe characters.
    */
   async vectorSearch(
     tableName: string,
@@ -47,6 +59,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       additionalWhere?: string;
     } = {},
   ): Promise<Array<Record<string, unknown>>> {
+    // 白名单验证 — 防止 SQL 注入
+    const ALLOWED_TABLES = ['memories', 'knowledge_chunks', 'memory_embeddings'];
+    const ALLOWED_COLUMNS = ['embedding'];
+
+    if (!ALLOWED_TABLES.includes(tableName)) {
+      throw new Error(`Invalid table name: ${tableName}`);
+    }
+    if (!ALLOWED_COLUMNS.includes(embeddingColumn)) {
+      throw new Error(`Invalid embedding column: ${embeddingColumn}`);
+    }
+
     const topK = options.topK ?? 10;
     const vectorStr = `[${queryVector.join(',')}]`;
 
@@ -59,6 +82,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     if (options.additionalWhere) {
+      // 验证 additionalWhere 只包含安全字符（字母、数字、下划线、点、空格、比较运算符）
+      if (!/^[\w.\s=<>!,'()-]+$/.test(options.additionalWhere)) {
+        throw new Error('Invalid additionalWhere clause: contains unsafe characters');
+      }
       whereClause = whereClause
         ? `${whereClause} AND ${options.additionalWhere}`
         : `WHERE ${options.additionalWhere}`;

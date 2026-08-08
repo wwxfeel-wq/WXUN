@@ -10,7 +10,7 @@
  */
 import { API_PREFIX } from '@echolife/shared';
 import type { ApiResponse } from '@echolife/shared';
-import { getToken, clearTokens } from './token-storage';
+import { getToken, clearTokens, getRefreshToken, setTokens } from './token-storage';
 
 /** Base URL for the backend API. Uses relative path so Next.js rewrites proxy to backend. */
 export const API_BASE_URL = '';
@@ -90,10 +90,54 @@ function buildHeaders(custom?: HeadersInit): Headers {
 function handleUnauthorized(): void {
   if (typeof window === 'undefined') return;
   clearTokens();
+  // Also clear the Zustand persisted auth state so the UI reflects logout immediately.
+  window.localStorage.removeItem('echolife-auth');
   const currentPath = window.location.pathname;
   if (currentPath !== '/login' && currentPath !== '/register') {
     window.location.href = '/login';
   }
+}
+
+// ============================================================
+// Token refresh interceptor
+// ============================================================
+
+let isRefreshing = false;
+let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Attempt to refresh the access token using the stored refresh token.
+ * If a refresh is already in flight, the existing promise is reused
+ * to avoid multiple concurrent refresh requests.
+ */
+async function tryRefreshToken(): Promise<string | null> {
+  if (isRefreshing && refreshPromise) return refreshPromise;
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(buildUrl('/auth/refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const newToken = json.data?.accessToken;
+      if (newToken) {
+        setTokens(newToken, json.data?.refreshToken ?? refreshToken);
+        return newToken;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 /** Core request executor that unwraps the response envelope. */
@@ -106,9 +150,10 @@ async function request<T>(
     headers?: HeadersInit;
     signal?: AbortSignal;
     raw?: boolean;
+    skipAuthRefresh?: boolean;
   } = {},
 ): Promise<T> {
-  const { params, body, headers, signal, raw } = options;
+  const { params, body, headers, signal, raw, skipAuthRefresh } = options;
   const url = buildUrl(endpoint, params);
   const init: RequestInit = {
     method,
@@ -131,10 +176,32 @@ async function request<T>(
     );
   }
 
-  // Handle 401 specifically
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new ApiError('登录已过期，请重新登录', 40101, 401);
+  // Handle 401: try to refresh the token and retry the request once
+  if (response.status === 401 && !skipAuthRefresh) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      // Retry the original request with the new token
+      const retryHeaders = buildHeaders(headers);
+      const retryInit: RequestInit = {
+        method,
+        headers: retryHeaders,
+        signal,
+      };
+      if (body !== undefined) {
+        retryInit.body = JSON.stringify(body);
+      }
+      const retryResponse = await fetch(url, retryInit);
+      if (retryResponse.status !== 401) {
+        response = retryResponse;
+        // Fall through to normal response handling below
+      } else {
+        handleUnauthorized();
+        throw new ApiError('登录已过期，请重新登录', 40101, 401);
+      }
+    } else {
+      handleUnauthorized();
+      throw new ApiError('登录已过期，请重新登录', 40101, 401);
+    }
   }
 
   // For non-JSON responses, return raw if requested
@@ -185,6 +252,11 @@ export const apiClient = {
   /** Perform a POST request. */
   post<T>(endpoint: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     return request<T>('POST', endpoint, { body, signal });
+  },
+
+  /** POST with skipAuthRefresh (for auth endpoints like login/register). */
+  postAuth<T>(endpoint: string, body?: unknown): Promise<T> {
+    return request<T>('POST', endpoint, { body, skipAuthRefresh: true });
   },
 
   /** Perform a PUT request. */
@@ -258,6 +330,14 @@ export function createSSEStream(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // H-028: 防止 onClose 被重复调用（timeout / error / finally 均可能触发）
+  let isClosed = false;
+  const safeClose = () => {
+    if (isClosed) return;
+    isClosed = true;
+    callbacks.onClose?.();
+  };
+
   (async () => {
     let response: Response;
     try {
@@ -270,18 +350,57 @@ export function createSSEStream(
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       callbacks.onError?.('连接AI服务失败，请检查网络', -1);
-      callbacks.onClose?.();
+      safeClose();
       return;
+    }
+
+    if (response.status === 401) {
+      const newToken = await tryRefreshToken();
+      if (newToken) {
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'text/event-stream',
+              Authorization: `Bearer ${newToken}`,
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') return;
+          callbacks.onError?.('连接AI服务失败，请检查网络', -1);
+          safeClose();
+          return;
+        }
+      }
     }
 
     if (!response.ok || !response.body) {
       if (response.status === 401) {
+        // C-008/R2-002/R3-002: Token refresh failed or response is still 401
+        // after retry — clear the session and redirect to login.
         handleUnauthorized();
         callbacks.onError?.('登录已过期，请重新登录', 40101);
       } else {
-        callbacks.onError?.(`AI服务返回错误: ${response.status}`, response.status);
+        // Try to parse the error body for a detailed message (e.g. DTO
+        // validation errors returned as JSON { message: [...] }).
+        let detailMsg = `AI服务返回错误: ${response.status}`;
+        try {
+          const errorBody = await response.json();
+          const msg = (errorBody as { message?: unknown }).message;
+          if (typeof msg === 'string' && msg) {
+            detailMsg = msg;
+          } else if (Array.isArray(msg) && msg.length > 0) {
+            detailMsg = msg.join('; ');
+          }
+        } catch {
+          // Body isn't valid JSON — keep the generic status message.
+        }
+        callbacks.onError?.(detailMsg, response.status);
       }
-      callbacks.onClose?.();
+      safeClose();
       return;
     }
 
@@ -289,22 +408,26 @@ export function createSSEStream(
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // Timeout: if no data received within 60s, abort and show error
-    let hasReceivedData = false;
-    const timeoutId = setTimeout(() => {
-      if (!hasReceivedData) {
-        controller.abort();
-        callbacks.onError?.('AI响应超时，请稍后重试', -1);
-        callbacks.onClose?.();
-      }
+    // Sliding window timeout: if no data is received within 60s, abort.
+    // The timer is reset every time new data arrives, so a long-running
+    // stream with continuous data will never time out prematurely.
+    let timeoutId = setTimeout(() => {
+      controller.abort();
+      callbacks.onError?.('AI响应超时，请稍后重试', -1);
+      safeClose();
     }, 60_000);
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        hasReceivedData = true;
+        // Reset the sliding window timeout on each chunk received
         clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          callbacks.onError?.('AI响应超时，请稍后重试', -1);
+          safeClose();
+        }, 60_000);
         buffer += decoder.decode(value, { stream: true });
 
         // SSE events are separated by a blank line (\n\n)
@@ -325,7 +448,7 @@ export function createSSEStream(
       }
     } finally {
       clearTimeout(timeoutId);
-      callbacks.onClose?.();
+      safeClose();
     }
   })();
 
@@ -443,6 +566,8 @@ function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
     return;
   }
 
+  if (data == null) return;
+
   switch (eventType) {
     case 'token': {
       const content = data.content as string;
@@ -508,6 +633,22 @@ function parseSSEEvent(raw: string, callbacks: SSECallbacks): void {
       callbacks.onError?.(message, code);
       break;
     }
+    case 'action': {
+      // Agent action events are not yet displayed in the UI.
+      // Log for debugging; future callbacks can be added to SSECallbacks.
+      if (typeof console !== 'undefined') {
+        console.debug('[SSE] action event:', data);
+      }
+      break;
+    }
+    case 'workflow_step': {
+      // Workflow step events are not yet displayed in the UI.
+      // Log for debugging; future callbacks can be added to SSECallbacks.
+      if (typeof console !== 'undefined') {
+        console.debug('[SSE] workflow_step event:', data);
+      }
+      break;
+    }
     default:
       break;
   }
@@ -528,21 +669,25 @@ export function createGETSSEStream(
   endpoint: string,
   onEvent: (eventType: string, data: Record<string, unknown>) => void,
   onError?: (msg: string) => void,
+  onClose?: () => void,
 ): { abort: () => void } {
   const controller = new AbortController();
-  const url = endpoint.startsWith('/')
-    ? `${SSE_ENDPOINT}${endpoint}`
-    : `${SSE_ENDPOINT}/${endpoint}`;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let isAborted = false;
 
-  const token = getToken();
-  const headers: HeadersInit = {
-    Accept: 'text/event-stream',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const connect = async () => {
+    const url = endpoint.startsWith('/')
+      ? `${SSE_ENDPOINT}${endpoint}`
+      : `${SSE_ENDPOINT}/${endpoint}`;
 
-  (async () => {
+    const token = getToken();
+    const headers: HeadersInit = {
+      Accept: 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     let response: Response;
     try {
       response = await fetch(url, {
@@ -551,8 +696,9 @@ export function createGETSSEStream(
         signal: controller.signal,
       });
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
+      if ((err as Error).name === 'AbortError' || isAborted) return;
       onError?.('实时连接失败');
+      onClose?.();
       return;
     }
 
@@ -561,6 +707,7 @@ export function createGETSSEStream(
         handleUnauthorized();
       }
       onError?.(`连接错误: ${response.status}`);
+      onClose?.();
       return;
     }
 
@@ -579,7 +726,6 @@ export function createGETSSEStream(
           const rawEvent = buffer.slice(0, separatorIndex);
           buffer = buffer.slice(separatorIndex + 2);
 
-          // 解析 SSE 事件
           let eventType = 'message';
           let dataStr = '';
           for (const line of rawEvent.split('\n')) {
@@ -596,18 +742,33 @@ export function createGETSSEStream(
             const data = JSON.parse(dataStr);
             onEvent(eventType, data);
           } catch {
-            // 非 JSON 数据，跳过
+            // skip non-JSON
           }
         }
       }
+      onClose?.();
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
+      if ((err as Error).name !== 'AbortError' && !isAborted) {
+        // Non-manual error: set up reconnect without calling onClose,
+        // because the consumer may clean up handlers in onClose and break
+        // the reconnect attempt.
         onError?.('数据流中断');
+        reconnectTimer = setTimeout(() => connect(), 5000);
+      } else {
+        // Manual abort or AbortError — notify the consumer that the
+        // stream is permanently closed.
+        onClose?.();
       }
     }
-  })();
+  };
+
+  connect();
 
   return {
-    abort: () => controller.abort(),
+    abort: () => {
+      isAborted = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      controller.abort();
+    },
   };
 }

@@ -30,6 +30,7 @@ import {
   Headers,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import * as crypto from 'crypto';
 import { Public } from '../../common/decorators/public.decorator';
 import { WechatService } from './wechat.service';
 import { AgentRuntimeService } from '../agent/services/agent-runtime.service';
@@ -90,13 +91,15 @@ export class OpenClawWebhookController {
     @Body() body: OpenClawWebhookBody,
     @Headers('x-webhook-secret') secret: string,
   ): Promise<OpenClawWebhookResponse> {
-    // 验证共享密钥
+    // 验证共享密钥（使用 timingSafeEqual 防止时序攻击）
     const expectedSecret = process.env.OPENCLAW_WEBHOOK_SECRET;
     if (!expectedSecret) {
       this.logger.error('OPENCLAW_WEBHOOK_SECRET not configured in environment');
       throw new UnauthorizedException('Webhook secret not configured');
     }
-    if (secret !== expectedSecret) {
+    const secretBuf = Buffer.from(secret ?? '');
+    const expectedBuf = Buffer.from(expectedSecret);
+    if (secretBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(secretBuf, expectedBuf)) {
       this.logger.warn(`Invalid webhook secret from OpenClaw`);
       throw new UnauthorizedException('Invalid webhook secret');
     }

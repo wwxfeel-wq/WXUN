@@ -436,29 +436,59 @@ export default function SkillsPage() {
     "mastered" | "learning"
   >("learning");
   const [expandedSkill, setExpandedSkill] = React.useState<string | null>(null);
+  const [addError, setAddError] = React.useState<string | null>(null);
+  const [isAdding, setIsAdding] = React.useState(false);
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (!newSkillName.trim()) return;
-    const categoryColor =
-      categoryOptions.find((c) => c.value === newSkillCategory)?.color ??
-      "var(--color-secondary)";
-    const skill: Skill = {
-      id: `skill-${Date.now()}`,
-      name: newSkillName.trim(),
-      icon: Star,
-      category: newSkillCategory,
-      status: newSkillStatus,
-      color: categoryColor,
-      glowColor: `color-mix(in srgb, ${categoryColor}, transparent 80%)`,
-      description: "用户自定义技能，时墨正在学习中...",
-      examples: ["等待积累使用数据"],
-      tags: ["自定义"],
-    };
-    setLocalSkills((prev) => [...prev, skill]);
-    setNewSkillName("");
-    setNewSkillCategory("生活");
-    setNewSkillStatus("learning");
-    setModalOpen(false);
+    setIsAdding(true);
+    setAddError(null);
+    try {
+      const categoryColor =
+        categoryOptions.find((c) => c.value === newSkillCategory)?.color ??
+        "var(--color-secondary)";
+      // H-027: 调用后端 API 创建技能，而非仅存本地 state
+      const created = await apiClient.post<APISkill>("family-hub/skills", {
+        name: newSkillName.trim(),
+        category: newSkillCategory,
+        status: newSkillStatus,
+        icon: "Star",
+        color: categoryColor,
+        description: "用户自定义技能，时墨正在学习中...",
+        examples: ["等待积累使用数据"],
+        tags: ["自定义"],
+      });
+      // 将 API 返回的技能添加到本地列表
+      const IconComp = iconMap[created.icon] || Star;
+      const skill: Skill = {
+        id: created.id,
+        name: created.name,
+        icon: IconComp,
+        category: created.category || newSkillCategory,
+        status: created.status === "mastered" ? "mastered" : "learning",
+        color: created.color || categoryColor,
+        glowColor: `color-mix(in srgb, ${created.color || categoryColor}, transparent 80%)`,
+        description: created.description || "用户自定义技能，时墨正在学习中...",
+        examples: created.examples || ["等待积累使用数据"],
+        tags: created.tags || ["自定义"],
+        sourceAgentCode: created.sourceAgentCode,
+        sourceAgent: created.sourceAgent,
+      };
+      setLocalSkills((prev) => [...prev, skill]);
+      setNewSkillName("");
+      setNewSkillCategory("生活");
+      setNewSkillStatus("learning");
+      setModalOpen(false);
+      // 刷新 SWR 缓存以同步服务端状态
+      await mutate();
+    } catch (err) {
+      console.error("Failed to create skill:", err);
+      setAddError(
+        err instanceof Error ? err.message : "创建技能失败，请稍后重试",
+      );
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   // Keep a local copy for the add-skill feature
@@ -690,11 +720,11 @@ export default function SkillsPage() {
         description="教时墨一项新技能"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={isAdding}>
               取消
             </Button>
-            <Button onClick={handleAddSkill} disabled={!newSkillName.trim()}>
-              添加
+            <Button onClick={handleAddSkill} disabled={!newSkillName.trim() || isAdding}>
+              {isAdding ? "添加中..." : "添加"}
             </Button>
           </>
         }
@@ -785,6 +815,10 @@ export default function SkillsPage() {
               ))}
             </div>
           </div>
+
+          {addError && (
+            <p className="text-sm text-error">{addError}</p>
+          )}
         </div>
       </Modal>
 

@@ -186,11 +186,8 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-background/60 backdrop-blur-sm"
-          role="button"
-          aria-label="关闭"
-          tabIndex={0}
+          role="presentation"
           onClick={onClose}
-          onKeyDown={(e) => e.key === 'Enter' && onClose()}
         >
           <GlassLayer
             intensity="modal"

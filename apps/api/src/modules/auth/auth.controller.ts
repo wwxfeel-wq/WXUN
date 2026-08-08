@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -16,6 +18,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   @ApiOperation({ summary: '用户注册', description: '使用邮箱、密码和昵称注册新账户' })
   async register(@Body() dto: RegisterDto) {
@@ -23,6 +26,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @ApiOperation({ summary: '用户登录', description: '使用邮箱和密码登录，返回访问令牌和刷新令牌' })
   async login(@Body() dto: LoginDto) {
@@ -30,6 +34,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('refresh')
   @ApiOperation({ summary: '刷新令牌', description: '使用刷新令牌获取新的访问令牌和刷新令牌' })
   async refresh(@Body() dto: RefreshTokenDto) {
@@ -40,7 +45,7 @@ export class AuthController {
   @ApiOperation({ summary: '退出登录', description: '撤销刷新令牌，退出当前会话' })
   async logout(
     @CurrentUser('userId') userId: string,
-    @Body() body?: { refreshToken?: string },
+    @Body() body: LogoutDto,
   ) {
     await this.authService.logout(userId, body?.refreshToken);
     return { success: true };

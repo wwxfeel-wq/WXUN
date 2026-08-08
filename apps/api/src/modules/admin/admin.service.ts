@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -503,18 +504,42 @@ export class AdminService {
 
   /**
    * List all system configurations.
+   *
+   * R1-002: Sensitive keys (those starting with `ai_api_key_`) are filtered
+   * out unless the caller is a super_admin. This prevents operators from
+   * viewing encrypted API key ciphertext through the admin API.
    */
-  async listSystemConfigs() {
-    return this.prisma.systemConfig.findMany({
+  async listSystemConfigs(userRoles: string[] = []) {
+    const configs = await this.prisma.systemConfig.findMany({
       orderBy: { key: 'asc' },
     });
+
+    const isSuperAdmin = userRoles.includes('super_admin');
+    if (isSuperAdmin) {
+      return configs;
+    }
+
+    // Filter out sensitive API key entries for non-super_admin users
+    return configs.filter((c) => !c.key.startsWith('ai_api_key_'));
   }
 
   /**
    * Update or create a system configuration by key.
+   *
+   * R1-002: Keys starting with `ai_api_key_` are sensitive and can only be
+   * updated by super_admin. Operators attempting to modify these keys
+   * receive a 403 Forbidden response.
    */
-  async updateSystemConfig(dto: UpdateSystemConfigDto, adminId: string) {
+  async updateSystemConfig(dto: UpdateSystemConfigDto, adminId: string, userRoles: string[] = []) {
     const key = dto.key!;
+
+    // R1-002: Restrict sensitive API key configuration to super_admin only
+    if (key.startsWith('ai_api_key_') && !userRoles.includes('super_admin')) {
+      throw new ForbiddenException({
+        code: 40300,
+        message: '仅超级管理员可修改 AI API Key 相关配置',
+      });
+    }
     const config = await this.prisma.systemConfig.upsert({
       where: { key },
       update: {

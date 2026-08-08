@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { MihomeProvider } from './providers/mihome.provider';
 import { HomekitProvider } from './providers/homekit.provider';
 import { MockProvider } from './providers/mock.provider';
@@ -30,6 +31,7 @@ export class IoTService {
     private readonly mihomeProvider: MihomeProvider,
     private readonly homekitProvider: HomekitProvider,
     private readonly mockProvider: MockProvider,
+    private readonly encryption: EncryptionUtil,
   ) {
     this.providers = new Map<IoTPlatform, IoTProviderInterface>([
       ['mihome', mihomeProvider],
@@ -91,35 +93,45 @@ export class IoTService {
   /**
    * 查询单个设备的当前状态。
    *
-   * 聚合所有已绑定平台的设备列表后按 deviceId 过滤，返回该设备的
-   * 统一模型快照（含在线状态、运行状态与原始属性）。找不到时返回 null。
+   * 优先按 deviceId 前缀直接路由到对应 provider 查询，
+   * 避免列举全部设备后再过滤的性能开销。
+   * 无前缀或未知平台时，回退遍历所有 provider。
    */
   async getDeviceStatus(userId: string, deviceId: string): Promise<IoTDevice | null> {
-    const devices = await this.listAllDevices(userId);
-    return devices.find((d) => d.id === deviceId) ?? null;
+    const { platform, nativeId } = this.parsePlatform(deviceId);
+    if (platform) {
+      const provider = this.providers.get(platform);
+      if (provider) return provider.getDeviceStatus(userId, nativeId);
+    }
+    // 回退：遍历所有 provider
+    for (const provider of this.providers.values()) {
+      const device = await provider.getDeviceStatus(userId, deviceId);
+      if (device) return device;
+    }
+    return null;
   }
 
   /**
    * 启动扫地机器人清扫（门面方法，委托给 MockProvider）。
    */
-  startVacuumCleaning(mode: 'quick' | 'deep' | 'spot') {
-    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+  startVacuumCleaning(userId: string, mode: 'quick' | 'deep' | 'spot') {
+    const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     const battery = Number(vacuum?.properties.battery ?? 85);
-    return this.mockProvider.startCleaning(mode, battery);
+    return this.mockProvider.startCleaning(userId, mode, battery);
   }
 
   /**
    * 获取扫地机器人实时状态（门面方法）。
    */
-  getVacuumStatus() {
-    return this.mockProvider.getVacuumState();
+  getVacuumStatus(userId: string) {
+    return this.mockProvider.getVacuumState(userId);
   }
 
   /**
    * 停止扫地机器人清扫（门面方法）。
    */
-  stopVacuumCleaning() {
-    return this.mockProvider.stopCleaning();
+  stopVacuumCleaning(userId: string) {
+    return this.mockProvider.stopCleaning(userId);
   }
 
   // ============================================================
@@ -137,19 +149,28 @@ export class IoTService {
     credentials: PlatformCredentials,
   ): Promise<void> {
     if (platform === 'mihome') {
+      const encAccessToken = credentials.accessToken
+        ? this.encryption.encrypt(credentials.accessToken)
+        : null;
+      const encRefreshToken = credentials.refreshToken
+        ? this.encryption.encrypt(credentials.refreshToken)
+        : null;
+      const expiresAt = credentials.expiresInSeconds
+        ? new Date(Date.now() + credentials.expiresInSeconds * 1000)
+        : null;
       await this.prisma.ioTCredential.upsert({
         where: { userId_platform: { userId, platform } },
         create: {
           userId,
           platform,
-          accessToken: credentials.accessToken ?? null,
-          refreshToken: credentials.refreshToken ?? null,
-          expiresAt: null,
+          accessToken: encAccessToken,
+          refreshToken: encRefreshToken,
+          expiresAt,
         },
         update: {
-          accessToken: credentials.accessToken ?? null,
-          refreshToken: credentials.refreshToken ?? null,
-          expiresAt: null,
+          accessToken: encAccessToken,
+          refreshToken: encRefreshToken,
+          expiresAt,
         },
       });
       return;
@@ -158,7 +179,7 @@ export class IoTService {
     if (platform === 'homekit') {
       const metadata: Record<string, unknown> = {};
       if (credentials.homebridgeUrl) metadata.homebridgeUrl = credentials.homebridgeUrl;
-      if (credentials.authToken) metadata.authToken = credentials.authToken;
+      if (credentials.authToken) metadata.authToken = this.encryption.encrypt(credentials.authToken);
 
       await this.prisma.ioTCredential.upsert({
         where: { userId_platform: { userId, platform } },
@@ -177,7 +198,7 @@ export class IoTService {
       return;
     }
 
-    this.logger.warn(`未知平台绑定请求：${platform}`);
+    throw new BadRequestException(`不支持的平台: ${platform}`);
   }
 
   /** 解绑平台 —— 删除凭证记录 */
@@ -222,19 +243,20 @@ export class IoTService {
 
   /**
    * 解析设备 ID 中的平台前缀。
+   * 使用 indexOf 只分割第一个冒号，避免 nativeId 中包含冒号时被截断。
    * @returns 平台标识与本平台内 ID；无前缀时 platform 为 null
    */
   private parsePlatform(deviceId: string): {
     platform: IoTPlatform | null;
     nativeId: string;
   } {
-    const idx = deviceId.indexOf(':');
-    if (idx === -1) return { platform: null, nativeId: deviceId };
-
-    const prefix = deviceId.slice(0, idx);
-    const nativeId = deviceId.slice(idx + 1);
-    if (prefix === 'mihome' || prefix === 'homekit' || prefix === 'mock') {
-      return { platform: prefix, nativeId };
+    const VALID_PLATFORMS: IoTPlatform[] = ['mihome', 'homekit', 'mock'];
+    const colonIdx = deviceId.indexOf(':');
+    if (colonIdx === -1) return { platform: null, nativeId: deviceId };
+    const platform = deviceId.substring(0, colonIdx);
+    const nativeId = deviceId.substring(colonIdx + 1);
+    if (VALID_PLATFORMS.includes(platform as IoTPlatform)) {
+      return { platform: platform as IoTPlatform, nativeId };
     }
     return { platform: null, nativeId: deviceId };
   }

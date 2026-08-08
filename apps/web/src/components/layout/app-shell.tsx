@@ -20,17 +20,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-
   useEffect(() => {
-    if (hydrated && !isAuthenticated && !isLocalhost) {
+    if (hydrated && !isAuthenticated) {
       router.push('/login');
     }
-  }, [hydrated, isAuthenticated, isLocalhost, router]);
+  }, [hydrated, isAuthenticated, router]);
 
-  // Local development bypasses auth so the UI can be previewed without the API.
-  const bypassAuth = isLocalhost;
-  if (!bypassAuth && (!hydrated || !isAuthenticated)) return null;
+  if (!hydrated || !isAuthenticated) return null;
 
   return (
     <div className="relative w-full min-h-screen bg-background">

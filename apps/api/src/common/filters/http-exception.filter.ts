@@ -37,7 +37,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const resp = exceptionResponse as Record<string, unknown>;
         code = typeof resp.code === 'number' ? resp.code : status * 100;
-        message = (resp.message as string) || exception.message;
+        message = Array.isArray(resp.message) ? resp.message.join('; ') : (resp.message as string) || exception.message;
         details = resp.details as Record<string, unknown>;
       } else {
         message = exceptionResponse as string;
@@ -56,6 +56,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const httpStatus = HTTP_STATUS[code] || status;
 
     const errorResponse = {
+      statusCode: httpStatus,
       code,
       message,
       ...(details && { details }),

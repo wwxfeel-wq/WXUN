@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
+import type { IncomingMessage } from 'http';
 import { AgentOrchestratorService } from './services/agent-orchestrator.service';
 import { SSEEvent } from '@echolife/shared';
 import { ChatDto, DigitalLifeDto } from './dto/chat.dto';
@@ -26,6 +27,7 @@ export class AiController {
    * Event types: token, entities, emotion, skill_exp, skill_level_up, done, error
    */
   @Post('chat')
+  @HttpCode(200)
   @ApiOperation({
     summary: 'AI访谈对话（SSE流式）',
     description: '与AI生命教练进行访谈对话，响应以SSE流式返回',
@@ -33,9 +35,14 @@ export class AiController {
   async chat(
     @Body() dto: ChatDto,
     @CurrentUser('userId') userId: string,
+    @Req() req: IncomingMessage,
     @Res() res: Response,
   ): Promise<void> {
     this.setSSEHeaders(res);
+
+    const abortController = new AbortController();
+    const onClose = () => abortController.abort();
+    req.on('close', onClose);
 
     try {
       const generator = this.orchestrator.interview({
@@ -45,17 +52,21 @@ export class AiController {
       });
 
       for await (const event of generator) {
+        if (abortController.signal.aborted) break;
         this.writeSSEEvent(res, event);
       }
     } catch (error) {
-      this.writeSSEEvent(res, {
-        type: 'error' as never,
-        data: {
-          message: 'AI服务内部错误',
-          code: 50001,
-        },
-      });
+      if (!abortController.signal.aborted) {
+        this.writeSSEEvent(res, {
+          type: 'error' as never,
+          data: {
+            message: 'AI服务内部错误',
+            code: 50001,
+          },
+        });
+      }
     } finally {
+      req.removeListener('close', onClose);
       res.end();
     }
   }
@@ -65,6 +76,7 @@ export class AiController {
    * The digital life speaks in the user's voice based on their memories.
    */
   @Post('digital-life')
+  @HttpCode(200)
   @ApiOperation({
     summary: '数字生命对话（SSE流式）',
     description: '与用户的数字生命分身对话，响应以SSE流式返回',
@@ -72,9 +84,14 @@ export class AiController {
   async digitalLife(
     @Body() dto: DigitalLifeDto,
     @CurrentUser('userId') userId: string,
+    @Req() req: IncomingMessage,
     @Res() res: Response,
   ): Promise<void> {
     this.setSSEHeaders(res);
+
+    const abortController = new AbortController();
+    const onClose = () => abortController.abort();
+    req.on('close', onClose);
 
     try {
       const generator = this.orchestrator.digitalLife({
@@ -84,17 +101,21 @@ export class AiController {
       });
 
       for await (const event of generator) {
+        if (abortController.signal.aborted) break;
         this.writeSSEEvent(res, event);
       }
     } catch (error) {
-      this.writeSSEEvent(res, {
-        type: 'error' as never,
-        data: {
-          message: '数字生命服务内部错误',
-          code: 50001,
-        },
-      });
+      if (!abortController.signal.aborted) {
+        this.writeSSEEvent(res, {
+          type: 'error' as never,
+          data: {
+            message: '数字生命服务内部错误',
+            code: 50001,
+          },
+        });
+      }
     } finally {
+      req.removeListener('close', onClose);
       res.end();
     }
   }
@@ -124,7 +145,7 @@ export class AiController {
    * Sets the required headers for Server-Sent Events.
    */
   private setSSEHeaders(res: Response): void {
-    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering

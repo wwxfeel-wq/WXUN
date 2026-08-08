@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { WechatService, AgentActivityEvent } from './wechat.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { BindFamilyMemberDto } from './dto/bind-family-member.dto';
@@ -17,7 +19,8 @@ import { Observable } from 'rxjs';
 
 @ApiTags('WeChat Bot')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('super_admin')
 @Controller('wechat')
 export class WechatController {
   constructor(private readonly wechatService: WechatService) {}

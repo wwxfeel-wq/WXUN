@@ -311,11 +311,15 @@
   --color-neural-stroke-faint: rgba(180, 170, 220, 0.05);
   --color-neural-fill: rgba(180, 170, 220, 0.16);
 
-  /* === Text === */
+  /* === Text ===
+   * L-008: Increased opacity for text-muted and added text-subtle
+   * to improve WCAG AA contrast in dark mode.
+   */
   --color-text-primary: rgba(255, 255, 255, 0.94);
   --color-text-secondary: rgba(255, 255, 255, 0.60);
   --color-text-tertiary: rgba(255, 255, 255, 0.38);
-  --color-text-muted: rgba(255, 255, 255, 0.28);
+  --color-text-subtle: rgba(255, 255, 255, 0.36);
+  --color-text-muted: rgba(255, 255, 255, 0.34);
   --color-text-inverse: #06060e;
 
   /* === Border === */

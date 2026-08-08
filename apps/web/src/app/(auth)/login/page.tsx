@@ -45,7 +45,7 @@ export default function LoginPage() {
   };
 
   const isFormValid = React.useMemo(() => {
-    return email && isValidEmail(email) && password && password.length >= 8;
+    return !!(email && isValidEmail(email) && password && password.length >= 8);
   }, [email, password]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,21 +102,14 @@ export default function LoginPage() {
       </div>
 
       {/* Liquid Glass Card — Apple-style multi-layer glass with refined edge glow */}
-      <GlassLayer 
-        intensity="modal" 
-        asChild
-        fresnel
-        specular
-        thickness
-        dispersion={false}
-        caustic={false}
-        className="w-full max-w-md"
+      <GlassLayer
+        intensity="modal"
+        className="w-full max-w-md p-10"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-          className="p-10"
         >
           <form onSubmit={handleSubmit} className="space-y-6" noValidate>
             <Input

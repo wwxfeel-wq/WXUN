@@ -19,9 +19,6 @@ export default function HomePage() {
 
   useEffect(() => {
     void fetchAll();
-  }, [fetchAll]);
-
-  useEffect(() => {
     const interval = setInterval(() => {
       void fetchAll();
     }, 60_000);

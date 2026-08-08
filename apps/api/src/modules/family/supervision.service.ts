@@ -102,7 +102,7 @@ export class SupervisionService {
     const newTasks: SupervisionTask[] = [];
 
     // --- 规则 1：药盒未按时服药 → medication_reminder ---
-    const medicineBox = this.findDevice(devices, 'mock:medicine-box-bedroom');
+    const medicineBox = this.findDevice(userId, devices, 'mock:medicine-box-bedroom');
     if (medicineBox) {
       const nextDose = medicineBox.properties.nextDose as
         | { time: string; medication: string; taken: boolean }
@@ -139,7 +139,7 @@ export class SupervisionService {
     }
 
     // --- 规则 2：冰箱食材快过期 → grocery_reminder ---
-    const fridge = this.findDevice(devices, 'mock:fridge-kitchen');
+    const fridge = this.findDevice(userId, devices, 'mock:fridge-kitchen');
     if (fridge) {
       const foodItems = fridge.properties.foodItems as
         | Array<{ name: string; expiryDays: number; addedDays: number }>
@@ -164,7 +164,7 @@ export class SupervisionService {
     }
 
     // --- 规则 3：深夜摄像头检测到移动 → safety_check ---
-    const camera = this.findDevice(devices, 'mock:camera-living');
+    const camera = this.findDevice(userId, devices, 'mock:camera-living');
     if (camera) {
       const motionDetected = camera.properties.motionDetected as boolean | undefined;
       const isLateNight = hour >= 22 || hour < 6;
@@ -189,7 +189,7 @@ export class SupervisionService {
     // --- 规则 4：早上 7:00-9:00 孩子未起床 → schedule_reminder ---
     const isMorning = hour >= 7 && hour < 9;
     if (isMorning) {
-      const bedroomLight = this.findDevice(devices, 'mock:light-bedroom');
+      const bedroomLight = this.findDevice(userId, devices, 'mock:light-bedroom');
       const childAwake = bedroomLight?.status === 'on';
       if (!childAwake) {
         const task = this.tryCreateTask(userId, {
@@ -209,7 +209,7 @@ export class SupervisionService {
     // --- 规则 5：傍晚 17:00-19:00 孩子未开始写作业 → homework_reminder ---
     const isEvening = hour >= 17 && hour < 19;
     if (isEvening) {
-      const studyLight = this.findDevice(devices, 'mock:light-study');
+      const studyLight = this.findDevice(userId, devices, 'mock:light-study');
       const studying = studyLight?.status === 'on';
       if (!studying) {
         const task = this.tryCreateTask(userId, {
@@ -227,7 +227,7 @@ export class SupervisionService {
     }
 
     // --- 规则 6：烟雾报警器触发 → safety_check（紧急） ---
-    const smokeAlarm = this.findDevice(devices, 'mock:smoke-alarm-kitchen');
+    const smokeAlarm = this.findDevice(userId, devices, 'mock:smoke-alarm-kitchen');
     if (smokeAlarm) {
       const smokeDetected = smokeAlarm.properties.smokeDetected as boolean | undefined;
       if (smokeDetected) {
@@ -246,7 +246,7 @@ export class SupervisionService {
     }
 
     // --- 规则 7：深夜门锁未上锁 → safety_check ---
-    const doorLock = this.findDevice(devices, 'mock:door-lock-front');
+    const doorLock = this.findDevice(userId, devices, 'mock:door-lock-front');
     if (doorLock) {
       const locked = doorLock.properties.locked as boolean | undefined;
       if (locked === false && (hour >= 22 || hour < 6)) {
@@ -396,12 +396,12 @@ export class SupervisionService {
    * 从设备列表中按 ID 查找设备。
    * 优先从 IoTService 返回的列表中查找，找不到则尝试 MockProvider 的内存引用。
    */
-  private findDevice(devices: IoTDevice[], deviceId: string): IoTDevice | undefined {
+  private findDevice(userId: string, devices: IoTDevice[], deviceId: string): IoTDevice | undefined {
     const found = devices.find((d) => d.id === deviceId);
     if (found) return found;
 
     // 降级：直接从 MockProvider 内存中获取
-    const ref = this.mockProvider.getDeviceRef(deviceId);
+    const ref = this.mockProvider.getDeviceRef(userId, deviceId);
     return ref ?? undefined;
   }
 

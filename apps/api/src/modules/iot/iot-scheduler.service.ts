@@ -33,9 +33,6 @@ export class IoTSchedulerService {
   /** 巡检间隔（毫秒）— 演示用 3 分钟 */
   private readonly PATROL_INTERVAL_MS = 3 * 60 * 1000;
 
-  /** 演示用户 ID — 从环境变量或默认 demo 用户获取 */
-  private demoUserId: string | null = null;
-
   constructor(
     private readonly iotService: IoTService,
     private readonly mockProvider: MockProvider,
@@ -49,9 +46,12 @@ export class IoTSchedulerService {
 
   /** 晨间唤醒 07:00 — 时墨开启新一天 */
   @Cron('0 7 * * *', { name: 'morning-scene' })
-  async morningScene() {
-    const userId = await this.getDemoUserId();
-    if (!userId) return;
+  async morningScene(userId?: string) {
+    if (!userId) {
+      const demoId = await this.getDemoUserId();
+      if (!demoId) return;
+      userId = demoId;
+    }
 
     this.logger.log('🌅 执行晨间唤醒场景...');
 
@@ -70,7 +70,7 @@ export class IoTSchedulerService {
     devices.push('客厅主灯');
 
     // 3. 根据阳台传感器温度决定是否开空调
-    const balconySensor = this.mockProvider.getDeviceRef('mock:sensor-balcony');
+    const balconySensor = this.mockProvider.getDeviceRef(userId, 'mock:sensor-balcony');
     if (balconySensor) {
       const temp = Number(balconySensor.properties.temperature ?? 25);
       if (temp > 30) {
@@ -103,9 +103,12 @@ export class IoTSchedulerService {
 
   /** 午间清扫 12:00 — 扫地机器人深度清扫 */
   @Cron('0 12 * * *', { name: 'noon-vacuum' })
-  async noonVacuumScene() {
-    const userId = await this.getDemoUserId();
-    if (!userId) return;
+  async noonVacuumScene(userId?: string) {
+    if (!userId) {
+      const demoId = await this.getDemoUserId();
+      if (!demoId) return;
+      userId = demoId;
+    }
 
     this.logger.log('🤖 执行午间扫地机器人调度...');
 
@@ -123,9 +126,12 @@ export class IoTSchedulerService {
 
   /** 晚间归家 18:30 — 时墨准备温馨回家场景 */
   @Cron('30 18 * * *', { name: 'evening-scene' })
-  async eveningScene() {
-    const userId = await this.getDemoUserId();
-    if (!userId) return;
+  async eveningScene(userId?: string) {
+    if (!userId) {
+      const demoId = await this.getDemoUserId();
+      if (!demoId) return;
+      userId = demoId;
+    }
 
     this.logger.log('🏠 执行晚间归家场景...');
 
@@ -155,7 +161,7 @@ export class IoTSchedulerService {
     devices.push('客厅空调');
 
     // 5. 检测空气质量，决定是否开净化器
-    const purifier = this.mockProvider.getDeviceRef('mock:air-purifier-living');
+    const purifier = this.mockProvider.getDeviceRef(userId, 'mock:air-purifier-living');
     if (purifier) {
       const pm25 = Number(purifier.properties.pm25 ?? 35);
       if (pm25 > 50) {
@@ -182,9 +188,12 @@ export class IoTSchedulerService {
 
   /** 睡眠模式 22:00 — 时墨帮你关灯睡觉 */
   @Cron('0 22 * * *', { name: 'sleep-scene' })
-  async sleepScene() {
-    const userId = await this.getDemoUserId();
-    if (!userId) return;
+  async sleepScene(userId?: string) {
+    if (!userId) {
+      const demoId = await this.getDemoUserId();
+      if (!demoId) return;
+      userId = demoId;
+    }
 
     this.logger.log('🌙 执行睡眠模式...');
 
@@ -192,7 +201,7 @@ export class IoTSchedulerService {
     const devices: string[] = [];
 
     // 1. 关闭所有灯光
-    const allDevices = this.mockProvider.getAllDeviceRefs();
+    const allDevices = this.mockProvider.getAllDeviceRefs(userId);
     for (const device of allDevices) {
       if (device.type === 'light' && device.status !== 'off') {
         await this.control(userId, device.id, 'turn_off');
@@ -216,7 +225,7 @@ export class IoTSchedulerService {
     devices.push('客厅窗帘', '卧室窗帘');
 
     // 4. 扫地机器人回充
-    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     if (vacuum && vacuum.status === 'running') {
       await this.control(userId, 'mock:robot-vacuum', 'turn_off');
       actions.push('扫地机器人已返回充电桩');
@@ -239,9 +248,12 @@ export class IoTSchedulerService {
   // ============================================================
 
   @Interval(3 * 60 * 1000)
-  async environmentPatrol() {
-    const userId = await this.getDemoUserId();
-    if (!userId) return;
+  async environmentPatrol(userId?: string) {
+    if (!userId) {
+      const demoId = await this.getDemoUserId();
+      if (!demoId) return;
+      userId = demoId;
+    }
 
     const result = await this.analyzeEnvironment(userId);
     if (!result) return;
@@ -255,19 +267,18 @@ export class IoTSchedulerService {
 
   /** 手动触发指定场景（供 API 调用） */
   async triggerScene(sceneName: string, userId: string): Promise<ScheduledTaskResult | null> {
-    this.demoUserId = userId;
     switch (sceneName) {
       case 'morning':
-        await this.morningScene();
+        await this.morningScene(userId);
         return null;
       case 'noon':
-        await this.noonVacuumScene();
+        await this.noonVacuumScene(userId);
         return null;
       case 'evening':
-        await this.eveningScene();
+        await this.eveningScene(userId);
         return null;
       case 'sleep':
-        await this.sleepScene();
+        await this.sleepScene(userId);
         return null;
       case 'patrol':
         return this.analyzeEnvironment(userId);
@@ -282,15 +293,15 @@ export class IoTSchedulerService {
 
   /** 时墨分析全屋环境数据，智能调度设备 */
   private async analyzeEnvironment(userId: string): Promise<ScheduledTaskResult | null> {
-    const devices = this.mockProvider.getAllDeviceRefs();
+    const devices = this.mockProvider.getAllDeviceRefs(userId);
     const actions: string[] = [];
     const affectedDevices: string[] = [];
 
     // 1. 读取传感器数据
-    const kitchenSensor = this.mockProvider.getDeviceRef('mock:sensor-kitchen');
-    const balconySensor = this.mockProvider.getDeviceRef('mock:sensor-balcony');
-    const purifier = this.mockProvider.getDeviceRef('mock:air-purifier-living');
-    const livingAC = this.mockProvider.getDeviceRef('mock:ac-living');
+    const kitchenSensor = this.mockProvider.getDeviceRef(userId, 'mock:sensor-kitchen');
+    const balconySensor = this.mockProvider.getDeviceRef(userId, 'mock:sensor-balcony');
+    const purifier = this.mockProvider.getDeviceRef(userId, 'mock:air-purifier-living');
+    const livingAC = this.mockProvider.getDeviceRef(userId, 'mock:ac-living');
 
     // 模拟传感器数据微小波动
     if (kitchenSensor) {
@@ -352,7 +363,7 @@ export class IoTSchedulerService {
     }
 
     // 4. 扫地机器人状态检查
-    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     if (vacuum) {
       const battery = Number(vacuum.properties.battery ?? 85);
       if (vacuum.status === 'charging' && battery >= 100) {
@@ -376,7 +387,7 @@ export class IoTSchedulerService {
     }
 
     // 6. 冰箱健康分析 — 温度异常 / 食材过期 / 门未关
-    const fridge = this.mockProvider.getDeviceRef('mock:fridge-kitchen');
+    const fridge = this.mockProvider.getDeviceRef(userId, 'mock:fridge-kitchen');
     if (fridge) {
       const fridgeTemp = Number(fridge.properties.temperature ?? 4);
       const doorOpen = Boolean(fridge.properties.doorOpen);
@@ -405,7 +416,7 @@ export class IoTSchedulerService {
     }
 
     // 7. 门锁安全分析 — 未锁告警 / 低电量提醒
-    const doorLock = this.mockProvider.getDeviceRef('mock:door-lock-front');
+    const doorLock = this.mockProvider.getDeviceRef(userId, 'mock:door-lock-front');
     if (doorLock) {
       const locked = Boolean(doorLock.properties.locked);
       const autoLock = Boolean(doorLock.properties.autoLock);
@@ -425,7 +436,7 @@ export class IoTSchedulerService {
     }
 
     // 8. 药盒提醒 — 针对留守老人场景
-    const medicineBox = this.mockProvider.getDeviceRef('mock:medicine-box-bedroom');
+    const medicineBox = this.mockProvider.getDeviceRef(userId, 'mock:medicine-box-bedroom');
     if (medicineBox) {
       const nextDose = medicineBox.properties.nextDose as
         | { time: string; medication: string; taken: boolean }
@@ -456,7 +467,7 @@ export class IoTSchedulerService {
     }
 
     // 9. 摄像头异常检测 — 深夜时段移动侦测
-    const camera = this.mockProvider.getDeviceRef('mock:camera-living');
+    const camera = this.mockProvider.getDeviceRef(userId, 'mock:camera-living');
     if (camera) {
       const motionDetected = Boolean(camera.properties.motionDetected);
       const currentHour = new Date().getHours();
@@ -490,7 +501,7 @@ export class IoTSchedulerService {
     userId: string,
     period: 'morning' | 'noon',
   ): Promise<{ summary: string } | null> {
-    const vacuum = this.mockProvider.getDeviceRef('mock:robot-vacuum');
+    const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     if (!vacuum) return null;
 
     const battery = Number(vacuum.properties.battery ?? 85);
@@ -502,7 +513,7 @@ export class IoTSchedulerService {
 
     // 启动清扫模拟
     const mode = period === 'morning' ? 'quick' : 'deep';
-    const route = this.mockProvider.startCleaning(mode, battery);
+    const route = this.mockProvider.startCleaning(userId, mode, battery);
 
     // 生成路线描述
     const roomSequence = route.waypoints
@@ -576,9 +587,11 @@ export class IoTSchedulerService {
     }
   }
 
-  /** 获取演示用户 ID — 优先使用手动设置的，否则从数据库查找 demo 用户 */
+  /** 获取演示用户 ID — 优先使用环境变量，否则从数据库查找 demo 用户 */
   private async getDemoUserId(): Promise<string | null> {
-    if (this.demoUserId) return this.demoUserId;
+    // R4-BUG-001: 优先使用环境变量配置的演示用户 ID
+    const envDemoUserId = process.env.DEMO_USER_ID;
+    if (envDemoUserId) return envDemoUserId;
 
     try {
       const demoUser = await this.prisma.user.findFirst({
@@ -589,7 +602,6 @@ export class IoTSchedulerService {
         select: { id: true },
       });
       if (demoUser) {
-        this.demoUserId = demoUser.id;
         this.logger.log(`已定位演示用户：${demoUser.id}`);
         return demoUser.id;
       }
@@ -598,10 +610,5 @@ export class IoTSchedulerService {
     }
 
     return null;
-  }
-
-  /** 设置目标用户（由 Controller 调用时设置） */
-  setUserId(userId: string) {
-    this.demoUserId = userId;
   }
 }

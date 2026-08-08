@@ -51,6 +51,7 @@ import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { FullScreenLoader } from '@/components/ui/loading';
+import { useToast, type ToastFn } from '@/components/ui/toast';
 import { apiClient, swrFetcher, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
@@ -163,6 +164,7 @@ const springHover = {
 // ============================================================
 
 export default function DevicesPage() {
+  const { toast, Toaster } = useToast();
   const { data: devicesData, isLoading: devicesLoading, mutate: mutateDevices } = useSWR<DevicesResponse>(
     '/iot/devices',
     swrFetcher,
@@ -196,7 +198,7 @@ export default function DevicesPage() {
       await apiClient.post(`/iot/scene/${scene}`);
       await mutateDevices();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '场景触发失败');
+      toast({ type: 'error', message: err instanceof ApiError ? err.message : '场景触发失败' });
     } finally {
       setSceneLoading(null);
     }
@@ -270,7 +272,7 @@ export default function DevicesPage() {
                         await apiClient.delete(`/iot/bind/${platform}`);
                         await mutateBindings();
                       } catch (err) {
-                        alert(err instanceof ApiError ? err.message : '解绑失败');
+                        toast({ type: 'error', message: err instanceof ApiError ? err.message : '解绑失败' });
                       }
                     }}
                   />
@@ -301,10 +303,10 @@ export default function DevicesPage() {
           </motion.div>
 
           {/* ===== 时墨督促提醒 ===== */}
-          <DeviceSupervisionSection />
+          <DeviceSupervisionSection toast={toast} />
 
           {/* ===== 扫地机器人路线规划 ===== */}
-          <VacuumRouteSection />
+          <VacuumRouteSection toast={toast} />
 
           {/* ===== 设备列表 ===== */}
           {grouped.length === 0 ? (
@@ -354,7 +356,7 @@ export default function DevicesPage() {
                               });
                               await mutateDevices();
                             } catch (err) {
-                              alert(err instanceof ApiError ? err.message : '操作失败');
+                              toast({ type: 'error', message: err instanceof ApiError ? err.message : '操作失败' });
                             }
                           }}
                         />
@@ -380,6 +382,8 @@ export default function DevicesPage() {
           }}
         />
       )}
+
+      <Toaster />
     </PageTransition>
   );
 }
@@ -406,7 +410,7 @@ function PlatformCard({
   const isMock = platform === 'mock';
 
   const handleUnbind = async () => {
-    if (!confirm(`确定解绑${label}平台吗？解绑后将无法控制该平台下的设备。`)) return;
+    if (!window.confirm(`确定解绑${label}平台吗？解绑后将无法控制该平台下的设备。`)) return;
     setUnbinding(true);
     try {
       await onUnbind();
@@ -523,6 +527,7 @@ function DeviceCard({
   const Icon = DEVICE_ICON_MAP[device.type] ?? Activity;
   const isOn = device.status === 'on' || device.status === 'running';
   const [controlling, setControlling] = React.useState(false);
+  const brightnessTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
 
   // 亮度属性（灯光类设备）
   const brightness = typeof device.properties?.brightness === 'number'
@@ -538,13 +543,16 @@ function DeviceCard({
     }
   };
 
-  const handleBrightness = async (value: number) => {
+  const handleBrightness = (value: number) => {
     setControlling(true);
-    try {
-      await onControl('set_property', 'brightness', value);
-    } finally {
-      setControlling(false);
-    }
+    if (brightnessTimerRef.current) clearTimeout(brightnessTimerRef.current);
+    brightnessTimerRef.current = setTimeout(async () => {
+      try {
+        await onControl('set_property', 'brightness', value);
+      } finally {
+        setControlling(false);
+      }
+    }, 300);
   };
 
   return (
@@ -917,11 +925,11 @@ const ROOM_COLORS: Record<string, string> = {
   阳台: 'rgba(244, 114, 182, 0.15)',
 };
 
-function VacuumRouteSection() {
+function VacuumRouteSection({ toast }: { toast: ToastFn }) {
   const { data: vacuumState, mutate } = useSWR<VacuumState>(
     '/iot/vacuum/status',
     swrFetcher,
-    { refreshInterval: 2000 },
+    { refreshInterval: 5000 },
   );
   const [starting, setStarting] = React.useState(false);
   const [stopping, setStopping] = React.useState(false);
@@ -938,7 +946,7 @@ function VacuumRouteSection() {
       await apiClient.post('/iot/vacuum/start', { mode });
       await mutate();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '启动失败');
+      toast({ type: 'error', message: err instanceof ApiError ? err.message : '启动失败' });
     } finally {
       setStarting(false);
     }
@@ -950,7 +958,7 @@ function VacuumRouteSection() {
       await apiClient.post('/iot/vacuum/stop');
       await mutate();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '停止失败');
+      toast({ type: 'error', message: err instanceof ApiError ? err.message : '停止失败' });
     } finally {
       setStopping(false);
     }
@@ -1307,7 +1315,7 @@ const SUP_PRIORITY: Record<string, string> = {
   low: 'border-transparent bg-[rgba(255,255,255,0.03)]',
 };
 
-function DeviceSupervisionSection() {
+function DeviceSupervisionSection({ toast }: { toast: ToastFn }) {
   const { data, mutate } = useSWR<{ supervisions: DeviceSupervision[] }>(
     '/families/supervisions',
     swrFetcher,
@@ -1326,7 +1334,7 @@ function DeviceSupervisionSection() {
       await apiClient.post(`/families/supervisions/${id}/resolve`);
       await mutate();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '操作失败');
+      toast({ type: 'error', message: err instanceof ApiError ? err.message : '操作失败' });
     } finally {
       setResolving(null);
     }

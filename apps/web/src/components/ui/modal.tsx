@@ -18,6 +18,8 @@ export interface ModalProps {
   hideCloseButton?: boolean;
   /** Prevent closing when clicking the backdrop. */
   disableBackdropClose?: boolean;
+  /** Prevent closing when pressing the Escape key. */
+  disableEscapeClose?: boolean;
 }
 
 export function Modal({
@@ -30,12 +32,59 @@ export function Modal({
   className,
   hideCloseButton = false,
   disableBackdropClose = false,
+  disableEscapeClose = false,
 }: ModalProps) {
-  // Close on Escape key
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = React.useRef<HTMLElement | null>(null);
+  const titleId = React.useId();
+
+  // Focus trap: capture focus on open, cycle Tab within the dialog, restore on close
+  React.useEffect(() => {
+    if (!open) return;
+
+    previouslyFocusedRef.current = document.activeElement as HTMLElement;
+
+    // Focus the first focusable element inside the modal
+    const focusable = contentRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus();
+    } else {
+      // Fall back to focusing the dialog container itself
+      contentRef.current?.focus();
+    }
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      if (!contentRef.current) return;
+      const focusableEls = contentRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusableEls.length === 0) return;
+      const first = focusableEls[0];
+      const last = focusableEls[focusableEls.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleTab);
+    return () => {
+      document.removeEventListener('keydown', handleTab);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [open]);
+
+  // Close on Escape key (decoupled from disableBackdropClose)
   React.useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !disableBackdropClose) onClose();
+      if (e.key === 'Escape' && !disableEscapeClose) onClose();
     };
     window.addEventListener('keydown', handler);
     // Lock body scroll while open
@@ -45,7 +94,7 @@ export function Modal({
       window.removeEventListener('keydown', handler);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose, disableBackdropClose]);
+  }, [open, onClose, disableEscapeClose]);
 
   return (
     <AnimatePresence>
@@ -70,10 +119,12 @@ export function Modal({
           />
           {/* Dialog */}
           <motion.div
+            ref={contentRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby={title ? 'modal-title' : undefined}
-            className={cn('relative w-full max-w-lg max-h-90vh overflow-hidden', className)}
+            aria-labelledby={title ? titleId : undefined}
+            tabIndex={-1}
+            className={cn('relative w-full max-w-lg max-h-90vh overflow-hidden outline-none', className)}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
@@ -85,7 +136,7 @@ export function Modal({
                   <div className="space-y-1">
                     {title && (
                       <h2
-                        id="modal-title"
+                        id={titleId}
                         className="text-lg font-semibold text-text"
                       >
                         {title}

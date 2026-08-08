@@ -346,6 +346,13 @@ export default function HomeChatOverlay({
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentRef = useRef(false);
 
+  // Reset sentRef when overlay closes so a new message can be sent next time
+  useEffect(() => {
+    if (!open) {
+      sentRef.current = false;
+    }
+  }, [open]);
+
   // 发送初始消息（仅一次）
   useEffect(() => {
     if (open && initialMessage && !sentRef.current) {

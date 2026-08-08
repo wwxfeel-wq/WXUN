@@ -18,6 +18,8 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   topP?: number;
+  /** External abort signal (e.g. from a pipeline-level timeout controller) */
+  signal?: AbortSignal;
 }
 
 /**
@@ -120,7 +122,7 @@ export class LlmAdapterService {
       method: 'POST',
       headers: await this.buildHeaders(),
       body: JSON.stringify(body),
-      signal: this.createTimeoutSignal(AI_CONFIG.STREAM_TIMEOUT_MS),
+      signal: this.createSignal(AI_CONFIG.STREAM_TIMEOUT_MS, options?.signal),
     });
 
     if (!response.ok) {
@@ -225,7 +227,7 @@ export class LlmAdapterService {
           method: 'POST',
           headers: await this.buildHeaders(),
           body: JSON.stringify(body),
-          signal: this.createTimeoutSignal(60000),
+          signal: this.createSignal(60000, options?.signal),
         });
 
         if (!res.ok) {
@@ -422,7 +424,8 @@ export class LlmAdapterService {
         `请在 .env.production 中设置 ${cfg.envKey}，或在管理后台 → AI 设置中配置。`,
       );
     }
-    this.logger.debug(`Using API key for ${provider}: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`);
+    // R1-004: Log only the provider name — never output API key fragments
+    this.logger.debug(`Using API key for provider: ${provider}`);
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -431,5 +434,20 @@ export class LlmAdapterService {
 
   private createTimeoutSignal(timeoutMs: number): AbortSignal {
     return AbortSignal.timeout(timeoutMs);
+  }
+
+  /**
+   * Combine an external abort signal with a per-request timeout.
+   * If either fires, the resulting signal is aborted.
+   */
+  private createSignal(timeoutMs: number, external?: AbortSignal): AbortSignal {
+    const timeoutSignal = this.createTimeoutSignal(timeoutMs);
+    if (!external) return timeoutSignal;
+    if (external.aborted) return external;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    external.addEventListener('abort', abort, { once: true });
+    timeoutSignal.addEventListener('abort', abort, { once: true });
+    return controller.signal;
   }
 }

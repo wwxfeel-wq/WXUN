@@ -4,6 +4,11 @@ import './globals.css';
 export const metadata: Metadata = {
   title: '岁言 SuiYan - Family AI Hub',
   description: '真正懂整个家庭的 AI。连接家庭 · 沉淀记忆 · 陪伴成长',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
+  manifest: '/manifest.json',
 };
 
 export const viewport: Viewport = {

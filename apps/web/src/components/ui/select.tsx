@@ -55,7 +55,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               className,
             )}
             aria-invalid={hasError}
-            aria-describedby={error ? `${selectId}-error` : undefined}
+            aria-describedby={error ? `${selectId}-error` : hint ? `${selectId}-hint` : undefined}
             {...props}
           >
             {options
@@ -76,7 +76,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             {error}
           </p>
         ) : hint ? (
-          <p className="text-xs text-text-muted">{hint}</p>
+          <p id={`${selectId}-hint`} className="text-xs text-text-muted">{hint}</p>
         ) : null}
       </div>
     );

@@ -77,6 +77,8 @@ export interface PlatformCredentials {
   homebridgeUrl?: string;
   /** Homebridge 鉴权 token */
   authToken?: string;
+  /** token 过期时间（秒），用于计算 expiresAt */
+  expiresInSeconds?: number;
 }
 
 /** 已绑定的平台信息 */

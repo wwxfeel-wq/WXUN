@@ -1,0 +1,16 @@
+{
+  "name": "岁言 SuiYan - Family AI Hub",
+  "short_name": "岁言",
+  "description": "真正懂整个家庭的 AI。连接家庭 · 沉淀记忆 · 陪伴成长",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

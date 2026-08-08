@@ -317,17 +317,18 @@ export class IoTTools {
         },
         required: [],
       },
-      handler: async (args, _ctx) => this.handleStartVacuum(args),
+      handler: async (args, ctx) => this.handleStartVacuum(args, ctx),
     };
   }
 
   private async handleStartVacuum(
     args: Record<string, unknown>,
+    ctx: McpToolContext,
   ): Promise<McpToolResult> {
     const mode = (String(args.mode ?? 'deep').trim() as 'quick' | 'deep' | 'spot') || 'deep';
 
     try {
-      const route = this.iotService.startVacuumCleaning(mode);
+      const route = this.iotService.startVacuumCleaning(ctx.userId, mode);
 
       const roomSequence = route.waypoints
         .filter((w) => w.action === 'enter')
@@ -365,13 +366,13 @@ export class IoTTools {
         properties: {},
         required: [],
       },
-      handler: async (_args, _ctx) => this.handleStopVacuum(),
+      handler: async (_args, ctx) => this.handleStopVacuum(ctx),
     };
   }
 
-  private async handleStopVacuum(): Promise<McpToolResult> {
+  private async handleStopVacuum(ctx: McpToolContext): Promise<McpToolResult> {
     try {
-      this.iotService.stopVacuumCleaning();
+      this.iotService.stopVacuumCleaning(ctx.userId);
       return {
         tool: 'stop_vacuum_cleaning',
         success: true,
@@ -400,13 +401,13 @@ export class IoTTools {
         properties: {},
         required: [],
       },
-      handler: async (_args, _ctx) => this.handleGetVacuumStatus(),
+      handler: async (_args, ctx) => this.handleGetVacuumStatus(ctx),
     };
   }
 
-  private async handleGetVacuumStatus(): Promise<McpToolResult> {
+  private async handleGetVacuumStatus(ctx: McpToolContext): Promise<McpToolResult> {
     try {
-      const state = this.iotService.getVacuumStatus();
+      const state = this.iotService.getVacuumStatus(ctx.userId);
       const progress = state.route && state.route.waypoints.length > 0
         ? Math.round(((state.currentStep ?? 0) / state.route.waypoints.length) * 100)
         : 0;

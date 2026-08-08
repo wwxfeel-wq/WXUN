@@ -15,6 +15,9 @@ export interface ToolParameterSchema {
   items?: ToolParameterSchema;
   properties?: Record<string, ToolParameterSchema>;
   required?: string[];
+  min?: number;
+  max?: number;
+  maxLength?: number;
 }
 
 export interface ToolSchema {

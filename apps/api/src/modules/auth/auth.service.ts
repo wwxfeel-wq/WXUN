@@ -36,6 +36,10 @@ export interface AuthUserResponse {
     nickname: string;
     avatarUrl: string | null;
     bio: string | null;
+    birthDate: string | null;
+    gender: string | null;
+    location: string | null;
+    occupation: string | null;
   };
   roles: string[];
   subscription: {
@@ -91,7 +95,7 @@ export class AuthService {
     }
 
     // Hash password with bcrypt
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, 12);
 
     // Create user, profile, settings, subscription in a transaction
     const user = await this.prisma.$transaction(async (tx) => {
@@ -173,6 +177,14 @@ export class AuthService {
   // ============================================================
 
   async login(dto: LoginDto): Promise<AuthResponse> {
+    const lockedKey = `auth:locked:${dto.email}`;
+    if (await this.redis.exists(lockedKey)) {
+      throw new UnauthorizedException({
+        code: ERROR_CODES.ACCOUNT_SUSPENDED,
+        message: '账户已被锁定，请15分钟后再试',
+      });
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       include: {
@@ -185,6 +197,8 @@ export class AuthService {
     });
 
     if (!user) {
+      // 执行 dummy bcrypt 比较以防止时序攻击泄露用户是否存在
+      await bcrypt.compare(dto.password, '$2a$10$N9qo8uLOickgx2ZMRZoMy.MQDqoX7B9r8V7vOqOBF1xJrR2eJ9kK');
       throw new UnauthorizedException({
         code: ERROR_CODES.UNAUTHORIZED,
         message: '邮箱或密码不正确',
@@ -207,11 +221,21 @@ export class AuthService {
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
+      const failedKey = `auth:failed:${dto.email}`;
+      const attempts = await this.redis.getClient.incr(failedKey);
+      if (attempts === 1) {
+        await this.redis.getClient.expire(failedKey, 900);
+      }
+      if (attempts >= 5) {
+        await this.redis.set(lockedKey, '1', 900);
+      }
       throw new UnauthorizedException({
         code: ERROR_CODES.UNAUTHORIZED,
         message: '邮箱或密码不正确',
       });
     }
+
+    await this.redis.del(`auth:failed:${dto.email}`);
 
     const roles = user.userRoles.map((ur) => ur.role.name);
     const subscriptionTier = user.subscription?.tier ?? SubscriptionTier.FREE;
@@ -265,9 +289,10 @@ export class AuthService {
       });
     }
 
-    // Validate the refresh token exists in Redis
-    const isValid = await this.redis.validateRefreshToken(payload.sub, payload.tokenId);
-    if (!isValid) {
+    // Atomically validate and revoke the refresh token (GETDEL)
+    const tokenKey = `${REDIS_KEYS.REFRESH_TOKEN}${payload.sub}:${payload.tokenId}`;
+    const storedValue = await this.redis.getDel(tokenKey);
+    if (!storedValue) {
       throw new UnauthorizedException({
         code: ERROR_CODES.REFRESH_TOKEN_EXPIRED,
         message: '刷新令牌已被撤销',
@@ -295,9 +320,6 @@ export class AuthService {
 
     const roles = user.userRoles.map((ur) => ur.role.name);
     const subscriptionTier = user.subscription?.tier ?? SubscriptionTier.FREE;
-
-    // Revoke old refresh token (rotation)
-    await this.redis.revokeRefreshToken(payload.sub, payload.tokenId);
 
     // Generate new tokens
     const newPayload: FullUserPayload = {
@@ -418,29 +440,35 @@ export class AuthService {
 
   /**
    * Request a password reset. Generates a reset token and stores it in Redis.
-   * Returns the token (in production this would be sent via email).
+   * Does not reveal whether the email exists — always returns the same message.
+   *
+   * H-005: The reset token is NEVER returned in the API response. It is only
+   * logged server-side for development/testing convenience. In production,
+   * the token should be delivered via a secure email link.
+   * TODO: Integrate an email service to send the reset link in production.
    */
-  async requestPasswordReset(email: string): Promise<string> {
+  async requestPasswordReset(
+    email: string,
+  ): Promise<{ success: true; message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true, status: true },
     });
 
     // For security, don't reveal whether the email exists
-    if (!user || user.status !== 'active') {
-      // Return a dummy token to prevent email enumeration
-      return this.encryption.generateToken(32);
+    if (user && user.status === 'active') {
+      const resetToken = this.encryption.generateToken(32);
+      await this.redis.set(
+        `${REDIS_KEYS.OTP}password_reset:${resetToken}`,
+        user.id,
+        REDIS_TTL.OTP,
+      );
+      // H-005: Log the token server-side only — never return it in the response
+      this.logger.log(`Password reset requested for: ${email} (token: ${resetToken})`);
     }
 
-    const resetToken = this.encryption.generateToken(32);
-    await this.redis.set(
-      `${REDIS_KEYS.OTP}password_reset:${resetToken}`,
-      user.id,
-      REDIS_TTL.OTP,
-    );
-
-    this.logger.log(`Password reset requested for: ${email}`);
-    return resetToken;
+    // 始终返回相同的消息，不泄露邮箱是否已注册
+    return { success: true, message: '如果该邮箱已注册，重置链接已发送' };
   }
 
   async resetPassword(email: string, resetToken: string, newPassword: string): Promise<void> {
@@ -454,23 +482,25 @@ export class AuthService {
       });
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true },
-    });
+    const passwordHash = await bcrypt.hash(newPassword, 12);
 
-    if (!user || user.email !== email) {
-      throw new BadRequestException({
-        code: ERROR_CODES.TOKEN_INVALID,
-        message: '重置令牌与邮箱不匹配',
+    await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true },
       });
-    }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+      if (!user || user.email !== email) {
+        throw new BadRequestException({
+          code: ERROR_CODES.TOKEN_INVALID,
+          message: '重置令牌与邮箱不匹配',
+        });
+      }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash },
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
     });
 
     // Invalidate the reset token
@@ -518,7 +548,10 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
   }> {
-    const tokenId = nanoid();
+    // L-001: Generate separate tokenIds for access and refresh tokens
+    // so that revoking one does not affect the other.
+    const accessTokenId = nanoid();
+    const refreshTokenId = nanoid();
 
     const accessPayload: JwtPayload = {
       sub: payload.userId,
@@ -526,7 +559,7 @@ export class AuthService {
       roles: payload.roles,
       subscriptionTier: payload.subscriptionTier,
       type: 'access',
-      tokenId,
+      tokenId: accessTokenId,
     };
 
     const refreshPayload: JwtPayload = {
@@ -535,7 +568,7 @@ export class AuthService {
       roles: payload.roles,
       subscriptionTier: payload.subscriptionTier,
       type: 'refresh',
-      tokenId,
+      tokenId: refreshTokenId,
     };
 
     const accessToken = this.jwtService.sign(accessPayload, {
@@ -551,8 +584,8 @@ export class AuthService {
       audience: JWT_CONFIG.AUDIENCE,
     });
 
-    // Store refresh token in Redis: refresh_token:{userId}:{tokenId}
-    await this.redis.storeRefreshToken(payload.userId, tokenId, this.refreshTtlSeconds);
+    // Store refresh token in Redis with its own unique tokenId
+    await this.redis.storeRefreshToken(payload.userId, refreshTokenId, this.refreshTtlSeconds);
 
     return { accessToken, refreshToken };
   }
@@ -563,7 +596,15 @@ export class AuthService {
       email: string;
       emailVerified: boolean;
       status: string;
-      profile: { nickname: string; avatarUrl: string | null; bio: string | null } | null;
+      profile: {
+        nickname: string;
+        avatarUrl: string | null;
+        bio: string | null;
+        birthDate: Date | null;
+        gender: string | null;
+        location: string | null;
+        occupation: string | null;
+      } | null;
       subscription: { tier: string; status: string; expiresAt: Date | null } | null;
     },
     roles: string[],
@@ -578,6 +619,10 @@ export class AuthService {
         nickname: user.profile?.nickname ?? '',
         avatarUrl: user.profile?.avatarUrl ?? null,
         bio: user.profile?.bio ?? null,
+        birthDate: user.profile?.birthDate ? user.profile.birthDate.toISOString() : null,
+        gender: user.profile?.gender ?? null,
+        location: user.profile?.location ?? null,
+        occupation: user.profile?.occupation ?? null,
       },
       roles,
       subscription: {

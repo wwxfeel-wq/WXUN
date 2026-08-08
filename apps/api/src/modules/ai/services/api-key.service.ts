@@ -295,12 +295,12 @@ export class ApiKeyService {
       }
     }
 
-    // Clear all cached plaintext keys
-    for (const p of ALL_PROVIDERS) {
-      this.cache[p] = '';
-      delete this.cache[p];
-      delete this.cacheTs[p];
-    }
+    // R1-001: Update the in-memory encryption key so subsequent decrypt()
+    // calls use the new key instead of the stale old one.
+    this.encryption.updateKey(newKeyHex);
+
+    // R1-007: Clear all cached plaintext keys via the dedicated method
+    this.clearCache();
 
     try {
       await this.prisma.auditLog.create({
