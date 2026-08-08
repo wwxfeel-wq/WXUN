@@ -281,7 +281,7 @@ const GlassLayer = React.forwardRef<HTMLElement, GlassLayerProps>(
         React.PropsWithChildren<{ className?: string; style?: React.CSSProperties }>
       >;
       // Merge the child's own ref with GlassLayer's internal ref so both receive the node.
-      const childRef = (child as React.ReactElement<{ ref?: React.Ref<HTMLElement> }>).ref;
+      const childRef = (child.props as { ref?: React.Ref<HTMLElement> }).ref;
       const mergedRef = (node: HTMLElement | null) => {
         setRefs(node);
         if (typeof childRef === 'function') {

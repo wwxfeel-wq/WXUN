@@ -153,7 +153,7 @@ export default function InterviewPage() {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   // H-022: 防抖保存消息到 localStorage（最多保存 50 条）
-  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {

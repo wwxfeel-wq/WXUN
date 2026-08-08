@@ -158,7 +158,7 @@ const TOOL_META: Record<string, { label: string; icon: typeof Zap }> = {
 };
 
 /** 从工具参数中提取可读描述 */
-function describeToolArgs(tool: string, args?: Record<string, unknown>): string {
+function describeToolArgs(_tool: string, args?: Record<string, unknown>): string {
   if (!args) return '';
   const parts: string[] = [];
   const deviceName = args.deviceName as string | undefined;

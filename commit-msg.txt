@@ -1,0 +1,31 @@
+fix: 修复26个安全与功能Bug，覆盖IoT/Agent/部署/前端
+
+Critical:
+- AES-256-GCM加密IoT凭证，防止明文存储
+- 修复原型污染漏洞，添加属性白名单
+- 修复SQL注入风险，使用参数化查询
+- 修复时序攻击漏洞，使用恒定时间比较
+- 修复路由提示词注入，移除重复用户消息
+
+High:
+- IoTSchedulerService移除共享demoUserId，防止跨用户设备控制
+- Mock设备前缀一致性修复（内部无前缀，返回时添加）
+- MiHome token expiresAt计算修复
+- AbortController传递到LLM调用
+- 工具参数JSON Schema验证
+- SSE重连逻辑与错误消息优化
+- Nginx SSE正则修复（包含digital-life端点）
+- CI/CD: ENCRYPTION_KEY格式修复 + OPENCLAW_WEBHOOK_SECRET注入
+- decrementUsage跨月边界修复
+
+Medium:
+- Toast通知组件替代alert()
+- API客户端Token刷新机制
+- Prisma日志级别环境感知
+- Redis连接错误处理增强
+- 玻璃光效全局鼠标事件优化
+
+Low:
+- 前端无障碍改进
+- 环境变量验证配置
+- 代码清理与类型完善

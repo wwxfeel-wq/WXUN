@@ -383,7 +383,7 @@ export default function DevicesPage() {
         />
       )}
 
-      <Toaster />
+      {Toaster}
     </PageTransition>
   );
 }
@@ -527,7 +527,7 @@ function DeviceCard({
   const Icon = DEVICE_ICON_MAP[device.type] ?? Activity;
   const isOn = device.status === 'on' || device.status === 'running';
   const [controlling, setControlling] = React.useState(false);
-  const brightnessTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const brightnessTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // 亮度属性（灯光类设备）
   const brightness = typeof device.properties?.brightness === 'number'
