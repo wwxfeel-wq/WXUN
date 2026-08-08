@@ -554,7 +554,7 @@ export class IoTSchedulerService {
     deviceId: string,
     action: 'turn_on' | 'turn_off' | 'set_property',
     property?: string,
-    value?: unknown,
+    value?: string | number,
   ): Promise<boolean> {
     return this.iotService.controlDevice(userId, {
       deviceId,

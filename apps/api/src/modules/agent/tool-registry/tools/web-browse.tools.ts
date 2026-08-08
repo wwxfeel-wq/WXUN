@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebSearchService } from '../../../ai/services/web-search.service';
-import { isSafeUrl } from '../../../common/utils/ssrf-guard.util';
+import { isSafeUrl } from '../../../../common/utils/ssrf-guard.util';
 import type {
   McpToolDefinition,
   McpToolContext,

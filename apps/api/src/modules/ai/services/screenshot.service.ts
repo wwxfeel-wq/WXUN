@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync } from 'fs';
 import puppeteer, { type Browser } from 'puppeteer-core';
-import { isSafeUrl } from '../../common/utils/ssrf-guard.util';
+import { isSafeUrl } from '../../../common/utils/ssrf-guard.util';
 
 /** 截图请求选项 */
 export interface ScreenshotOptions {
