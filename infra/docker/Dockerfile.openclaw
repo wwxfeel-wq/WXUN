@@ -14,11 +14,12 @@ FROM base AS openclaw-builder
 WORKDIR /app
 
 # 安装 OpenClaw CLI
-RUN npm install -g openclaw@latest
+# R3-DOCKERFILE-006: Pin to specific version instead of @latest for reproducible builds.
+RUN npm install -g openclaw@1.0.0
 
 # 安装微信 ClawBot 插件
-RUN openclaw plugins install "@tencent-weixin/openclaw-weixin@latest" || \
-    echo "Plugin install may need retry due to rate limit"
+# R3-DOCKERFILE-007: Do not silently ignore plugin install failure — build must fail.
+RUN openclaw plugins install "@tencent-weixin/openclaw-weixin@1.0.0"
 
 # 启用插件
 RUN openclaw config set plugins.entries.openclaw-weixin.enabled true || true
@@ -33,13 +34,17 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # 从 builder 阶段复制 OpenClaw 和插件
 COPY --from=openclaw-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=openclaw-builder /usr/local/bin/openclaw /usr/local/bin/openclaw
-COPY --from=openclaw-builder /root/.openclaw /root/.openclaw
+COPY --from=openclaw-builder /root/.openclaw /home/openclaw/.openclaw
 
 # 复制配置文件
 COPY infra/openclaw/config.yaml /app/config.yaml
 
-# 创建数据目录（用于持久化登录凭证）
-RUN mkdir -p /data/openclaw
+# R3-DOCKERFILE-005: Run as non-root user for security.
+RUN addgroup --system --gid 1001 openclaw \
+  && adduser --system --uid 1001 openclaw \
+  && mkdir -p /data/openclaw \
+  && chown -R openclaw:openclaw /app /home/openclaw /data/openclaw
+
 ENV OPENCLAW_HOME=/data/openclaw
 
 EXPOSE 5140
@@ -49,4 +54,5 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
   CMD wget --no-verbose --tries=1 --spider http://localhost:5140/health || exit 1
 
 # 启动 OpenClaw 网关
+USER openclaw
 CMD ["openclaw", "start", "--config", "/app/config.yaml"]

@@ -31,6 +31,9 @@ plugins:
 
 # ===== 消息路由 =====
 # 将微信消息转发到 EchoLife API webhook
+# R3-MISC-001: ${VAR} interpolation syntax needs verification — if OpenClaw
+# does not support env var substitution in YAML, the container startup script
+# should run `envsubst < config.yaml.template > config.yaml` before starting.
 routes:
   # 默认路由：所有微信消息都转发到 EchoLife AgentRuntime
   - channel: openclaw-weixin
@@ -63,7 +66,8 @@ models:
     deepseek:
       apiKey: ${DEEPSEEK_API_KEY}
       baseURL: ${DEEPSEEK_API_URL}
-      model: deepseek-v4-flash
+      # R3-MISC-002: Fixed model name from deepseek-v4-flash (non-existent) to deepseek-chat
+      model: deepseek-chat
 
 # ===== 日志 =====
 log:

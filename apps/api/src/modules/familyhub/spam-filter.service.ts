@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 
 /**
  * 垃圾信息过滤结果
@@ -67,8 +68,8 @@ export class SpamFilterService {
     '知道',
   ]);
 
-  /** 每个 Agent 的最近消息历史（用于按会话隔离重复检测） */
-  private readonly messageHistory = new Map<string, string[]>();
+  /** 每个用户+Agent 的最近消息历史（用于按会话隔离重复检测） */
+  private readonly messageHistory = new Map<string, { messages: string[]; lastUpdated: number }>();
 
   /** 每个会话保留的最大历史条数 */
   private readonly HISTORY_LIMIT = 10;
@@ -76,15 +77,20 @@ export class SpamFilterService {
   /** 连续相同消息达到此次数即判定为重复 */
   private readonly REPEAT_THRESHOLD = 3;
 
+  /** 历史条目过期时间（30 分钟无活动即清除） */
+  private readonly HISTORY_TTL_MS = 30 * 60 * 1000;
+
   /**
    * 检测用户消息是否为垃圾/无意义内容
    *
    * @param message - 用户原始消息
    * @param agentCode - Agent 编码（用于按会话隔离重复检测）
+   * @param userId - 用户 ID（用于按用户隔离重复检测，防止跨用户数据共享）
    * @returns 过滤结果，若 isSpam 为 true 则应直接返回 tip 给用户
    */
-  filter(message: string, agentCode: string): SpamFilterResult {
+  filter(message: string, agentCode: string, userId: string): SpamFilterResult {
     const trimmed = (message ?? '').trim();
+    const historyKey = `${userId}:${agentCode}`;
 
     // 1. 空消息
     if (!trimmed) {
@@ -127,7 +133,8 @@ export class SpamFilterService {
     }
 
     // 5. 重复消息（连续 N 次相同内容）
-    const history = this.messageHistory.get(agentCode) ?? [];
+    const entry = this.messageHistory.get(historyKey);
+    const history = entry?.messages ?? [];
     const lastN = history.slice(-(this.REPEAT_THRESHOLD - 1));
     if (
       lastN.length === this.REPEAT_THRESHOLD - 1 &&
@@ -142,7 +149,7 @@ export class SpamFilterService {
     }
 
     // 通过过滤 —— 记录到会话历史，用于后续重复检测
-    this.recordMessage(agentCode, trimmed);
+    this.recordMessage(historyKey, trimmed);
 
     return { isSpam: false, reason: 'pass', tip: '' };
   }
@@ -150,22 +157,42 @@ export class SpamFilterService {
   /**
    * 记录消息到会话历史（仅记录通过过滤的消息）
    */
-  private recordMessage(agentCode: string, message: string): void {
-    const history = this.messageHistory.get(agentCode) ?? [];
+  private recordMessage(historyKey: string, message: string): void {
+    const entry = this.messageHistory.get(historyKey);
+    const history = entry?.messages ?? [];
     history.push(message);
     // 超出上限时丢弃最早的消息
     if (history.length > this.HISTORY_LIMIT) {
       history.shift();
     }
-    this.messageHistory.set(agentCode, history);
+    this.messageHistory.set(historyKey, { messages: history, lastUpdated: Date.now() });
   }
 
   /**
-   * 清空指定 Agent 的消息历史
+   * 清空指定用户+Agent 的消息历史
    *
    * 用于会话重置等场景。
    */
-  clearHistory(agentCode: string): void {
-    this.messageHistory.delete(agentCode);
+  clearHistory(userId: string, agentCode: string): void {
+    this.messageHistory.delete(`${userId}:${agentCode}`);
+  }
+
+  /**
+   * 定时清理过期的消息历史条目（每 30 分钟执行一次）
+   * 移除超过 HISTORY_TTL_MS 没有活动的条目，防止内存泄漏
+   */
+  @Interval(30 * 60 * 1000)
+  cleanupStaleHistory(): void {
+    const now = Date.now();
+    let removed = 0;
+    for (const [key, entry] of this.messageHistory) {
+      if (now - entry.lastUpdated > this.HISTORY_TTL_MS) {
+        this.messageHistory.delete(key);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      this.logger.debug(`SpamFilter cleanup: removed ${removed} stale history entries`);
+    }
   }
 }

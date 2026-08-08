@@ -41,6 +41,11 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      # R3-CICD-007: Web and API images are built serially. Splitting into
+      # parallel jobs could speed up the build ~2x, but the current server
+      # (2vCPU/4GiB) and GitHub Actions free tier make this a low priority.
+      # R3-CICD-009: Only linux/amd64 is built because the deployment server
+      # is an amd64 ECS instance. Add arm64 if multi-arch is needed.
       - name: Build & push echolife-web
         uses: docker/build-push-action@v6
         with:
@@ -76,6 +81,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      # R3-CICD-002: SSH password auth is used for simplicity. For production
+      # security, migrate to SSH key-based auth by replacing `password` with
+      # `key: ${{ secrets.SSH_PRIVATE_KEY }}` and removing SSH_PASSWORD secret.
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.2.0
         env:
@@ -85,16 +93,23 @@ jobs:
           MIHOME_CLIENT_SECRET: ${{ secrets.MIHOME_CLIENT_SECRET }}
           OPENCLAW_SECRET: ${{ secrets.OPENCLAW_WEBHOOK_SECRET }}
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+          # R3-CICD-003: Pass ACR credentials through envs instead of inline ${{ }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
-          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH
+          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH,ACR_PASSWORD,ACR_USERNAME,ACR_REGISTRY,ACR_NAMESPACE
           script: |
             cd /www/wwwroot/echolife
             echo "== 同步 docker-compose.deploy.yml =="
+            # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
               -o docker-compose.deploy.yml.new || \
               curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
@@ -110,7 +125,9 @@ jobs:
             # sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.deploy.yml
             # echo "Patched service_healthy -> service_started"
             echo "== 同步 nginx 配置 =="
+            # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
               -o infra/nginx/nginx.conf || \
               curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
@@ -175,22 +192,32 @@ jobs:
               fi
             fi
             echo "== 登录 ACR =="
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login \
-              ${{ env.ACR_REGISTRY }} \
-              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+            # R3-CICD-003: Use $ACR_PASSWORD from envs instead of inline ${{ secrets.ACR_PASSWORD }}
+            echo "$ACR_PASSWORD" | docker login \
+              "$ACR_REGISTRY" \
+              -u "$ACR_USERNAME" --password-stdin
             echo "== 检查 .env.production =="
             if [ ! -f .env.production ]; then
               echo "ERROR: .env.production not found! Deployment aborted."
               echo "Please create .env.production on the server with required secrets before deploying."
               exit 1
             fi
-            # 确保关键变量存在
-            grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
-            grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
+            # R3-CICD-008: Do NOT write ACR credentials to .env.production.
+            # ACR_REGISTRY and ACR_NAMESPACE are passed as shell environment
+            # variables (via envs) and docker compose picks them up automatically.
             grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
             echo ".env.production check OK"
+            # Export ACR vars so docker compose can interpolate them
+            export ACR_REGISTRY="$ACR_REGISTRY"
+            export ACR_NAMESPACE="$ACR_NAMESPACE"
             echo "== 拉取新镜像 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || echo "WARNING: pull failed"
+            # R3-CICD-004: Fail deployment if image pull fails (was: || echo "WARNING: pull failed")
+            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || { echo "ERROR: pull failed"; exit 1; }
+            # R3-CICD-005: Save current image tags for potential rollback.
+            # Full automatic rollback is a future improvement. For now, record
+            # the previous image digests so they can be manually restored if needed.
+            docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-api > /tmp/echolife-api-prev-image.txt 2>/dev/null || true
+            docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-web > /tmp/echolife-web-prev-image.txt 2>/dev/null || true
             echo "== 启动/重启服务（不停止现有容器）=="
             docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
             echo "postgres/redis started: $?"
@@ -203,6 +230,16 @@ jobs:
             docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx
             echo "nginx started: $?"
             sleep 3
+            # R3-CICD-006: Health check loop after deployment
+            echo "== 健康检查 =="
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost/api/v1/health; then
+                echo "Health check passed (attempt $i)"
+                break
+              fi
+              echo "Health check attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
             echo "== 容器状态 =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
             echo "== API 日志（最后30行）==" | tee -a /tmp/deploy_diag.txt

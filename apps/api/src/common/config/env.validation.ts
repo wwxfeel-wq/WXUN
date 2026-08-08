@@ -12,6 +12,8 @@ const REQUIRED_ENV_VARS_PRODUCTION = [
   'JWT_REFRESH_SECRET',
   'REDIS_PASSWORD',
   'ENCRYPTION_KEY',
+  // R3-BUG-027: OPENCLAW_WEBHOOK_SECRET is required for webhook authentication
+  'OPENCLAW_WEBHOOK_SECRET',
 ] as const;
 
 /** 开发环境必须的环境变量（较宽松） */

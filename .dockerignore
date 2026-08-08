@@ -2,6 +2,10 @@ node_modules
 .next
 dist
 .git
+# R3-MISC-003: *.md excludes all markdown files from Docker build context.
+# This is intentional — README/docs are not needed inside containers and
+# excluding them reduces build context size. Markdown files that ARE needed
+# (e.g. config templates) should be COPY'd explicitly in the Dockerfile.
 *.md
 .env
 .env.local

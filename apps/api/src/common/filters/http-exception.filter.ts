@@ -13,17 +13,14 @@ import { ERROR_CODES, HTTP_STATUS } from '@echolife/shared';
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
-  private readonly isProduction: boolean;
-
-  constructor() {
-    // Read NODE_ENV at filter instantiation time
-    this.isProduction = process.env.NODE_ENV === 'production';
-  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+
+    // R3-BUG-022: Read NODE_ENV at request time instead of caching at construction
+    const isProduction = process.env.NODE_ENV === 'production';
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: number = ERROR_CODES.INTERNAL_ERROR;
@@ -45,7 +42,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       // In production, mask internal error details to prevent information leakage
-      if (this.isProduction) {
+      if (isProduction) {
         message = '服务器内部错误，请稍后重试';
       } else {
         message = exception.message;

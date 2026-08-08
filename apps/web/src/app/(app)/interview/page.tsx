@@ -153,8 +153,13 @@ export default function InterviewPage() {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   // H-022: 防抖保存消息到 localStorage（最多保存 50 条）
+  // R3-FE-021: Track previous message count to skip unnecessary serialization.
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const prevMsgCountRef = React.useRef(0);
   React.useEffect(() => {
+    // Only save if message count actually changed
+    if (prevMsgCountRef.current === messages.length) return;
+    prevMsgCountRef.current = messages.length;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       try {
@@ -180,6 +185,7 @@ export default function InterviewPage() {
   }, []);
 
   // H-037: 仅在用户位于底部附近时自动滚动
+  // R3-FE-003: Cancel pending requestAnimationFrame on unmount.
   React.useEffect(() => {
     if (!scrollRef.current || !isNearBottomRef.current) return;
     if (scrollRafRef.current !== null) return;
@@ -193,6 +199,12 @@ export default function InterviewPage() {
         behavior: isStreamingMessage ? "auto" : "smooth",
       });
     });
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
   }, [messages]);
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -235,6 +247,9 @@ export default function InterviewPage() {
           <div
             ref={scrollRef}
             onScroll={handleScroll}
+            role="log"
+            aria-live="polite"
+            aria-label="访谈消息记录"
             className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-8 sm:py-8 space-y-4 sm:space-y-6"
           >
             {messages.length === 0 ? (

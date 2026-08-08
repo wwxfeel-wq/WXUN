@@ -27,12 +27,22 @@ RUN pnpm --filter @echolife/shared build
 RUN pnpm --filter @echolife/api exec prisma generate
 RUN pnpm --filter @echolife/api build
 
+# R3-DOCKERFILE-001: Prune devDependencies to reduce production image size.
+# pnpm prune --prod has known issues in workspace setups, so we use npx pnpm
+# prune at the repo root which removes dev-only packages from node_modules.
+# If this fails due to workspace resolution, the fallback is to manually
+# delete dev-only node_modules folders (e.g. jest, eslint, prettier).
+RUN cd /app && npx pnpm prune --prod || echo "WARN: pnpm prune failed, devDependencies will be included"
+
 # ===== Production =====
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
 # Install Chromium for Puppeteer screenshot support
+# R3-DOCKERFILE-003: chromium is not version-pinned. For reproducible builds,
+# consider pinning to a specific version (e.g. chromium=131.*). Left unpinned
+# for now to avoid breaking on Debian package updates.
 RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
@@ -48,7 +58,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/shared/node_modules ./packages/shared/node_modules
 
-# Recreate workspace symlink for @echolife/shared
+# R3-DOCKERFILE-002: Recreate workspace symlink for @echolife/shared.
+# This manual symlink workaround is needed because pnpm workspace symlinks
+# are not preserved when copying node_modules between build stages. Without
+# this, the API cannot resolve @echolife/shared at runtime.
 RUN ln -s /app/packages/shared /app/apps/api/node_modules/@echolife/shared
 
 # Set ownership
@@ -57,6 +70,8 @@ RUN chown -R appuser:appgroup /app
 EXPOSE 3001
 
 # Run migrations then start (migration failure stops startup)
+# R3-DOCKERFILE-008: Use local prisma binary instead of npx to avoid network
+# dependency and reduce startup time.
 WORKDIR /app/apps/api
 USER appuser
-CMD ["sh", "-c", "npx prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]

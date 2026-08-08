@@ -710,6 +710,11 @@ function TreeScene({
     groupScale: 0.001,
   });
 
+  // R3-FE-019: Track previous scale values to skip matrix updates when
+  // the change is below the threshold (0.01), avoiding thousands of
+  // unnecessary matrix recalculations per frame.
+  const prevScalesRef = useRef({ leaf: 0, flower: 0, fruit: 0 });
+
   // 根据阶段与真实家庭数据计算目标
   const targets = useMemo(() => {
     const cfg = assets.stage;
@@ -971,9 +976,21 @@ function TreeScene({
     }
 
     // 叶子/花/果矩阵随尺寸更新
-    updateLeafMatrices(c.leafScale);
-    updateFlowerMatrices(c.flowerScale);
-    updateFruitMatrices(c.fruitScale);
+    // R3-FE-019: Only update matrices when scale changes more than 0.01,
+    // avoiding thousands of unnecessary matrix recalculations per frame.
+    const prev = prevScalesRef.current;
+    if (Math.abs(c.leafScale - prev.leaf) > 0.01) {
+      prev.leaf = c.leafScale;
+      updateLeafMatrices(c.leafScale);
+    }
+    if (Math.abs(c.flowerScale - prev.flower) > 0.01) {
+      prev.flower = c.flowerScale;
+      updateFlowerMatrices(c.flowerScale);
+    }
+    if (Math.abs(c.fruitScale - prev.fruit) > 0.01) {
+      prev.fruit = c.fruitScale;
+      updateFruitMatrices(c.fruitScale);
+    }
 
     // 树液流动
     if (sapMesh) {

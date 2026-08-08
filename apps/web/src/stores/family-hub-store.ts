@@ -55,6 +55,8 @@ export type AgentStatus = 'running' | 'thinking' | 'idle' | 'syncing' | 'learnin
 
 export interface AgentRuntime {
   id: string;
+  /** Agent code used in API URLs and cross-component references (may differ from id). */
+  code?: string;
   name: string;
   role: string;
   description?: string;
@@ -296,6 +298,9 @@ const MCP_TOOLS: Record<string, (params: Record<string, unknown>, state: FamilyH
 
 const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
+// R3-FE-006: Module-level AbortController for fetchAll to abort previous requests.
+let fetchAllAbortController: AbortController | null = null;
+
 export function clearPendingTimers(): void {
   pendingTimers.forEach((id) => clearTimeout(id));
   pendingTimers.clear();
@@ -322,6 +327,13 @@ export const useFamilyHubStore = create<FamilyHubState>()(
       mcpCalls: [],
 
       fetchAll: async () => {
+        // R3-FE-006: Abort previous in-flight request when starting a new one.
+        if (fetchAllAbortController) {
+          fetchAllAbortController.abort();
+        }
+        fetchAllAbortController = new AbortController();
+        const abortSignal = fetchAllAbortController.signal;
+
         set({ loading: true, error: null });
         try {
           const [metricsRes, treeStatsRes, shimoCoreRes, agentsRes, skillsRes, timelineRes, devicesRes, familyStatusRes] =
@@ -352,12 +364,20 @@ export const useFamilyHubStore = create<FamilyHubState>()(
         hasError: errorCount > 0,
       });
         } catch (err) {
+          // R3-FE-006: Ignore abort errors from previous requests
+          if (abortSignal.aborted) return;
           set({ loading: false, error: err instanceof Error ? err.message : 'Unknown error', hasError: true });
         }
       },
 
       triggerInterviewComplete: async () => {
         // Simulate real-time data updates after interview
+        // R3-FE-007 LIMITATION: The pendingTimers set is only cleared when
+        // clearPendingTimers() is called (typically on home page unmount).
+        // If triggerInterviewComplete is called from a non-home page, the
+        // timers will persist until the home page unmounts or the app is
+        // closed. This is acceptable for now but should be revisited if
+        // memory leaks become an issue.
         setShimoStatusTransient(set, 'updating_memory');
 
         const timer1 = setTimeout(() => {
@@ -479,10 +499,14 @@ export const useFamilyHubStore = create<FamilyHubState>()(
       },
 
       invokeAgent: async (agentCode: string, message: string) => {
+        // R3-FE-005: Match by code OR id, since callers may pass agentCode
+        // which can differ from the agent's id field.
+        const matchAgent = (a: AgentRuntime) => a.code === agentCode || a.id === agentCode;
+
         // Optimistically set agent to thinking
         set((s) => ({
           agents: s.agents.map((a) =>
-            a.id === agentCode ? { ...a, status: 'thinking' as const } : a,
+            matchAgent(a) ? { ...a, status: 'thinking' as const } : a,
           ),
         }));
 
@@ -495,7 +519,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           // 合并为一次 set 调用，避免两次独立渲染
           set((s) => ({
             agents: s.agents.map((a) =>
-              a.id === agentCode
+              matchAgent(a)
                 ? { ...a, status: 'running' as const, calls: a.calls + 1, lastActive: '刚刚' }
                 : a,
             ),
@@ -536,7 +560,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           // Reset agent status on error
           set((s) => ({
             agents: s.agents.map((a) =>
-              a.id === agentCode ? { ...a, status: 'idle' as const } : a,
+              matchAgent(a) ? { ...a, status: 'idle' as const } : a,
             ),
           }));
 

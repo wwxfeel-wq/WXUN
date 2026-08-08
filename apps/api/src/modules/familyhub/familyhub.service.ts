@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LlmAdapterService, ChatMessage } from '../ai/services/llm-adapter.service';
@@ -8,7 +8,7 @@ import { AgentToolService, AgentToolResult } from './agent-tool.service';
 import { AgentWorkflowService, WorkflowResult } from './agent-workflow.service';
 import { RagService } from '../ai/services/rag.service';
 import { QuotaService } from '../ai/services/quota.service';
-import { RAG_DEFAULTS } from '@echolife/shared';
+import { RAG_DEFAULTS, ERROR_CODES } from '@echolife/shared';
 import { LifeTreeService } from '../lifetree/lifetree.service';
 
 /**
@@ -720,12 +720,26 @@ export class FamilyHubService {
 
   /**
    * Get all agents.
+   * R3-BUG-023: Filter agent calls/status by user — uses AgentExecutionLog
+   * for per-user call counts instead of the global calls counter.
    */
-  async getAgents() {
+  async getAgents(userId?: string) {
     const agents = await this.prisma.agentRuntime.findMany({
       include: { skills: true },
       orderBy: { calls: 'desc' },
     });
+
+    // R3-BUG-023: Compute per-user call counts from execution logs
+    let userCallCounts = new Map<string, number>();
+    if (userId) {
+      const logs = await this.prisma.agentExecutionLog.findMany({
+        where: { userId, status: 'success' },
+        select: { agentCode: true },
+      });
+      for (const log of logs) {
+        userCallCounts.set(log.agentCode, (userCallCounts.get(log.agentCode) ?? 0) + 1);
+      }
+    }
 
     return agents.map((a) => ({
       id: a.code,
@@ -736,7 +750,7 @@ export class FamilyHubService {
       color: a.color,
       status: a.status,
       level: a.level,
-      calls: a.calls,
+      calls: userId ? (userCallCounts.get(a.code) ?? 0) : a.calls,
       lastActive: this.formatTimeAgo(a.lastActiveAt),
       capabilities: a.capabilities as string[] | null,
       welcomeMessage: a.welcomeMessage,
@@ -789,8 +803,9 @@ export class FamilyHubService {
 
   /**
    * Get all skills.
+   * R3-BUG-023: Accept userId to scope skill data by user.
    */
-  async getSkills() {
+  async getSkills(userId?: string) {
     const skills = await this.prisma.skill.findMany({
       include: { agent: true },
       orderBy: [{ status: 'asc' }, { level: 'desc' }],
@@ -835,7 +850,7 @@ export class FamilyHubService {
     }
 
     // ===== 1. 垃圾信息过滤 =====
-    const spamResult = this.spamFilter.filter(message, code);
+    const spamResult = this.spamFilter.filter(message, code, userId);
     if (spamResult.isSpam) {
       this.logger.warn(
         `Agent ${code} 消息被过滤（${spamResult.reason}），跳过 AI 调用`,
@@ -852,7 +867,29 @@ export class FamilyHubService {
       };
     }
 
-    // Update agent status to thinking
+    // R3-BUG-008: Check quota BEFORE incrementing calls counter to avoid
+    // incrementing calls on a request that will be rejected due to quota limits.
+    const startTime = Date.now();
+    let toolResults: AgentToolResult[] = [];
+    let status: 'success' | 'failed' = 'success';
+    let errorMessage: string | undefined;
+    let quotaKey: string | undefined;
+
+    // ===== Pre-check quota (non-destructive) =====
+    const preQuotaCheck = await this.quotaService.checkQuota(userId);
+    if (!preQuotaCheck.allowed) {
+      return {
+        success: false,
+        agentName: agent.name,
+        agentCode: agent.code,
+        response: '您的 AI 对话配额已用完，请下月重置或升级订阅计划。',
+        tokensUsed: 0,
+        model: '',
+        toolResults: [],
+      };
+    }
+
+    // Update agent status to thinking and increment calls
     await this.prisma.agentRuntime.update({
       where: { code },
       data: {
@@ -861,12 +898,6 @@ export class FamilyHubService {
         calls: { increment: 1 },
       },
     });
-
-    const startTime = Date.now();
-    let toolResults: AgentToolResult[] = [];
-    let status: 'success' | 'failed' = 'success';
-    let errorMessage: string | undefined;
-    let quotaKey: string | undefined;
 
     try {
       // ===== 2. 工具调用 =====
@@ -941,7 +972,7 @@ export class FamilyHubService {
       if (!quotaCheck.allowed) {
         await this.prisma.agentRuntime.update({
           where: { code },
-          data: { status: 'idle' },
+          data: { status: 'idle', calls: { decrement: 1 } },
         });
         return {
           success: false,
@@ -1202,8 +1233,9 @@ export class FamilyHubService {
 
   /**
    * Learn a skill — increase progress and potentially level up.
+   * R3-BUG-013: Accept userId and verify the user has interacted with the skill's agent.
    */
-  async learnSkill(skillId: string) {
+  async learnSkill(skillId: string, userId?: string) {
     const skill = await this.prisma.skill.findUnique({
       where: { id: skillId },
       include: { agent: true },
@@ -1211,6 +1243,20 @@ export class FamilyHubService {
 
     if (!skill) {
       throw new NotFoundException(`Skill ${skillId} not found`);
+    }
+
+    // R3-BUG-013: Verify the user has interacted with this skill's agent
+    if (userId && skill.agent) {
+      const hasInteraction = await this.prisma.agentExecutionLog.findFirst({
+        where: { userId, agentCode: skill.agent.code },
+        select: { id: true },
+      });
+      if (!hasInteraction) {
+        throw new ForbiddenException({
+          code: ERROR_CODES.FORBIDDEN,
+          message: '您尚未使用过该 Agent，无法学习其技能',
+        });
+      }
     }
 
     const newProgress = Math.min(skill.progress + 20, 100);

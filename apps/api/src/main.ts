@@ -106,7 +106,16 @@ async function bootstrap() {
 
   process.on('SIGTERM', () => {
     Logger.log('Received SIGTERM, shutting down gracefully', 'Bootstrap');
-    app.close();
+    // R3-BUG-017: Await app.close() before exiting to ensure graceful shutdown
+    (async () => {
+      try {
+        await app.close();
+        Logger.log('Application closed successfully', 'Bootstrap');
+      } catch (err) {
+        Logger.error(`Error during shutdown: ${(err as Error).message}`, 'Bootstrap');
+      }
+      process.exit(0);
+    })();
   });
 
   await app.listen(port);

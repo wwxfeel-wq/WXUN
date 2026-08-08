@@ -23,7 +23,9 @@ jobs:
             echo "== .env.production exists? ==" >> /tmp/diag.txt
             ls -la /www/wwwroot/echolife/.env.production >> /tmp/diag.txt 2>&1
             echo "== .env.production content (masked) ==" >> /tmp/diag.txt
-            cat /www/wwwroot/echolife/.env.production | sed 's/=.*/=***/' >> /tmp/diag.txt 2>&1
+            # R3-MISC-004: Use extended regex for more robust secret masking.
+            # Requires at least one character after = to mask (avoids masking empty values).
+            cat /www/wwwroot/echolife/.env.production | sed -E 's/=(.+)/=***/' >> /tmp/diag.txt 2>&1
             echo "== docker version ==" >> /tmp/diag.txt
             docker version >> /tmp/diag.txt 2>&1
             echo "== docker ps -a ==" >> /tmp/diag.txt

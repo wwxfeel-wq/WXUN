@@ -439,15 +439,37 @@ export class LlmAdapterService {
   /**
    * Combine an external abort signal with a per-request timeout.
    * If either fires, the resulting signal is aborted.
+   *
+   * R3-BUG-009: Uses AbortSignal.any() when available (Node.js 20+) for automatic
+   * listener cleanup. Falls back to manual listener management with cleanup on abort
+   * to prevent memory leaks from unreleased event listeners.
    */
   private createSignal(timeoutMs: number, external?: AbortSignal): AbortSignal {
     const timeoutSignal = this.createTimeoutSignal(timeoutMs);
     if (!external) return timeoutSignal;
     if (external.aborted) return external;
+
+    // Use AbortSignal.any() if available (Node.js 20+) — handles cleanup automatically
+    if (typeof AbortSignal.any === 'function') {
+      return AbortSignal.any([timeoutSignal, external]);
+    }
+
+    // Fallback: manual listener management with cleanup
     const controller = new AbortController();
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
     timeoutSignal.addEventListener('abort', abort, { once: true });
+
+    // R3-BUG-009: Remove listeners when the controller aborts to prevent memory leaks
+    controller.signal.addEventListener(
+      'abort',
+      () => {
+        external.removeEventListener('abort', abort);
+        timeoutSignal.removeEventListener('abort', abort);
+      },
+      { once: true },
+    );
+
     return controller.signal;
   }
 }

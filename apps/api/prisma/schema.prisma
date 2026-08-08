@@ -49,6 +49,9 @@ model User {
   emotionState   ShimoEmotionState?
   habitProfile   UserHabitProfile?
   iotCredentials IoTCredential[]
+  families       Family[]              @relation("FamilyCreator")
+  personalitySnapshots PersonalitySnapshot[]
+  promptVersions PromptVersion[]       @relation("PromptVersionCreator")
 
   @@index([status])
   @@index([createdAt])
@@ -200,11 +203,15 @@ model Memory {
 }
 
 model MemoryEmbedding {
-  // TODO: pgvector extension is installed (pgvector/pgvector:pg16 image) but not used.
-  // The embedding field is stored as String instead of Unsupported("vector").
-  // To enable vector similarity search, migrate this field to pgvector type
-  // and update the search queries accordingly. This requires a data migration
-  // to convert existing embeddings, so it is deferred for now.
+  // R3-DB-009: TODO — pgvector extension is installed (pgvector/pgvector:pg16
+  // image) but not used. The embedding field is stored as String instead of
+  // Unsupported("vector"). To enable vector similarity search, a future
+  // migration should:
+  // 1. ALTER the column type to vector(1536) or appropriate dimension
+  // 2. Convert existing string embeddings to vector format
+  // 3. Update Prisma schema to use Unsupported("vector")
+  // 4. Update search queries to use pgvector operators (<->, <=>)
+  // This is deferred for now as it requires a data migration.
   memoryId  String                          @id @map("memory_id") @db.Uuid
   memory    Memory                          @relation(fields: [memoryId], references: [id], onDelete: Cascade)
   embedding String
@@ -307,6 +314,8 @@ model PersonalityProfile {
 model PersonalitySnapshot {
   id                 String   @id @default(uuid()) @db.Uuid
   userId             String   @map("user_id") @db.Uuid
+  // R3-DB-003: FK to User
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   snapshotDate       DateTime @map("snapshot_date")
   openness           Float
   conscientiousness  Float
@@ -329,6 +338,8 @@ model Family {
   name        String         @db.VarChar(100)
   description String?        @db.Text
   creatorId   String         @map("creator_id") @db.Uuid
+  // R3-DB-002: FK to User — if the creator is deleted, their families are cascade-deleted
+  creator     User           @relation("FamilyCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
@@ -350,7 +361,8 @@ model FamilyMember {
   joinedAt        DateTime @default(now()) @map("joined_at")
 
   // WeChat identity binding for the family member
-  wechatId        String?  @map("wechat_id") @db.VarChar(200)
+  // R3-DB-006: wechatId is unique — one WeChat account maps to one family member
+  wechatId        String?  @unique @map("wechat_id") @db.VarChar(200)
   wechatNickname  String?  @map("wechat_nickname") @db.VarChar(200)
   wechatAlias     String?  @map("wechat_alias") @db.VarChar(200)
 
@@ -467,14 +479,20 @@ model WechatContact {
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  messages    WechatMessage[]
+
   @@index([type])
   @@index([status])
+  @@index([nickName])
   @@map("wechat_contacts")
 }
 
 model WechatMessage {
   id               String   @id @default(uuid()) @db.Uuid
-  contactId        String   @map("contact_id") @db.VarChar(200)
+  // R3-DB-001: FK to WechatContact via userName. Made optional because existing
+  // messages may reference contacts not yet stored in the contacts table.
+  contactId        String?  @map("contact_id") @db.VarChar(200)
+  contact          WechatContact? @relation(fields: [contactId], references: [userName], onDelete: SetNull)
   fromId           String   @map("from_id") @db.VarChar(200)
   fromName         String   @map("from_name") @db.VarChar(200)
   toId             String   @map("to_id") @db.VarChar(200)
@@ -510,7 +528,8 @@ model AICallLog {
   promptTokens    Int      @default(0) @map("prompt_tokens")
   completionTokens Int     @default(0) @map("completion_tokens")
   totalTokens     Int      @default(0) @map("total_tokens")
-  latencyMs       Int      @map("latency_ms")
+  // R3-DB-007: latencyMs is optional — may be unknown when the call fails before completion
+  latencyMs       Int?     @map("latency_ms")
   status          String   @default("success") @db.VarChar(20)
   errorMessage    String?  @map("error_message") @db.Text
   metadata        Json?
@@ -555,7 +574,9 @@ model PromptVersion {
   content     String   @db.Text
   variables   Json?
   description String?  @db.Text
-  createdBy   String   @map("created_by") @db.Uuid
+  // R3-DB-004: FK to User. Made optional so prompt versions survive user deletion.
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdByUser User?  @relation("PromptVersionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   archivedAt  DateTime? @map("archived_at")
@@ -895,6 +916,9 @@ model UserHabitProfile {
 }
 
 /// IoT 平台凭证 — 存储用户的智能硬件平台授权信息
+// R3-DB-005: accessToken and refreshToken are encrypted at the application
+// level using AES-256-GCM (see encryption.util.ts) before being stored.
+// The database only stores the encrypted ciphertext, never plaintext tokens.
 model IoTCredential {
   id            String    @id @default(uuid()) @db.Uuid
   userId        String    @map("user_id") @db.Uuid

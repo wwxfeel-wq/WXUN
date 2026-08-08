@@ -29,6 +29,7 @@ import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { FullScreenLoader } from '@/components/ui/loading';
 import { GlassLayer } from '@/components/glass';
+import { useToast } from '@/components/ui/toast';
 import { apiClient, swrFetcher, ApiError } from '@/lib/api-client';
 import { cn, formatDate, formatRelativeTime, getInitials } from '@/lib/utils';
 import type { Family, FamilyMemory, Memory, PaginatedResponse } from '@echolife/shared';
@@ -56,6 +57,9 @@ export default function FamilyPage() {
   const [familyId, setFamilyId] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
   const [autoDetecting, setAutoDetecting] = React.useState(false);
+  // R3-FE-011: Replace alert/confirm with toast and state-based modal.
+  const { toast, Toaster } = useToast();
+  const [showLeaveConfirm, setShowLeaveConfirm] = React.useState(false);
 
   React.useEffect(() => {
     const stored = getCurrentFamilyId();
@@ -299,16 +303,7 @@ export default function FamilyPage() {
               </div>
               <Button
                 variant="ghost"
-                onClick={async () => {
-                  if (!confirm('确定离开这个家庭吗？')) return;
-                  try {
-                    await apiClient.delete(`/families/${familyId}/leave`);
-                    setCurrentFamilyId(null);
-                    setFamilyId(null);
-                  } catch (err) {
-                    alert(err instanceof ApiError ? err.message : '操作失败');
-                  }
-                }}
+                onClick={() => setShowLeaveConfirm(true)}
                 className="gap-2 text-error hover:bg-error/10 shrink-0"
               >
                 <LogOut className="h-4 w-4" />
@@ -320,6 +315,43 @@ export default function FamilyPage() {
           <FamilyDetail familyId={familyId} />
         </div>
       </div>
+
+      {/* R3-FE-011: State-based confirmation modal replacing window.confirm */}
+      <Modal
+        open={showLeaveConfirm}
+        onClose={() => setShowLeaveConfirm(false)}
+        title="离开家庭"
+      >
+        <p className="text-sm text-text-muted mb-6">
+          确定离开这个家庭吗？离开后将无法控制该家庭下的设备。
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" onClick={() => setShowLeaveConfirm(false)}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            className="bg-error text-white hover:bg-error/90"
+            onClick={async () => {
+              setShowLeaveConfirm(false);
+              try {
+                await apiClient.delete(`/families/${familyId}/leave`);
+                setCurrentFamilyId(null);
+                setFamilyId(null);
+              } catch (err) {
+                toast({
+                  type: 'error',
+                  message: err instanceof ApiError ? err.message : '操作失败',
+                });
+              }
+            }}
+          >
+            确定离开
+          </Button>
+        </div>
+      </Modal>
+
+      {Toaster}
     </PageTransition>
   );
 }
@@ -334,6 +366,8 @@ function FamilyDetail({ familyId }: { familyId: string }) {
     swrFetcher,
   );
 
+  // R3-FE-011: Replace alert() with toast notifications.
+  const { toast, Toaster } = useToast();
   const [shareOpen, setShareOpen] = React.useState(false);
   const members = membersData?.items ?? [];
   const sharedMemories = memoriesData?.items ?? [];
@@ -343,7 +377,10 @@ function FamilyDetail({ familyId }: { familyId: string }) {
       await apiClient.post(`/families/memories/${id}/confirm`);
       await mutateMemories();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '操作失败');
+      toast({
+        type: 'error',
+        message: err instanceof ApiError ? err.message : '操作失败',
+      });
     }
   };
 
@@ -352,7 +389,10 @@ function FamilyDetail({ familyId }: { familyId: string }) {
       await apiClient.post(`/families/memories/${id}/reject`);
       await mutateMemories();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : '操作失败');
+      toast({
+        type: 'error',
+        message: err instanceof ApiError ? err.message : '操作失败',
+      });
     }
   };
 
@@ -483,6 +523,7 @@ function FamilyDetail({ familyId }: { familyId: string }) {
           void mutateMemories();
         }}
       />
+      {Toaster}
     </div>
   );
 }

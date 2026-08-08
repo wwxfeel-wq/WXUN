@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { LlmAdapterService, ChatMessage } from '../ai/services/llm-adapter.service';
 import { PromptService } from '../ai/services/prompt.service';
+import { QuotaService } from '../ai/services/quota.service';
 import { NotificationService } from '../notification/notification.service';
 import { GenerateSummaryDto } from './dto/generate-summary.dto';
 import { QuerySummaryDto } from './dto/query-summary.dto';
@@ -38,6 +39,7 @@ export class SummaryService {
     private readonly llmAdapter: LlmAdapterService,
     private readonly promptService: PromptService,
     private readonly notificationService: NotificationService,
+    private readonly quotaService: QuotaService,
   ) {}
 
   // ============================================================
@@ -222,6 +224,15 @@ ${memoryText}
       { role: 'user', content: `请生成${periodLabel}生活总结` },
     ];
 
+    // R3-BUG-016: Check AI quota before LLM call, with decrement on failure
+    const quotaCheck = await this.quotaService.checkAndIncrement(userId);
+    if (!quotaCheck.allowed) {
+      throw new BadRequestException({
+        code: ERROR_CODES.QUOTA_EXCEEDED,
+        message: '您的 AI 对话配额已用完，请下月重置或升级订阅计划。',
+      });
+    }
+
     let result: SummaryResult;
     try {
       const completion = await this.llmAdapter.chatComplete(messages, {
@@ -231,6 +242,14 @@ ${memoryText}
 
       result = this.parseSummaryResult(completion.content);
     } catch (error) {
+      // Roll back quota increment on failure
+      if (quotaCheck.quotaKey) {
+        try {
+          await this.quotaService.decrementUsage(quotaCheck.quotaKey);
+        } catch (e) {
+          this.logger.warn(`Quota rollback failed: ${(e as Error).message}`);
+        }
+      }
       this.logger.error(`Summary generation failed: ${(error as Error).message}`);
       // Fall back to a basic summary
       result = this.generateFallbackSummary(memories, dto.period, startDate, endDate);

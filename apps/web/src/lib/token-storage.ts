@@ -3,6 +3,14 @@
  *
  * Tokens are persisted in localStorage so they survive page refreshes.
  * All access is guarded for SSR (window check) to remain Next.js safe.
+ *
+ * R3-FE-026 SECURITY NOTE: Storing JWT access/refresh tokens in localStorage
+ * makes them vulnerable to XSS attacks — any injected script can read them.
+ * The more secure alternative is HttpOnly cookies set by the backend, which
+ * are inaccessible to JavaScript. This trade-off was chosen for simplicity
+ * of the current SPA architecture (client-side route guarding, no BFF layer).
+ * If XSS mitigation becomes a priority, migrate to HttpOnly cookie-based auth
+ * with a server-side session endpoint.
  */
 
 const ACCESS_TOKEN_KEY = 'echolife_access_token';

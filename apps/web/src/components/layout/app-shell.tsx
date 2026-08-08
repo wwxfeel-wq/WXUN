@@ -22,11 +22,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (hydrated && !isAuthenticated) {
-      router.push('/login');
+      // R3-FE-028: Preserve the original path so login can redirect back.
+      router.replace('/login?redirect=' + encodeURIComponent(pathname));
     }
-  }, [hydrated, isAuthenticated, router]);
+  }, [hydrated, isAuthenticated, router, pathname]);
 
-  if (!hydrated || !isAuthenticated) return null;
+  // R3-FE-029: Return a loading spinner instead of null during auth check.
+  if (!hydrated || !isAuthenticated) {
+    return (
+      <div className="fixed inset-0 z-base flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-2 w-2 rounded-full bg-accent/50"
+              style={{
+                animation: `pulse 1.2s ${i * 0.2}s ease-in-out infinite`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full min-h-screen bg-background">

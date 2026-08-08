@@ -6,6 +6,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
@@ -101,10 +102,12 @@ export class FamilyService {
     });
 
     // Generate and store an invite code in Redis (valid for 30 days)
+    // R3-BUG-021: Store remaining uses count alongside familyId to limit invite code reuse
     const inviteCode = this.generateInviteCode();
-    await this.redis.set(
+    const INVITE_MAX_USES = 10;
+    await this.redis.setJSON(
       `${REDIS_KEYS.SESSION}family_invite:${inviteCode}`,
-      family.id,
+      { familyId: family.id, remainingUses: INVITE_MAX_USES },
       30 * 24 * 60 * 60,
     );
 
@@ -121,16 +124,26 @@ export class FamilyService {
    * Join a family using an invite code.
    */
   async joinFamily(userId: string, payload: JoinFamilyPayload) {
-    const familyId = await this.redis.get(
+    // R3-BUG-021: Use getJSON to read both familyId and remainingUses
+    const inviteData = await this.redis.getJSON<{ familyId: string; remainingUses: number }>(
       `${REDIS_KEYS.SESSION}family_invite:${payload.inviteCode}`,
     );
 
-    if (!familyId) {
+    if (!inviteData || !inviteData.familyId) {
       throw new NotFoundException({
         code: ERROR_CODES.NOT_FOUND,
         message: '邀请码无效或已过期',
       });
     }
+
+    if (inviteData.remainingUses <= 0) {
+      throw new BadRequestException({
+        code: ERROR_CODES.INVALID_PARAMS,
+        message: '邀请码使用次数已达上限',
+      });
+    }
+
+    const familyId = inviteData.familyId;
 
     // Check if already a member
     const existing = await this.prisma.familyMember.findUnique({
@@ -161,6 +174,19 @@ export class FamilyService {
     });
 
     this.logger.log(`User ${userId} joined family ${familyId}`);
+
+    // R3-BUG-021: Decrement remaining uses after successful join
+    const updatedUses = inviteData.remainingUses - 1;
+    if (updatedUses <= 0) {
+      await this.redis.del(`${REDIS_KEYS.SESSION}family_invite:${payload.inviteCode}`);
+    } else {
+      // Preserve the remaining TTL by re-setting with the original expiry window
+      await this.redis.setJSON(
+        `${REDIS_KEYS.SESSION}family_invite:${payload.inviteCode}`,
+        { familyId, remainingUses: updatedUses },
+        30 * 24 * 60 * 60,
+      );
+    }
 
     return {
       id: member.id,
@@ -555,12 +581,13 @@ export class FamilyService {
 
   /**
    * Generates a random 8-character alphanumeric invite code.
+   * R3-BUG-028: Uses crypto.randomInt() instead of Math.random() for cryptographically secure randomness.
    */
   private generateInviteCode(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let code = '';
     for (let i = 0; i < 8; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      code += chars[crypto.randomInt(chars.length)];
     }
     return code;
   }

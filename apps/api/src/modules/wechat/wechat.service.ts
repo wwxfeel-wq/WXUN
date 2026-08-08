@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import {
   SSEEventType,
@@ -17,6 +18,7 @@ import { GenerateSummaryDto } from '../summary/dto/generate-summary.dto';
 import { CapsuleService } from '../capsule/capsule.service';
 import { CreateCapsuleDto } from '../capsule/dto/create-capsule.dto';
 import { NotificationService, CreateNotificationPayload } from '../notification/notification.service';
+import { QuotaService } from '../ai/services/quota.service';
 import { ILinkClient } from './ilink-client';
 import { ILinkInboundMessage } from './ilink.types';
 
@@ -124,6 +126,9 @@ export class WechatService implements OnModuleDestroy {
   private isPolling = false;
   /** 长轮询停止标志 */
   private shouldStopPolling = false;
+  /** R3-BUG-011: Promise that resolves when polling actually stops */
+  private pollingStoppedResolve: (() => void) | null = null;
+  private pollingStoppedPromise: Promise<void> = Promise.resolve();
   /** 扫码轮询是否正在运行 */
   private isQrPolling = false;
 
@@ -170,6 +175,7 @@ export class WechatService implements OnModuleDestroy {
     private readonly summaryService: SummaryService,
     private readonly capsuleService: CapsuleService,
     private readonly notificationService: NotificationService,
+    private readonly quotaService: QuotaService,
   ) {
     // 尝试从环境变量加载已有 token（支持服务器重启后自动恢复）
     const envToken = process.env.WECHAT_BOT_TOKEN;
@@ -342,6 +348,11 @@ export class WechatService implements OnModuleDestroy {
     this.shouldStopPolling = false;
     this.logger.log('Starting iLink long-polling loop...');
 
+    // R3-BUG-011: Create a promise that resolves when polling actually stops
+    this.pollingStoppedPromise = new Promise<void>((resolve) => {
+      this.pollingStoppedResolve = resolve;
+    });
+
     void this.pollingLoop();
   }
 
@@ -362,12 +373,15 @@ export class WechatService implements OnModuleDestroy {
         if (response.msgs && response.msgs.length > 0) {
           this.logger.log(`Received ${response.msgs.length} message(s) from iLink`);
 
-          for (const msg of response.msgs) {
-            try {
-              await this.handleIncomingMessage(msg);
-            } catch (err) {
+          // R3-BUG-024: Use Promise.allSettled for concurrent message processing
+          // instead of sequential for...of await to improve throughput
+          const results = await Promise.allSettled(
+            response.msgs.map((msg) => this.handleIncomingMessage(msg)),
+          );
+          for (const r of results) {
+            if (r.status === 'rejected') {
               this.logger.error(
-                `Failed to handle iLink message: ${(err as Error).message}`,
+                `Failed to handle iLink message: ${(r.reason as Error)?.message ?? r.reason}`,
               );
             }
           }
@@ -402,6 +416,11 @@ export class WechatService implements OnModuleDestroy {
     }
 
     this.isPolling = false;
+    // R3-BUG-011: Resolve the polling stopped promise so onModuleDestroy can proceed
+    if (this.pollingStoppedResolve) {
+      this.pollingStoppedResolve();
+      this.pollingStoppedResolve = null;
+    }
     this.logger.log('iLink polling loop stopped');
   }
 
@@ -583,9 +602,59 @@ export class WechatService implements OnModuleDestroy {
 
   /**
    * 模块销毁时清理
+   * R3-BUG-011: Await polling to actually stop before returning, with a timeout.
    */
-  onModuleDestroy() {
+  async onModuleDestroy() {
     this.shouldStopPolling = true;
+
+    // R3-BUG-011: Wait for polling to actually stop, with a 5-second timeout
+    if (this.isPolling) {
+      try {
+        await Promise.race([
+          this.pollingStoppedPromise,
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
+      } catch {
+        // Ignore timeout — force shutdown
+      }
+    }
+
+    // R3-BUG-006: Clear caches on destroy
+    this.contextTokenCache.clear();
+    this.typingTicketCache.clear();
+  }
+
+  /**
+   * R3-BUG-006: Periodically clean up expired entries from contextTokenCache and typingTicketCache.
+   * Runs every 30 minutes, removes entries older than CONTEXT_TOKEN_TTL_MS.
+   */
+  @Interval(30 * 60 * 1000)
+  private cleanupExpiredCaches(): void {
+    const now = Date.now();
+    let contextRemoved = 0;
+    let typingRemoved = 0;
+
+    // Cleanup contextTokenCache
+    for (const [key, entry] of this.contextTokenCache) {
+      if (now - entry.updatedAt > CONTEXT_TOKEN_TTL_MS) {
+        this.contextTokenCache.delete(key);
+        contextRemoved++;
+      }
+    }
+
+    // Cleanup typingTicketCache
+    for (const [key, entry] of this.typingTicketCache) {
+      if (now - entry.updatedAt > CONTEXT_TOKEN_TTL_MS) {
+        this.typingTicketCache.delete(key);
+        typingRemoved++;
+      }
+    }
+
+    if (contextRemoved > 0 || typingRemoved > 0) {
+      this.logger.debug(
+        `WeChat cache cleanup: context=${contextRemoved}, typing=${typingRemoved}`,
+      );
+    }
   }
 
   // ============================================================
@@ -953,6 +1022,16 @@ export class WechatService implements OnModuleDestroy {
 
     if (/总结一下|生成总结|周报|月报|日报|年报/.test(text)) {
       try {
+        // R3-BUG-012: Check AI quota before making the proactive summary AI call
+        const quotaCheck = await this.quotaService.checkQuota(userId);
+        if (!quotaCheck.allowed) {
+          await this.notifyUser(
+            userId,
+            'AI配额已用完',
+            '您的 AI 对话配额已用完，请下月重置或升级订阅计划。',
+          );
+          return;
+        }
         await this.createProactiveSummary(userId, text);
       } catch (err) {
         this.logger.warn(`WeChat proactive summary failed: ${(err as Error).message}`);

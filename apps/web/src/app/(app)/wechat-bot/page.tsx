@@ -69,6 +69,9 @@ interface ChatMessage {
   role: 'user' | 'contact';
   content: string;
   timestamp: number;
+  /** R3-FE-014: Mark messages that were filtered by the AI safety layer. */
+  isFiltered?: boolean;
+  filterReason?: string;
 }
 
 /** Agent 实时活动状态 — 显示 agent 的思考/工具调用/观察过程 */
@@ -235,7 +238,8 @@ export default function WeChatBotPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiWelcomeInitRef = useRef(false);
   /** 跟踪 agent 活动回调中的 setTimeout，组件卸载时清除 */
-  const agentTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // R3-FE-009: Use a Set so timers can be deleted individually after execution.
+  const agentTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   /* ── Initialize AI welcome message on mount ── */
   useEffect(() => {
@@ -422,8 +426,14 @@ export default function WeChatBotPage() {
     const handle = createGETSSEStream(
       'wechat/agent-stream',
       (eventType, data) => {
+        // R3-FE-022: Whitelist of valid event types for safe casting.
+        const VALID_EVENT_TYPES = ['thinking', 'tool_call', 'observation', 'token', 'done', 'error'] as const;
+        const validatedType = VALID_EVENT_TYPES.includes(eventType as (typeof VALID_EVENT_TYPES)[number])
+          ? (eventType as AgentActivity['type'])
+          : 'token';
+
         const activity: AgentActivity = {
-          type: eventType as AgentActivity['type'],
+          type: validatedType,
           content: typeof data.content === 'string' ? data.content : undefined,
           toolName: typeof data.toolName === 'string' ? data.toolName : undefined,
           senderName: typeof data.senderName === 'string' ? data.senderName : undefined,
@@ -436,10 +446,19 @@ export default function WeChatBotPage() {
           setAgentActivities((prev) => [...prev.slice(-8), activity]);
         } else if (activity.type === 'done' || activity.type === 'error') {
           // agent 完成，延迟清除处理状态
-          agentTimersRef.current.push(setTimeout(() => setAgentProcessing(false), 800));
+          // R3-FE-009: Delete timer from Set after execution to prevent unbounded growth.
+          const t1 = setTimeout(() => {
+            agentTimersRef.current.delete(t1);
+            setAgentProcessing(false);
+          }, 800);
+          agentTimersRef.current.add(t1);
           setAgentActivities((prev) => [...prev.slice(-8), activity]);
           // 3 秒后清空活动列表
-          agentTimersRef.current.push(setTimeout(() => setAgentActivities([]), 3000));
+          const t2 = setTimeout(() => {
+            agentTimersRef.current.delete(t2);
+            setAgentActivities([]);
+          }, 3000);
+          agentTimersRef.current.add(t2);
         }
       },
       undefined,
@@ -451,7 +470,7 @@ export default function WeChatBotPage() {
       handle.abort();
       // 清除所有未完成的定时器
       agentTimersRef.current.forEach((t) => clearTimeout(t));
-      agentTimersRef.current = [];
+      agentTimersRef.current.clear();
     };
   }, [wechatStatus?.loggedIn]);
 
@@ -541,11 +560,19 @@ export default function WeChatBotPage() {
     try {
       if (contact.isAI) {
         const result = await invokeAgent(contact.agentCode || 'life', content);
+        // R3-FE-014: Check result.filtered and mark filtered messages.
         setMessagesByContact((prev) => ({
           ...prev,
           [contactId]: [
             ...(prev[contactId] ?? []),
-            { id: genId(), role: 'contact', content: result.response, timestamp: Date.now() },
+            {
+              id: genId(),
+              role: 'contact',
+              content: result.response,
+              timestamp: Date.now(),
+              isFiltered: result.filtered,
+              filterReason: result.filterReason,
+            },
           ],
         }));
       } else {
@@ -565,12 +592,13 @@ export default function WeChatBotPage() {
   }, [input, sending, activeContactId, invokeAgent, allContacts]);
 
   /* ── Keyboard & input handlers ── */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  // R3-FE-002: Wrap in useCallback to prevent unnecessary re-renders.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-  };
+  }, [handleSend]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -800,7 +828,8 @@ export default function WeChatBotPage() {
             {/* Input Area */}
             <div className="border-t border-[var(--color-gray-900)] px-4 py-3">
               <div className="flex items-end gap-2">
-                <button aria-label="表情" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-[var(--color-gray-900)] hover:text-text transition-colors focus-ring">
+                {/* R3-FE-017: Non-functional buttons have disabled state */}
+                <button aria-label="表情" disabled aria-disabled="true" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                   <Smile className="h-5 w-5" />
                 </button>
                 <textarea
@@ -814,7 +843,8 @@ export default function WeChatBotPage() {
                   disabled={sending}
                   className="min-h-9 flex-1 resize-none rounded-xl bg-[var(--color-gray-950)] border border-[var(--color-gray-900)] px-3 py-2 text-sm text-text placeholder:text-text-subtle outline-none focus:border-secondary/30 transition-colors disabled:opacity-[var(--state-disabled-opacity)] focus-ring max-h-30"
                 />
-                <button aria-label="添加附件" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-[var(--color-gray-900)] hover:text-text transition-colors focus-ring">
+                {/* R3-FE-017: Non-functional buttons have disabled state */}
+                <button aria-label="添加附件" disabled aria-disabled="true" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                   <Plus className="h-5 w-5" />
                 </button>
                 <motion.button
@@ -1363,10 +1393,17 @@ function MessageBubble({
           className={`max-w-72p whitespace-pre-wrap break-words px-3.5 py-2 text-sm leading-relaxed ${
             isUser
               ? 'bg-secondary/15 border border-secondary/15 rounded-2xl rounded-tr-sm text-text'
-              : 'bg-[var(--color-gray-900)] border border-[var(--color-gray-900)] rounded-2xl rounded-tl-sm text-text'
+              : message.isFiltered
+                ? 'bg-highlight/10 border border-highlight/20 rounded-2xl rounded-tl-sm text-text-muted italic'
+                : 'bg-[var(--color-gray-900)] border border-[var(--color-gray-900)] rounded-2xl rounded-tl-sm text-text'
           }`}
         >
           {message.content}
+          {message.isFiltered && (
+            <div className="mt-1.5 text-3xs text-highlight not-italic">
+              {message.filterReason ? `已过滤：${message.filterReason}` : '此消息已被安全过滤'}
+            </div>
+          )}
         </div>
         <span className="mt-1 px-1 text-3xs text-text-muted/50">
           {formatTime(message.timestamp)}

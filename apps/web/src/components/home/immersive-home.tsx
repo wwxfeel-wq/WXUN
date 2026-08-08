@@ -216,6 +216,8 @@ function ECGPath() {
     const buffer = new Float32Array(SAMPLES).fill(BASELINE);
     let raf = 0;
     let offset = 0;
+    // R3-FE-020: Circular buffer head pointer — replaces O(n) array shift.
+    let head = 0;
 
     // 情绪状态：0 = 平静, 1 = 激动, 2 = 温柔, 3 = 惊讶
     type Mood = 'calm' | 'excited' | 'tender' | 'startle';
@@ -293,9 +295,10 @@ function ECGPath() {
     };
 
     const buildPath = () => {
-      let d = `M0 ${buffer[0].toFixed(2)}`;
+      // R3-FE-020: Read from circular buffer starting at head, wrapping around.
+      let d = `M0 ${buffer[head].toFixed(2)}`;
       for (let i = 1; i < SAMPLES; i++) {
-        d += ` L${i} ${buffer[i].toFixed(2)}`;
+        d += ` L${i} ${buffer[(head + i) % SAMPLES].toFixed(2)}`;
       }
       return d;
     };
@@ -329,12 +332,11 @@ function ECGPath() {
         beatCounter++;
       }
 
-      // 缓冲区左移
-      for (let i = 0; i < SAMPLES - 1; i++) {
-        buffer[i] = buffer[i + 1];
-      }
+      // R3-FE-020: Circular buffer — write at head position and advance,
+      // avoiding O(n) array shift per frame.
       const beatT = offset - activeBeatStart;
-      buffer[SAMPLES - 1] = beatSample(beatT, activeBeatCfg, drift);
+      buffer[head] = beatSample(beatT, activeBeatCfg, drift);
+      head = (head + 1) % SAMPLES;
       offset++;
 
       if (pathRef.current) {

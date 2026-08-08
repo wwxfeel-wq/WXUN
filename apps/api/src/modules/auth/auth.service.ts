@@ -82,9 +82,12 @@ export class AuthService {
   // ============================================================
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
+    // R3-BUG-019: Normalize email to lowercase
+    const normalizedEmail = dto.email.toLowerCase();
+
     // Check for existing email
     const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
       select: { id: true },
     });
     if (existing) {
@@ -101,7 +104,7 @@ export class AuthService {
     const user = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
-          email: dto.email,
+          email: normalizedEmail,
           passwordHash,
           status: 'active',
           emailVerified: false,
@@ -177,8 +180,12 @@ export class AuthService {
   // ============================================================
 
   async login(dto: LoginDto): Promise<AuthResponse> {
-    const lockedKey = `auth:locked:${dto.email}`;
+    // R3-BUG-019: Normalize email to lowercase
+    const normalizedEmail = dto.email.toLowerCase();
+    const lockedKey = `auth:locked:${normalizedEmail}`;
     if (await this.redis.exists(lockedKey)) {
+      // R3-BUG-014: Extend lock TTL on continued login attempts to prevent brute force
+      await this.redis.set(lockedKey, '1', 900);
       throw new UnauthorizedException({
         code: ERROR_CODES.ACCOUNT_SUSPENDED,
         message: '账户已被锁定，请15分钟后再试',
@@ -186,7 +193,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
       include: {
         profile: true,
         subscription: true,
@@ -221,7 +228,7 @@ export class AuthService {
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
-      const failedKey = `auth:failed:${dto.email}`;
+      const failedKey = `auth:failed:${normalizedEmail}`;
       const attempts = await this.redis.getClient.incr(failedKey);
       if (attempts === 1) {
         await this.redis.getClient.expire(failedKey, 900);
@@ -235,7 +242,7 @@ export class AuthService {
       });
     }
 
-    await this.redis.del(`auth:failed:${dto.email}`);
+    await this.redis.del(`auth:failed:${normalizedEmail}`);
 
     const roles = user.userRoles.map((ur) => ur.role.name);
     const subscriptionTier = user.subscription?.tier ?? SubscriptionTier.FREE;
@@ -370,7 +377,8 @@ export class AuthService {
 
   async verifyEmail(token: string): Promise<void> {
     const key = `${REDIS_KEYS.OTP}email_verify:${token}`;
-    const userId = await this.redis.get(key);
+    // R3-BUG-004: Use getDel for atomic get+delete to prevent TOCTOU race
+    const userId = await this.redis.getDel(key);
 
     if (!userId) {
       throw new BadRequestException({
@@ -392,8 +400,7 @@ export class AuthService {
     }
 
     if (user.emailVerified) {
-      // Already verified, clean up the token
-      await this.redis.del(key);
+      // Already verified, token already consumed via getDel
       return;
     }
 
@@ -402,7 +409,6 @@ export class AuthService {
       data: { emailVerified: true },
     });
 
-    await this.redis.del(key);
     this.logger.log(`Email verified for user: ${userId}`);
   }
 
@@ -454,8 +460,10 @@ export class AuthService {
   async requestPasswordReset(
     email: string,
   ): Promise<{ success: true; message: string }> {
+    // R3-BUG-019: Normalize email to lowercase
+    const normalizedEmail = email.toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       select: { id: true, status: true },
     });
 
@@ -468,7 +476,7 @@ export class AuthService {
         REDIS_TTL.OTP,
       );
       // R1-BE-005: 移除 token 日志记录，仅记录邮箱
-      this.logger.log(`Password reset requested for: ${email}`);
+      this.logger.log(`Password reset requested for: ${normalizedEmail}`);
     }
 
     // 始终返回相同的消息，不泄露邮箱是否已注册
@@ -476,8 +484,11 @@ export class AuthService {
   }
 
   async resetPassword(email: string, resetToken: string, newPassword: string): Promise<void> {
+    // R3-BUG-019: Normalize email to lowercase
+    const normalizedEmail = email.toLowerCase();
     const key = `${REDIS_KEYS.OTP}password_reset:${resetToken}`;
-    const userId = await this.redis.get(key);
+    // R3-BUG-003: Use getDel for atomic get+delete to prevent TOCTOU race
+    const userId = await this.redis.getDel(key);
 
     if (!userId) {
       throw new BadRequestException({
@@ -494,7 +505,7 @@ export class AuthService {
         select: { id: true, email: true },
       });
 
-      if (!user || user.email !== email) {
+      if (!user || user.email !== normalizedEmail) {
         throw new BadRequestException({
           code: ERROR_CODES.TOKEN_INVALID,
           message: '重置令牌与邮箱不匹配',
@@ -507,16 +518,7 @@ export class AuthService {
       });
     });
 
-    // Invalidate the reset token
-    try {
-      await this.redis.del(key);
-    } catch (e) {
-      this.logger.error(
-        `Failed to delete reset token after password reset: ${(e as Error).message}`,
-      );
-    }
-
-    // Revoke all refresh tokens (force re-login on all devices)
+    // Token already consumed via getDel; revoke all refresh tokens (force re-login on all devices)
     try {
       await this.redis.revokeAllRefreshTokens(userId);
     } catch (e) {

@@ -406,11 +406,17 @@ function PlatformCard({
   onUnbind: () => void;
 }) {
   const [unbinding, setUnbinding] = React.useState(false);
+  // R3-FE-012: Replace window.confirm() with a state-based confirmation modal.
+  const [showUnbindConfirm, setShowUnbindConfirm] = React.useState(false);
   const label = PLATFORM_LABEL[platform];
   const isMock = platform === 'mock';
 
   const handleUnbind = async () => {
-    if (!window.confirm(`确定解绑${label}平台吗？解绑后将无法控制该平台下的设备。`)) return;
+    setShowUnbindConfirm(true);
+  };
+
+  const confirmUnbind = async () => {
+    setShowUnbindConfirm(false);
     setUnbinding(true);
     try {
       await onUnbind();
@@ -420,6 +426,7 @@ function PlatformCard({
   };
 
   return (
+    <>
     <GlassLayer
       asChild
       intensity="strong"
@@ -510,12 +517,32 @@ function PlatformCard({
         </div>
       </motion.div>
     </GlassLayer>
+    {/* R3-FE-012: State-based confirmation modal replacing window.confirm() */}
+    <Modal
+      open={showUnbindConfirm}
+      onClose={() => setShowUnbindConfirm(false)}
+      title={`解绑${label}平台`}
+    >
+      <p className="text-sm text-text-muted mb-6">
+        确定解绑{label}平台吗？解绑后将无法控制该平台下的设备。
+      </p>
+      <div className="flex gap-2 justify-end">
+        <Button variant="ghost" onClick={() => setShowUnbindConfirm(false)}>
+          取消
+        </Button>
+        <Button
+          variant="primary"
+          className="bg-error text-white hover:bg-error/90"
+          onClick={confirmUnbind}
+          loading={unbinding}
+        >
+          确定解绑
+        </Button>
+      </div>
+    </Modal>
+    </>
   );
 }
-
-// ============================================================
-// 设备卡片
-// ============================================================
 
 function DeviceCard({
   device,
@@ -528,6 +555,13 @@ function DeviceCard({
   const isOn = device.status === 'on' || device.status === 'running';
   const [controlling, setControlling] = React.useState(false);
   const brightnessTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // R3-FE-008: Clean up brightnessTimerRef on unmount to prevent memory leak.
+  React.useEffect(() => {
+    return () => {
+      if (brightnessTimerRef.current) clearTimeout(brightnessTimerRef.current);
+    };
+  }, []);
 
   // 亮度属性（灯光类设备）
   const brightness = typeof device.properties?.brightness === 'number'

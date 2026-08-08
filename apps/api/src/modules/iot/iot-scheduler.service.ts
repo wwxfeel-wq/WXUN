@@ -4,6 +4,7 @@ import { IoTService } from './iot.service';
 import { MockProvider } from './providers/mock.provider';
 import { NotificationService } from '../notification/notification.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 
 /** 调度任务执行记录 */
 export interface ScheduledTaskResult {
@@ -38,6 +39,7 @@ export class IoTSchedulerService {
     private readonly mockProvider: MockProvider,
     private readonly notificationService: NotificationService,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {}
 
   // ============================================================
@@ -47,10 +49,17 @@ export class IoTSchedulerService {
   /** 晨间唤醒 07:00 — 时墨开启新一天 */
   @Cron('0 7 * * *', { name: 'morning-scene' })
   async morningScene(userId?: string) {
+    // R3-BUG-005: When userId is not provided, execute for ALL active users
     if (!userId) {
-      const demoId = await this.getDemoUserId();
-      if (!demoId) return;
-      userId = demoId;
+      const users = await this.getActiveUsers();
+      for (const u of users) {
+        try {
+          await this.morningScene(u.id);
+        } catch (err) {
+          this.logger.warn(`morningScene failed for user ${u.id}: ${(err as Error).message}`);
+        }
+      }
+      return;
     }
 
     this.logger.log('🌅 执行晨间唤醒场景...');
@@ -59,25 +68,25 @@ export class IoTSchedulerService {
     const devices: string[] = [];
 
     // 1. 打开客厅和卧室窗帘
-    await this.control(userId, 'mock:curtain-living', 'turn_on');
-    await this.control(userId, 'mock:curtain-bedroom', 'turn_on');
-    actions.push('打开客厅和卧室窗帘，让阳光进来');
-    devices.push('客厅窗帘', '卧室窗帘');
+    await this.controlAndRecord(userId, 'mock:curtain-living', 'turn_on', actions, devices, '客厅窗帘', '打开客厅窗帘');
+    await this.controlAndRecord(userId, 'mock:curtain-bedroom', 'turn_on', actions, devices, '卧室窗帘', '打开卧室窗帘');
 
     // 2. 客厅主灯调到柔和亮度
-    await this.control(userId, 'mock:light-living-main', 'set_property', 'brightness', 60);
-    actions.push('客厅主灯调至 60% 柔和亮度');
-    devices.push('客厅主灯');
+    await this.controlAndRecord(userId, 'mock:light-living-main', 'set_property', actions, devices, '客厅主灯', '客厅主灯调至 60% 柔和亮度', 'brightness', 60);
 
     // 3. 根据阳台传感器温度决定是否开空调
     const balconySensor = this.mockProvider.getDeviceRef(userId, 'mock:sensor-balcony');
     if (balconySensor) {
       const temp = Number(balconySensor.properties.temperature ?? 25);
       if (temp > 30) {
-        await this.control(userId, 'mock:ac-living', 'turn_on');
-        await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 26);
-        actions.push(`阳台温度 ${temp}°C，开启客厅空调至 26°C`);
-        devices.push('客厅空调');
+        const acOn = await this.control(userId, 'mock:ac-living', 'turn_on');
+        const acTemp = await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 26);
+        if (acOn && acTemp) {
+          actions.push(`阳台温度 ${temp}°C，开启客厅空调至 26°C`);
+          devices.push('客厅空调');
+        } else {
+          actions.push(`阳台温度 ${temp}°C，开启客厅空调至 26°C（失败）`);
+        }
       } else {
         actions.push(`阳台温度 ${temp}°C，无需开空调`);
       }
@@ -104,10 +113,17 @@ export class IoTSchedulerService {
   /** 午间清扫 12:00 — 扫地机器人深度清扫 */
   @Cron('0 12 * * *', { name: 'noon-vacuum' })
   async noonVacuumScene(userId?: string) {
+    // R3-BUG-005: When userId is not provided, execute for ALL active users
     if (!userId) {
-      const demoId = await this.getDemoUserId();
-      if (!demoId) return;
-      userId = demoId;
+      const users = await this.getActiveUsers();
+      for (const u of users) {
+        try {
+          await this.noonVacuumScene(u.id);
+        } catch (err) {
+          this.logger.warn(`noonVacuumScene failed for user ${u.id}: ${(err as Error).message}`);
+        }
+      }
+      return;
     }
 
     this.logger.log('🤖 执行午间扫地机器人调度...');
@@ -127,10 +143,17 @@ export class IoTSchedulerService {
   /** 晚间归家 18:30 — 时墨准备温馨回家场景 */
   @Cron('30 18 * * *', { name: 'evening-scene' })
   async eveningScene(userId?: string) {
+    // R3-BUG-005: When userId is not provided, execute for ALL active users
     if (!userId) {
-      const demoId = await this.getDemoUserId();
-      if (!demoId) return;
-      userId = demoId;
+      const users = await this.getActiveUsers();
+      for (const u of users) {
+        try {
+          await this.eveningScene(u.id);
+        } catch (err) {
+          this.logger.warn(`eveningScene failed for user ${u.id}: ${(err as Error).message}`);
+        }
+      }
+      return;
     }
 
     this.logger.log('🏠 执行晚间归家场景...');
@@ -139,35 +162,31 @@ export class IoTSchedulerService {
     const devices: string[] = [];
 
     // 1. 开启客厅灯光
-    await this.control(userId, 'mock:light-living-main', 'turn_on');
-    await this.control(userId, 'mock:light-living-main', 'set_property', 'brightness', 80);
-    actions.push('客厅主灯已开启（80% 亮度）');
-    devices.push('客厅主灯');
+    await this.controlAndRecord(userId, 'mock:light-living-main', 'turn_on', actions, devices, '客厅主灯', '客厅主灯已开启');
+    await this.controlAndRecord(userId, 'mock:light-living-main', 'set_property', actions, devices, '客厅主灯', '客厅主灯亮度调至 80%', 'brightness', 80);
 
     // 2. 开启客厅氛围灯
-    await this.control(userId, 'mock:light-living-ambient', 'turn_on');
-    actions.push('客厅氛围灯已开启');
-    devices.push('客厅氛围灯');
+    await this.controlAndRecord(userId, 'mock:light-living-ambient', 'turn_on', actions, devices, '客厅氛围灯', '客厅氛围灯已开启');
 
     // 3. 关闭窗帘
-    await this.control(userId, 'mock:curtain-living', 'turn_off');
-    actions.push('客厅窗帘已关闭');
-    devices.push('客厅窗帘');
+    await this.controlAndRecord(userId, 'mock:curtain-living', 'turn_off', actions, devices, '客厅窗帘', '客厅窗帘已关闭');
 
     // 4. 开启空调
-    await this.control(userId, 'mock:ac-living', 'turn_on');
-    await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 25);
-    actions.push('客厅空调已开启（25°C 制冷模式）');
-    devices.push('客厅空调');
+    const acOn = await this.control(userId, 'mock:ac-living', 'turn_on');
+    const acTemp = await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 25);
+    if (acOn && acTemp) {
+      actions.push('客厅空调已开启（25°C 制冷模式）');
+      devices.push('客厅空调');
+    } else {
+      actions.push('客厅空调已开启（25°C 制冷模式）（失败）');
+    }
 
     // 5. 检测空气质量，决定是否开净化器
     const purifier = this.mockProvider.getDeviceRef(userId, 'mock:air-purifier-living');
     if (purifier) {
       const pm25 = Number(purifier.properties.pm25 ?? 35);
       if (pm25 > 50) {
-        await this.control(userId, 'mock:air-purifier-living', 'turn_on');
-        actions.push(`PM2.5 为 ${pm25}，已开启空气净化器`);
-        devices.push('客厅空气净化器');
+        await this.controlAndRecord(userId, 'mock:air-purifier-living', 'turn_on', actions, devices, '客厅空气净化器', `PM2.5 为 ${pm25}，已开启空气净化器`);
       } else {
         // 更新模拟 PM2.5 值
         purifier.properties.pm25 = Math.min(60, pm25 + Math.floor(Math.random() * 15));
@@ -189,10 +208,17 @@ export class IoTSchedulerService {
   /** 睡眠模式 22:00 — 时墨帮你关灯睡觉 */
   @Cron('0 22 * * *', { name: 'sleep-scene' })
   async sleepScene(userId?: string) {
+    // R3-BUG-005: When userId is not provided, execute for ALL active users
     if (!userId) {
-      const demoId = await this.getDemoUserId();
-      if (!demoId) return;
-      userId = demoId;
+      const users = await this.getActiveUsers();
+      for (const u of users) {
+        try {
+          await this.sleepScene(u.id);
+        } catch (err) {
+          this.logger.warn(`sleepScene failed for user ${u.id}: ${(err as Error).message}`);
+        }
+      }
+      return;
     }
 
     this.logger.log('🌙 执行睡眠模式...');
@@ -202,34 +228,51 @@ export class IoTSchedulerService {
 
     // 1. 关闭所有灯光
     const allDevices = this.mockProvider.getAllDeviceRefs(userId);
+    let allLightsOff = true;
     for (const device of allDevices) {
       if (device.type === 'light' && device.status !== 'off') {
-        await this.control(userId, device.id, 'turn_off');
-        devices.push(device.name);
+        const ok = await this.control(userId, device.id, 'turn_off');
+        if (ok) {
+          devices.push(device.name);
+        } else {
+          allLightsOff = false;
+        }
       }
     }
-    actions.push('关闭全屋灯光');
+    actions.push(allLightsOff ? '关闭全屋灯光' : '关闭全屋灯光（部分失败）');
 
     // 2. 关闭客厅空调，卧室空调调到睡眠模式
-    await this.control(userId, 'mock:ac-living', 'turn_off');
-    await this.control(userId, 'mock:ac-bedroom', 'turn_on');
-    await this.control(userId, 'mock:ac-bedroom', 'set_property', 'temperature', 26);
-    await this.control(userId, 'mock:ac-bedroom', 'set_property', 'mode', 'sleep');
-    actions.push('客厅空调关闭，卧室空调调至 26°C 睡眠模式');
-    devices.push('客厅空调', '卧室空调');
+    const acLivingOff = await this.control(userId, 'mock:ac-living', 'turn_off');
+    const acBedroomOn = await this.control(userId, 'mock:ac-bedroom', 'turn_on');
+    const acBedroomTemp = await this.control(userId, 'mock:ac-bedroom', 'set_property', 'temperature', 26);
+    const acBedroomMode = await this.control(userId, 'mock:ac-bedroom', 'set_property', 'mode', 'sleep');
+    if (acLivingOff && acBedroomOn && acBedroomTemp && acBedroomMode) {
+      actions.push('客厅空调关闭，卧室空调调至 26°C 睡眠模式');
+      devices.push('客厅空调', '卧室空调');
+    } else {
+      actions.push('客厅空调关闭，卧室空调调至 26°C 睡眠模式（部分失败）');
+    }
 
     // 3. 关闭窗帘
-    await this.control(userId, 'mock:curtain-living', 'turn_off');
-    await this.control(userId, 'mock:curtain-bedroom', 'turn_off');
-    actions.push('全屋窗帘已关闭');
-    devices.push('客厅窗帘', '卧室窗帘');
+    const curtainLivingOff = await this.control(userId, 'mock:curtain-living', 'turn_off');
+    const curtainBedroomOff = await this.control(userId, 'mock:curtain-bedroom', 'turn_off');
+    if (curtainLivingOff && curtainBedroomOff) {
+      actions.push('全屋窗帘已关闭');
+      devices.push('客厅窗帘', '卧室窗帘');
+    } else {
+      actions.push('全屋窗帘已关闭（部分失败）');
+    }
 
     // 4. 扫地机器人回充
     const vacuum = this.mockProvider.getDeviceRef(userId, 'mock:robot-vacuum');
     if (vacuum && vacuum.status === 'running') {
-      await this.control(userId, 'mock:robot-vacuum', 'turn_off');
-      actions.push('扫地机器人已返回充电桩');
-      devices.push('扫地机器人');
+      const ok = await this.control(userId, 'mock:robot-vacuum', 'turn_off');
+      if (ok) {
+        actions.push('扫地机器人已返回充电桩');
+        devices.push('扫地机器人');
+      } else {
+        actions.push('扫地机器人已返回充电桩（失败）');
+      }
     }
 
     const summary = `晚安！时墨已为你切换到睡眠模式：\n${actions.map((a) => `• ${a}`).join('\n')}`;
@@ -249,10 +292,26 @@ export class IoTSchedulerService {
 
   @Interval(3 * 60 * 1000)
   async environmentPatrol(userId?: string) {
+    // R3-BUG-030: Use Redis SETNX as distributed lock so patrol only runs on one instance
     if (!userId) {
-      const demoId = await this.getDemoUserId();
-      if (!demoId) return;
-      userId = demoId;
+      const lockKey = 'iot:scheduler:patrol:lock';
+      const lockTTL = 3 * 60; // 3 minutes, matching the interval
+      const acquired = await this.redis.getClient.set(lockKey, process.pid?.toString() ?? '1', 'EX', lockTTL, 'NX');
+      if (!acquired) {
+        this.logger.debug('Patrol lock already held by another instance, skipping');
+        return;
+      }
+
+      // R3-BUG-005: Execute for ALL active users
+      const users = await this.getActiveUsers();
+      for (const u of users) {
+        try {
+          await this.environmentPatrol(u.id);
+        } catch (err) {
+          this.logger.warn(`environmentPatrol failed for user ${u.id}: ${(err as Error).message}`);
+        }
+      }
+      return;
     }
 
     const result = await this.analyzeEnvironment(userId);
@@ -329,17 +388,21 @@ export class IoTSchedulerService {
       if (kitchenTemp > 30 && kitchenHumidity > 70) {
         actions.push(`厨房温度 ${kitchenTemp}°C、湿度 ${kitchenHumidity}%，环境偏热潮湿`);
         if (purifier && purifier.status !== 'running') {
-          await this.control(userId, 'mock:air-purifier-living', 'turn_on');
-          actions.push('已开启客厅空气净化器辅助通风');
-          affectedDevices.push('客厅空气净化器');
+          const ok = await this.control(userId, 'mock:air-purifier-living', 'turn_on');
+          actions.push(ok ? '已开启客厅空气净化器辅助通风' : '已开启客厅空气净化器辅助通风（失败）');
+          if (ok) affectedDevices.push('客厅空气净化器');
         }
       } else if (kitchenTemp > 32) {
         actions.push(`厨房温度 ${kitchenTemp}°C 偏高，建议通风降温`);
         if (livingAC && livingAC.status === 'off') {
-          await this.control(userId, 'mock:ac-living', 'turn_on');
-          await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 25);
-          actions.push('已自动开启客厅空调至 25°C');
-          affectedDevices.push('客厅空调');
+          const acOn = await this.control(userId, 'mock:ac-living', 'turn_on');
+          const acTemp = await this.control(userId, 'mock:ac-living', 'set_property', 'temperature', 25);
+          if (acOn && acTemp) {
+            actions.push('已自动开启客厅空调至 25°C');
+            affectedDevices.push('客厅空调');
+          } else {
+            actions.push('已自动开启客厅空调至 25°C（失败）');
+          }
         }
       } else {
         actions.push(`厨房温度 ${kitchenTemp}°C、湿度 ${kitchenHumidity}%，环境正常`);
@@ -350,13 +413,13 @@ export class IoTSchedulerService {
     if (purifier) {
       const pm25 = Number(purifier.properties.pm25 ?? 35);
       if (pm25 > 55 && purifier.status !== 'running') {
-        await this.control(userId, 'mock:air-purifier-living', 'turn_on');
-        actions.push(`PM2.5 升至 ${pm25}，已开启空气净化器`);
-        affectedDevices.push('客厅空气净化器');
+        const ok = await this.control(userId, 'mock:air-purifier-living', 'turn_on');
+        actions.push(ok ? `PM2.5 升至 ${pm25}，已开启空气净化器` : `PM2.5 升至 ${pm25}，已开启空气净化器（失败）`);
+        if (ok) affectedDevices.push('客厅空气净化器');
       } else if (pm25 < 25 && purifier.status === 'running') {
-        await this.control(userId, 'mock:air-purifier-living', 'turn_off');
-        actions.push(`PM2.5 已降至 ${pm25}，关闭空气净化器节能`);
-        affectedDevices.push('客厅空气净化器');
+        const ok = await this.control(userId, 'mock:air-purifier-living', 'turn_off');
+        actions.push(ok ? `PM2.5 已降至 ${pm25}，关闭空气净化器节能` : `PM2.5 已降至 ${pm25}，关闭空气净化器节能（失败）`);
+        if (ok) affectedDevices.push('客厅空气净化器');
       } else {
         actions.push(`PM2.5 当前 ${pm25}，空气质量${pm25 < 35 ? '良好' : '中等'}`);
       }
@@ -564,6 +627,31 @@ export class IoTSchedulerService {
     });
   }
 
+  /**
+   * R3-BUG-018: Control a device and record the result in the actions/devices arrays.
+   * Appends "（失败）" to the action description if the control fails.
+   */
+  private async controlAndRecord(
+    userId: string,
+    deviceId: string,
+    action: 'turn_on' | 'turn_off' | 'set_property',
+    actions: string[],
+    devices: string[],
+    deviceName: string,
+    successMsg: string,
+    property?: string,
+    value?: string | number,
+  ): Promise<boolean> {
+    const ok = await this.control(userId, deviceId, action, property, value);
+    if (ok) {
+      actions.push(successMsg);
+      devices.push(deviceName);
+    } else {
+      actions.push(`${successMsg}（失败）`);
+    }
+    return ok;
+  }
+
   /** 发送通知 */
   private async sendNotification(
     userId: string,
@@ -610,5 +698,20 @@ export class IoTSchedulerService {
     }
 
     return null;
+  }
+
+  /**
+   * R3-BUG-005: Query ALL active users for scheduler task execution.
+   */
+  private async getActiveUsers(): Promise<Array<{ id: string }>> {
+    try {
+      return await this.prisma.user.findMany({
+        where: { status: 'active', deletedAt: null },
+        select: { id: true },
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to fetch active users: ${(error as Error).message}`);
+      return [];
+    }
   }
 }

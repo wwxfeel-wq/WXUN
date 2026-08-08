@@ -20,13 +20,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
           memory: 512m
           cpus: '0.5'
+    networks:
+      - backend
 
   # ===== Redis (with password) =====
+  # NOTE (R3-DOCKER-009): Redis password is passed via --requirepass on the command
+  # line, which makes it visible in the process list (ps). This is acceptable for
+  # now because the container network is isolated. For stronger security, use
+  # redis.conf mounted as a volume or Redis ACL files.
   redis:
     image: redis:7-alpine
     container_name: echolife-redis
@@ -44,11 +55,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
           memory: 256m
           cpus: '0.3'
+    networks:
+      - backend
 
   # ===== Backend API =====
   api:
@@ -70,11 +88,20 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AI_ACTIVE_PROVIDER: ${AI_ACTIVE_PROVIDER:-deepseek}
       GLM_API_KEY: ${GLM_API_KEY}
       GLM_API_URL: ${GLM_API_URL:-https://open.bigmodel.cn/api/paas/v4}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      # SECURITY: OPENCLAW_WEBHOOK_SECRET must be set in .env or GitHub Secrets.
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-}
+      # IoT (Mi Home) - optional
+      MIHOME_CLIENT_ID: ${MIHOME_CLIENT_ID:-}
+      MIHOME_CLIENT_SECRET: ${MIHOME_CLIENT_SECRET:-}
+      # Puppeteer screenshot support
+      PUPPETEER_EXECUTABLE_PATH: ${PUPPETEER_EXECUTABLE_PATH:-/usr/bin/chromium}
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: ${PUPPETEER_SKIP_CHROMIUM_DOWNLOAD:-true}
     expose:
       - '3001'
     healthcheck:
@@ -83,11 +110,18 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
           memory: 512m
           cpus: '1.0'
+    networks:
+      - backend
 
   # ===== Frontend Web =====
   web:
@@ -104,13 +138,28 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      API_INTERNAL_URL: http://api:3001
     expose:
       - '3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
           memory: 256m
           cpus: '0.5'
+    networks:
+      - frontend
+      - backend
 
   # ===== Nginx Reverse Proxy =====
   nginx:
@@ -129,13 +178,28 @@ services:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infra/nginx/ssl:/etc/nginx/ssl:ro
       - nginx_cache:/var/cache/nginx
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
           memory: 64m
           cpus: '0.2'
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
   nginx_cache:
+  openclaw_data:

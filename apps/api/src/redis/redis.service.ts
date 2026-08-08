@@ -33,9 +33,35 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Redis error: ${error.message}`);
     });
 
-    this.client.connect().catch((error) => {
-      this.logger.error(`Redis initial connection failed: ${error.message}`);
+    this.connectWithRetry().catch((error) => {
+      this.logger.error(`Redis initial connection failed after all retries: ${error.message}`);
     });
+  }
+
+  /**
+   * R3-BUG-010: Connect to Redis with exponential backoff retry.
+   * Retries: 5 times with delays 3s, 6s, 12s, 24s, 30s.
+   */
+  private async connectWithRetry(): Promise<void> {
+    const maxRetries = 5;
+    const delays = [3000, 6000, 12000, 24000, 30000];
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await this.client.connect();
+        this.logger.log('Redis connection established successfully');
+        return;
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        const delay = delays[attempt];
+        this.logger.warn(
+          `Redis connection attempt ${attempt + 1}/${maxRetries + 1} failed: ${(error as Error).message}. Retrying in ${delay / 1000}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
   }
 
   async onModuleDestroy() {
@@ -83,7 +109,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async getJSON<T>(key: string): Promise<T | null> {
     const value = await this.client.get(key);
     if (!value) return null;
-    return JSON.parse(value) as T;
+    try {
+      return JSON.parse(value) as T;
+    } catch (error) {
+      this.logger.warn(`Failed to parse JSON for key "${key}": ${(error as Error).message}. Returning null.`);
+      return null;
+    }
   }
 
   async setJSON<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
@@ -116,19 +147,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     ttlSeconds: number = REDIS_TTL.RATE_LIMIT,
   ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
     const key = `${REDIS_KEYS.RATE_LIMIT}${identifier}`;
-    const current = await this.client.incr(key);
 
-    if (current === 1) {
-      await this.client.expire(key, ttlSeconds);
-    }
+    // R3-BUG-015: Use a Lua script to make INCR+EXPIRE atomic, preventing the
+    // race condition where a crash between INCR and EXPIRE leaves a key without TTL.
+    const script = `
+      local current = redis.call('INCR', KEYS[1])
+      if current == 1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+      end
+      local ttl = redis.call('TTL', KEYS[1])
+      return {current, ttl}
+    `;
 
-    const ttl = await this.client.ttl(key);
+    const result = (await this.client.eval(script, 1, key, String(ttlSeconds))) as [number, number];
+    const current = result[0];
+    const ttl = result[1];
+
     const remaining = Math.max(0, limit - current);
+
+    // Guard against negative TTL (key expired between INCR and TTL, or error)
+    const resetAt = ttl > 0 ? Date.now() + ttl * 1000 : Date.now() + ttlSeconds * 1000;
 
     return {
       allowed: current <= limit,
       remaining,
-      resetAt: Date.now() + ttl * 1000,
+      resetAt,
     };
   }
 

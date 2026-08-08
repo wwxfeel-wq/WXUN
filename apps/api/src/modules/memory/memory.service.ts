@@ -84,10 +84,14 @@ export class MemoryService {
     this.logger.log(`Memory created: ${memory.id} for user: ${userId} [${layer}/${source}]`);
 
     // Trigger async embedding (non-blocking)
+    // R3-BUG-029: ensureEmbedding now has internal retry with exponential backoff.
+    // If all retries fail, log the error so the memory can be re-embedded later.
     this.embeddingService
       .ensureEmbedding(memory.id, this.buildEmbeddingText(memory))
       .catch((error) => {
-        this.logger.warn(`Embedding failed for memory ${memory.id}: ${(error as Error).message}`);
+        this.logger.error(
+          `Embedding failed for memory ${memory.id} after retries: ${(error as Error).message}`,
+        );
       });
 
     // Invalidate list cache

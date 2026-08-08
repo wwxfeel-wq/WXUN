@@ -141,7 +141,13 @@ export class EmbeddingService {
       content = `${memory.title}\n${memory.content}\n类型：${memory.type}`;
     }
 
-    const embedding = await this.generateEmbedding(content);
+    // R3-BUG-029: Wrap generateEmbedding with retry and exponential backoff
+    // to handle transient LLM API failures. storeEmbedding already has its own retry.
+    const embedding = await retryWithBackoff(
+      () => this.generateEmbedding(content),
+      AI_CONFIG.MAX_RETRIES,
+      AI_CONFIG.RETRY_DELAY_MS,
+    );
     await this.storeEmbedding(memoryId, embedding);
   }
 

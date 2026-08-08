@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+# R3-DEPLOY-004: Use pipefail to catch errors in piped commands
+set -euo pipefail
 
 # ===== EchoLife Deployment Script =====
 # Server: 47.103.20.211
@@ -31,7 +32,12 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Load environment variables
-export $(grep -v '^#' $ENV_FILE | xargs)
+# R3-DEPLOY-002: Use set -a / source / set +a for safe env loading.
+# The previous `export $(grep -v '^#' | xargs)` approach breaks on values
+# with spaces, special characters, or empty lines.
+set -a
+source "$ENV_FILE"
+set +a
 
 case "${1:-start}" in
 
@@ -100,7 +106,8 @@ case "${1:-start}" in
     fi
 
     # Set up auto-renewal (使用 docker-compose.deploy.yml 而非 docker-compose.yml)
-    echo "0 3 * * * certbot renew --quiet && cp /etc/letsencrypt/live/$DOMAIN/*.pem $PROJECT_DIR/infra/nginx/ssl/ && docker compose -f $PROJECT_DIR/docker-compose.deploy.yml --env-file $ENV_FILE restart nginx" | crontab - 2>/dev/null || true
+    # R3-DEPLOY-003: Append to existing crontab instead of replacing it entirely
+    ( crontab -l 2>/dev/null | grep -v "certbot renew.*$DOMAIN" ; echo "0 3 * * * certbot renew --quiet && cp /etc/letsencrypt/live/$DOMAIN/*.pem $PROJECT_DIR/infra/nginx/ssl/ && docker compose -f $PROJECT_DIR/docker-compose.deploy.yml --env-file $ENV_FILE restart nginx" ) | crontab - 2>/dev/null || true
     echo -e "${GREEN}✅ SSL 配置完成${NC}"
     ;;
 
@@ -141,19 +148,32 @@ case "${1:-start}" in
 
     cd $PROJECT_DIR
 
-    # Build and start
-    echo -e "${CYAN}构建 Docker 镜像 (可能需要 10-15 分钟)...${NC}"
-    docker compose --env-file .env.production build --no-cache
+    # R3-DEPLOY-001: Use docker-compose.deploy.yml (pre-built images from ACR)
+    # instead of docker-compose.yml (local build). The deploy compose uses
+    # image: from ACR, avoiding OOM on the 2vCPU/4GiB server.
+    echo -e "${CYAN}拉取 Docker 镜像...${NC}"
+    # R3-DEPLOY-007: Removed --no-cache. Use --no-cache only for troubleshooting
+    # image build issues: docker compose -f docker-compose.deploy.yml build --no-cache
+    docker compose -f docker-compose.deploy.yml --env-file .env.production pull
 
     echo -e "${CYAN}启动服务...${NC}"
-    docker compose --env-file .env.production up -d
+    # R3-DEPLOY-006: No automatic rollback yet. If deployment fails, manually
+    # restore the previous image tag from ACR and re-run this command.
+    docker compose -f docker-compose.deploy.yml --env-file .env.production up -d
 
-    # Wait for services to start
-    echo -e "${YELLOW}等待服务启动...${NC}"
-    sleep 30
+    # R3-DEPLOY-005: Replace hardcoded sleep 30 with health check loop
+    echo -e "${YELLOW}等待服务启动 (健康检查)...${NC}"
+    for i in $(seq 1 12); do
+      if curl -sf http://localhost/api/v1/health > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ 健康检查通过 (第 $i 次尝试)${NC}"
+        break
+      fi
+      echo -e "${YELLOW}等待服务就绪... (第 $i/12 次尝试)${NC}"
+      sleep 5
+    done
 
     # Check status
-    docker compose --env-file .env.production ps
+    docker compose -f docker-compose.deploy.yml --env-file .env.production ps
 
     echo -e "${GREEN}✅ EchoLife 服务已启动！${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -167,14 +187,14 @@ case "${1:-start}" in
   stop)
     echo -e "${YELLOW}🛑 停止服务...${NC}"
     cd $PROJECT_DIR
-    docker compose --env-file .env.production down
+    docker compose -f docker-compose.deploy.yml --env-file .env.production down
     echo -e "${GREEN}✅ 服务已停止${NC}"
     ;;
 
   restart)
     echo -e "${YELLOW}🔄 重启服务...${NC}"
     cd $PROJECT_DIR
-    docker compose --env-file .env.production restart
+    docker compose -f docker-compose.deploy.yml --env-file .env.production restart
     echo -e "${GREEN}✅ 服务已重启${NC}"
     ;;
 
@@ -183,16 +203,16 @@ case "${1:-start}" in
     cd $PROJECT_DIR
     if [ -n "$SERVICE" ]; then
       echo -e "${CYAN}查看 $SERVICE 日志...${NC}"
-      docker compose --env-file .env.production logs -f --tail=100 $SERVICE
+      docker compose -f docker-compose.deploy.yml --env-file .env.production logs -f --tail=100 $SERVICE
     else
       echo -e "${CYAN}查看所有日志...${NC}"
-      docker compose --env-file .env.production logs -f --tail=100
+      docker compose -f docker-compose.deploy.yml --env-file .env.production logs -f --tail=100
     fi
     ;;
 
   status)
     cd $PROJECT_DIR
-    docker compose --env-file .env.production ps
+    docker compose -f docker-compose.deploy.yml --env-file .env.production ps
     ;;
 
   *)

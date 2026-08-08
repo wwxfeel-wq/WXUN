@@ -186,6 +186,11 @@ export class OpenClawProvider extends AgentRuntimeProvider {
         const scheduledSteps = this.scheduler.schedule(state.plan.steps);
         const toolSchemas = this.toolCalling.getToolSchemas(state.agentType);
 
+        // R3-BUG-025: Note that `state.fullResponse` intentionally excludes reasoning chunks.
+        // Reasoning (chain-of-thought) content is yielded as REASONING SSE events for real-time
+        // display but is NOT concatenated into fullResponse. This is a design decision:
+        // fullResponse is used for memory storage and the DONE event summary, which should
+        // contain only the final answer, not the intermediate thinking process.
         for (const step of scheduledSteps) {
           const reasoningResult = await this.reasoning.reason({
             message: input.message,
@@ -347,8 +352,9 @@ export class OpenClawProvider extends AgentRuntimeProvider {
       this.logger.error(`OpenClaw runtime error: ${(error as Error).message}`, (error as Error).stack);
       state.status = 'failed';
       state.errorMessage = (error as Error).message;
+      // R3-BUG-020: Use optional chaining in case quotaCheck was never assigned
       // 回退配额递增，因为请求失败了
-      await this.quotaService.decrementUsage(quotaCheck.quotaKey ?? '');
+      await this.quotaService.decrementUsage(quotaCheck?.quotaKey ?? '');
       await this.logAICall(input.userId, state);
       yield this.errorEvent('AI服务内部错误，请稍后重试', ERROR_CODES.INTERNAL_ERROR);
     } finally {
@@ -560,6 +566,11 @@ ${agentList}
         signal,
       })) {
         // DeepSeek V4 thinking mode: reasoning chunks come first
+        // R3-BUG-025: Reasoning chunks are streamed to the client as SSE events but
+        // intentionally NOT appended to state.fullResponse. This is a design decision:
+        // fullResponse stores only the final answer (non-reasoning content) so that
+        // downstream consumers (memory storage, summary, etc.) receive clean output
+        // without intermediate chain-of-thought text that could pollute stored data.
         if (chunk.type === 'reasoning') {
           yield {
             type: SSEEventType.REASONING,

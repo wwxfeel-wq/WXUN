@@ -22,6 +22,19 @@ import type { ChatMessage, ToolCallInfo } from '@/lib/types';
 /** markdown 图片正则：匹配 `![alt](url)` */
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
+/**
+ * R3-FE-025: Validate that a URL uses http/https protocol only.
+ * Prevents javascript: / data: / other dangerous protocol URLs from AI output.
+ */
+function isSafeImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /** 提取消息中的图片 URL 与纯文本 */
 function extractImages(content: string): { text: string; images: { alt: string; url: string }[] } {
   const images: { alt: string; url: string }[] = [];
@@ -29,7 +42,11 @@ function extractImages(content: string): { text: string; images: { alt: string; 
   const re = new RegExp(MARKDOWN_IMAGE_RE.source, 'g');
   let match: RegExpExecArray | null;
   while ((match = re.exec(content)) !== null) {
-    images.push({ alt: match[1] || '图片', url: match[2] });
+    const url = match[2];
+    // R3-FE-025: Only include URLs with safe protocols
+    if (isSafeImageUrl(url)) {
+      images.push({ alt: match[1] || '图片', url });
+    }
   }
   // 移除图片 markdown 后的纯文本
   const text = content.replace(MARKDOWN_IMAGE_RE, '').trim();
@@ -279,9 +296,11 @@ function MessageContent({
 
   // 兼容：如果 ChatMessage 上直接有 imageUrl 字段（预留 SSE 扩展）
   const extraImageUrl = (msg as ChatMessage & { imageUrl?: string }).imageUrl;
+  // R3-FE-025: Validate extraImageUrl protocol before rendering.
+  const safeExtraImageUrl = extraImageUrl && isSafeImageUrl(extraImageUrl) ? extraImageUrl : null;
   const allImages = [
     ...images,
-    ...(extraImageUrl ? [{ alt: '截图', url: extraImageUrl }] : []),
+    ...(safeExtraImageUrl ? [{ alt: '截图', url: safeExtraImageUrl }] : []),
   ];
 
   const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
@@ -345,6 +364,39 @@ export default function HomeChatOverlay({
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentRef = useRef(false);
+  // R3-FE-015: Focus management refs for accessibility.
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // R3-FE-015: Save previous focus, focus overlay on open, restore on close.
+  useEffect(() => {
+    if (open) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      // Focus the input field after the overlay opens
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    } else {
+      // Restore focus to the element that had it before the overlay opened
+      if (previousFocusRef.current) {
+        previousFocusRef.current.focus();
+        previousFocusRef.current = null;
+      }
+    }
+  }, [open]);
+
+  // R3-FE-015: Escape key handler to close overlay.
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [open, onClose]);
 
   // Reset sentRef when overlay closes so a new message can be sent next time
   useEffect(() => {
@@ -391,6 +443,9 @@ export default function HomeChatOverlay({
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-background/60 backdrop-blur-sm"
           onClick={onClose}
+          role="dialog"
+          aria-modal="true"
+          aria-label="时墨对话"
         >
           <motion.div
             initial={{ y: 40, scale: 0.98, opacity: 0 }}
@@ -462,6 +517,7 @@ export default function HomeChatOverlay({
               >
                 <div className="chat-input-shell">
                   <textarea
+                    ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}

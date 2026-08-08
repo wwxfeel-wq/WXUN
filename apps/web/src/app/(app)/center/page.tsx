@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Sparkles,
   Brain,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/page-transition';
@@ -74,8 +75,10 @@ function CircularProgress({ progress, size = 36, reducedMotion = false }: { prog
 
 export default function DigitalLifeCenter() {
   const user = useAuthStore((s) => s.user);
-  const [stats, setStats] = useState({ memories: 0, interviews: 0, capsules: 0, weeklyNew: 0 });
+  const [stats, setStats] = useState({ memories: 0, interviews: 0, capsules: 0, weeklyNew: 0 as number | null });
   const [loading, setLoading] = useState(true);
+  // R3-FE-013: Track API errors so they are not silently swallowed.
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const shouldReduceMotion = useReducedMotion();
   const motionProps = shouldReduceMotion
     ? { initial: false, animate: false }
@@ -89,17 +92,25 @@ export default function DigitalLifeCenter() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
+        let hadError = false;
         const [memRes, intRes, capRes] = await Promise.all([
-          apiClient.get('/memories/stats').catch(() => ({ total: 0 })),
-          apiClient.get('/interviews').catch(() => ({ items: [] })),
-          apiClient.get('/capsules').catch(() => ({ items: [] })),
+          apiClient.get('/memories/stats').catch(() => { hadError = true; return { total: 0 }; }),
+          apiClient.get('/interviews').catch(() => { hadError = true; return { items: [] }; }),
+          apiClient.get('/capsules').catch(() => { hadError = true; return { items: [] }; }),
         ]);
         setStats({
           memories: (memRes as { total?: number })?.total ?? 0,
           interviews: (intRes as { items?: unknown[] })?.items?.length ?? 0,
           capsules: (capRes as { items?: unknown[] })?.items?.length ?? 0,
-          weeklyNew: 3,
+          // R3-FE-023: Set to null instead of hardcoded 3; display "--" when not available.
+          weeklyNew: null,
         });
+        // R3-FE-013: Show error state if any API call failed.
+        if (hadError) {
+          setFetchError('部分数据加载失败，显示的可能是缓存数据。');
+        }
+      } catch {
+        setFetchError('数据加载失败，请稍后重试。');
       } finally {
         setLoading(false);
       }
@@ -109,7 +120,7 @@ export default function DigitalLifeCenter() {
 
   if (loading) {
     return (
-      <div className="w-full h-80vh flex items-center justify-center">
+      <div className="w-full h-[80vh] flex items-center justify-center">
         <div className="flex items-center gap-2">
           {[0, 1, 2].map((i) => (
             <motion.div
@@ -156,6 +167,14 @@ export default function DigitalLifeCenter() {
             </p>
           </motion.div>
 
+          {/* R3-FE-013: Error banner when API calls fail */}
+          {fetchError && (
+            <div className="mb-6 flex items-center gap-2 rounded-xl border border-warning/20 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{fetchError}</span>
+            </div>
+          )}
+
           {/* ===== Status Metrics ===== */}
           <motion.div
             {...fadeUp}
@@ -164,7 +183,7 @@ export default function DigitalLifeCenter() {
             className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-10 sm:mb-14"
           >
             <MetricCard icon={Heart} label="家庭情绪" value="温暖" accent="highlight" reducedMotion={!!shouldReduceMotion} />
-            <MetricCard icon={Plus} label="本周新增" value="3 段回忆" accent="success" reducedMotion={!!shouldReduceMotion} />
+            <MetricCard icon={Plus} label="本周新增" value={stats.weeklyNew !== null ? `${stats.weeklyNew} 段回忆` : '--'} accent="success" reducedMotion={!!shouldReduceMotion} />
             <MetricCard icon={TreePine} label="生命树阶段" value={treeStage.label} accent="primary" reducedMotion={!!shouldReduceMotion} />
             <MetricCard icon={Lightbulb} label="今日建议" value="给爸妈打个电话" accent="secondary" reducedMotion={!!shouldReduceMotion} />
           </motion.div>
@@ -339,7 +358,7 @@ export default function DigitalLifeCenter() {
                     </GlassLayer>
                   </div>
                   <p className="text-xs text-text-muted leading-relaxed">
-                    本周新增了 3 段珍贵回忆，家庭情绪整体温暖。继续记录与家人的日常点滴，让生命树更加繁茂。
+                    本周新增了 {stats.weeklyNew !== null ? `${stats.weeklyNew} 段` : '--'} 珍贵回忆，家庭情绪整体温暖。继续记录与家人的日常点滴，让生命树更加繁茂。
                   </p>
                 </div>
               </motion.div>

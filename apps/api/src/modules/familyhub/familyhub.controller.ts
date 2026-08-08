@@ -52,8 +52,9 @@ export class FamilyHubController implements OnModuleInit {
 
   @Get('agents')
   @ApiOperation({ summary: '获取所有 Agent' })
-  async getAgents() {
-    return this.service.getAgents();
+  async getAgents(@CurrentUser('userId') userId: string) {
+    // R3-BUG-023: Pass userId to filter agent calls/status by user
+    return this.service.getAgents(userId);
   }
 
   @Get('agents/:code')
@@ -74,14 +75,19 @@ export class FamilyHubController implements OnModuleInit {
 
   @Get('skills')
   @ApiOperation({ summary: '获取所有技能' })
-  async getSkills() {
-    return this.service.getSkills();
+  async getSkills(@CurrentUser('userId') userId: string) {
+    // R3-BUG-023: Pass userId to filter skill data by user
+    return this.service.getSkills(userId);
   }
 
   @Post('skills/:id/learn')
   @ApiOperation({ summary: '学习技能（提升进度）' })
-  async learnSkill(@Param('id') id: string) {
-    return this.service.learnSkill(id);
+  async learnSkill(
+    @Param('id') id: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    // R3-BUG-013: Pass userId to verify the skill's agent belongs to the user
+    return this.service.learnSkill(id, userId);
   }
 
   @Post('skills/:id/invoke')

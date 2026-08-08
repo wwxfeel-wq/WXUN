@@ -58,14 +58,24 @@ export function useSSEChat(options: UseSSEChatOptions = {}): UseSSEChatReturn {
   const interviewIdRef = useRef<string | undefined>(interviewId);
   const stoppedRef = useRef(false);
   const errorOccurredRef = useRef(false);
+  // R3-FE-001: Use a ref to track initialMessages so the effect only fires
+  // when interviewId changes, not when the parent's array reference changes.
+  const initialMessagesRef = useRef<ChatMessage[]>(initialMessages);
+  const prevInterviewIdRef = useRef<string | undefined>(interviewId);
 
   useEffect(() => {
     interviewIdRef.current = interviewId;
   }, [interviewId]);
 
   useEffect(() => {
-    setMessages(initialMessages);
-  }, [initialMessages]);
+    // Only reset messages when interviewId actually changes, not when
+    // the initialMessages array reference changes due to parent re-render.
+    if (prevInterviewIdRef.current !== interviewId) {
+      prevInterviewIdRef.current = interviewId;
+      initialMessagesRef.current = initialMessages;
+      setMessages(initialMessages);
+    }
+  }, [interviewId, initialMessages]);
 
   // Cleanup on unmount
   useEffect(() => {

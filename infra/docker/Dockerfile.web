@@ -1,6 +1,11 @@
 # EchoLife Web - Next.js Frontend Dockerfile
 FROM node:20-alpine AS base
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && apk add --no-cache libc6-compat
+# R3-DOCKERFILE-004: Alpine mirror is configurable via build ARG.
+# Defaults to Aliyun mirror for faster builds in China. Set ALPINE_MIRROR=""
+# to use the default Alpine CDN mirror.
+ARG ALPINE_MIRROR=mirrors.aliyun.com
+RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s/dl-cdn.alpinelinux.org/$ALPINE_MIRROR/g" /etc/apk/repositories; fi \
+  && apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # ===== Dependencies =====

@@ -30,7 +30,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+  const { notifications, unreadCount, markAllRead, markRead, Toaster } = useNotifications();
 
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
@@ -222,6 +222,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
           </div>
         </div>
       </header>
+      {Toaster}
     </GlassLayer>
   );
 }

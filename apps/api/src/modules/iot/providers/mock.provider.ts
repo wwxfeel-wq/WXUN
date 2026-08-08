@@ -367,6 +367,9 @@ export class MockProvider implements IoTProviderInterface, OnModuleDestroy {
   /** 模拟进度定时器，按 userId 隔离 */
   private readonly progressTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
 
+  /** R3-BUG-026: Per-user mutex for controlDevice to prevent concurrent modifications */
+  private readonly controlMutexes = new Map<string, Promise<unknown>>();
+
   /** 清理指定用户的进度定时器 */
   private clearProgressTimer(userId: string): void {
     const timer = this.progressTimers.get(userId);
@@ -380,6 +383,10 @@ export class MockProvider implements IoTProviderInterface, OnModuleDestroy {
     for (const userId of this.progressTimers.keys()) {
       this.clearProgressTimer(userId);
     }
+    // R3-BUG-007: Clear all maps to prevent memory leaks
+    this.devices.clear();
+    this.vacuumStates.clear();
+    this.controlMutexes.clear();
   }
 
   /**
@@ -424,6 +431,25 @@ export class MockProvider implements IoTProviderInterface, OnModuleDestroy {
   }
 
   async controlDevice(userId: string, control: DeviceControl): Promise<boolean> {
+    // R3-BUG-026: Per-user mutex to prevent concurrent device control operations
+    const mutexKey = `control:${userId}`;
+    const prev = this.controlMutexes.get(mutexKey) ?? Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((r) => { release = r; });
+    this.controlMutexes.set(mutexKey, prev.then(() => next));
+
+    await prev;
+    try {
+      return await this.controlDeviceInternal(userId, control);
+    } finally {
+      release();
+      if (this.controlMutexes.get(mutexKey) === next) {
+        this.controlMutexes.delete(mutexKey);
+      }
+    }
+  }
+
+  private async controlDeviceInternal(userId: string, control: DeviceControl): Promise<boolean> {
     const userDevices = this.getUserDevices(userId);
     // R4-BUG-002: 兼容带 mock: 前缀和不带前缀的 deviceId
     const nativeDeviceId = control.deviceId.replace(/^mock:/, '');

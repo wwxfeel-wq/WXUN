@@ -318,9 +318,9 @@ export default function AgentChatModal({ agent, open, onClose }: AgentChatModalP
               ref={scrollRef}
               className="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth"
             >
-              {messages.map((msg, i) => (
+              {messages.map((msg) => (
                 <motion.div
-                  key={i}
+                  key={`${msg.timestamp}-${msg.role}`}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}

@@ -166,9 +166,25 @@ async function request<T>(
 
   let response: Response;
   try {
-    response = await fetch(url, init);
+    // R3-FE-030: Add a 15s connection timeout using a separate AbortController.
+    // If the caller provided a signal, we race both: caller abort or timeout.
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 15_000);
+
+    // Combine caller signal with timeout signal
+    if (signal) {
+      signal.addEventListener('abort', () => timeoutController.abort());
+    }
+
+    response = await fetch(url, { ...init, signal: timeoutController.signal });
+    clearTimeout(timeoutId);
   } catch (err) {
-    if ((err as Error).name === 'AbortError') throw err;
+    if ((err as Error).name === 'AbortError') {
+      // If the original caller signal caused the abort, rethrow as AbortError
+      if (signal?.aborted) throw err;
+      // Otherwise it was our timeout
+      throw new ApiError('请求超时，请检查网络后重试', -1, 0);
+    }
     throw new ApiError(
       '网络连接失败，请检查网络后重试',
       -1,
@@ -378,6 +394,12 @@ export function createSSEStream(
     }
 
     if (!response.ok || !response.body) {
+      // R3-FE-032: If response.ok is true but body is null, use a clearer message.
+      if (response.ok && !response.body) {
+        callbacks.onError?.('AI服务返回了空响应体', response.status);
+        safeClose();
+        return;
+      }
       if (response.status === 401) {
         // C-008/R2-002/R3-002: Token refresh failed or response is still 401
         // after retry — clear the session and redirect to login.
@@ -694,7 +716,9 @@ export function createGETSSEStream(
 
     // 重连调度：初始 fetch 失败、流读取异常和正常关闭均使用此逻辑，
     // 确保连接中断后自动重连（与异常中断行为一致）
-    const scheduleReconnect = () => {
+    // R3-FE-031: Add isNormalClose parameter to distinguish normal close
+    // from error, so onError is not called on normal close.
+    const scheduleReconnect = (isNormalClose = false) => {
       if (isAborted) {
         onClose?.();
         return;
@@ -706,7 +730,10 @@ export function createGETSSEStream(
       }
       const delay = Math.min(INITIAL_DELAY * Math.pow(2, retryCount), MAX_DELAY);
       retryCount++;
-      onError?.('数据流中断');
+      // R3-FE-031: Don't call onError on normal close (done=true).
+      if (!isNormalClose) {
+        onError?.('数据流中断');
+      }
       reconnectTimer = setTimeout(() => connect(), delay);
     };
 
@@ -777,7 +804,8 @@ export function createGETSSEStream(
         }
       }
       // 正常关闭（done=true）后也触发重连，与异常中断行为一致
-      scheduleReconnect();
+      // R3-FE-031: Pass isNormalClose=true to avoid calling onError on normal close.
+      scheduleReconnect(true);
     } catch (err) {
       if ((err as Error).name !== 'AbortError' && !isAborted) {
         // Non-manual error: set up reconnect with exponential backoff
