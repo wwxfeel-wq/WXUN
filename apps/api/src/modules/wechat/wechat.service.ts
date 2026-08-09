@@ -52,7 +52,7 @@ export interface WechatMessageDto {
   timestamp: number;
   isSelf: boolean;
   type: 'text' | 'image' | 'voice' | 'file' | 'other';
-  contactId: string;
+  contactId: string | null;
   senderWechatId?: string;
 }
 
@@ -1376,7 +1376,7 @@ export class WechatService implements OnModuleDestroy {
 
   private toMessageDto(m: {
     id: string;
-    contactId: string;
+    contactId: string | null;
     fromId: string;
     fromName: string;
     toId: string;
