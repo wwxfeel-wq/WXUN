@@ -1,0 +1,51 @@
+name: SSH Connection Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test SSH Connectivity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test SSH connection
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          echo "=== Step 1: Install sshpass ==="
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          echo "sshpass installed: $?"
+
+          echo "=== Step 2: Check env vars are set ==="
+          if [ -z "$SSHPASS" ]; then
+            echo "ERROR: SSHPASS is empty! SSH_PASSWORD secret may not be set."
+            exit 1
+          fi
+          if [ -z "$SSH_HOST" ]; then
+            echo "ERROR: SSH_HOST is empty! Secret may not be set."
+            exit 1
+          fi
+          if [ -z "$SSH_USER" ]; then
+            echo "ERROR: SSH_USER is empty! Secret may not be set."
+            exit 1
+          fi
+          echo "SSHPASS length: ${#SSHPASS}"
+          echo "SSH_HOST: $SSH_HOST"
+          echo "SSH_USER: $SSH_USER"
+
+          echo "=== Step 3: Test SSH connectivity ==="
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+            "${SSH_USER}@${SSH_HOST}" \
+            'echo "SSH_OK"; hostname; whoami; pwd; ls /www/wwwroot/echolife/ 2>&1 | head -20; echo "SSH_TEST_DONE"'
+
+          SSH_EXIT=$?
+          echo "=== SSH exit code: $SSH_EXIT ==="
+
+          if [ $SSH_EXIT -ne 0 ]; then
+            echo "ERROR: SSH connection failed with exit code $SSH_EXIT"
+            exit 1
+          fi
+
+          echo "=== SSH test passed! ==="
