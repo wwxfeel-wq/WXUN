@@ -82,6 +82,10 @@ RUN ln -s /app/packages/shared /app/apps/api/node_modules/@echolife/shared
 
 # Set ownership
 RUN chown -R appuser:appgroup /app
+# 预创建本地 embedding 模型缓存目录并授权 appuser。
+# 该目录通过 volume (transformers_cache) 挂载，首次挂载时会继承镜像内
+# 目录的所有权，否则 volume 默认 root 所有导致 appuser 无法写入。
+RUN mkdir -p /app/.cache/transformers && chown -R appuser:appgroup /app/.cache
 
 EXPOSE 3001
 

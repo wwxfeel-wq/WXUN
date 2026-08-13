@@ -222,7 +222,7 @@ export class RagService {
         1 - (me.embedding <=> $1::vector) AS similarity
       FROM "memory_embeddings" me
       JOIN "memories" m ON m.id = me.memory_id
-      WHERE m.user_id = $2
+      WHERE m.user_id = $2::uuid
         AND m.is_deleted = false
         AND m.is_archived = false
         ${typeFilter}
