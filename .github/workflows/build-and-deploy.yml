@@ -227,16 +227,28 @@ jobs:
           docker info 2>&1 | head -20
 
           # CRITICAL: Clean up old Docker images and build cache to free disk space
-          # The server has limited disk and old images prevent pulling new ones
+          # Use direct docker commands instead of docker-compose because
+          # docker-compose stop/rm was silently failing, leaving old containers
+          # and images that prevented the new image from being used.
           echo "=== Cleaning up old Docker resources ==="
-          # Stop API and web containers so their images can be pruned
-          docker compose -f docker-compose.deploy.yml --env-file .env.production stop api web 2>&1 || true
-          docker compose -f docker-compose.deploy.yml --env-file .env.production rm -f api web 2>&1 || true
-          # Remove old API and web images (keep postgres/redis)
+          # Stop and remove old containers by name (not via docker-compose)
+          docker stop echolife-api echolife-web 2>/dev/null || true
+          docker rm -f echolife-api echolife-web 2>/dev/null || true
+          # Verify containers are actually removed
+          if docker ps -a --format '{{.Names}}' | grep -q 'echolife-api'; then
+            echo "::error::FATAL: Cannot remove echolife-api container!"
+            docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep echolife
+            exit 1
+          fi
+          echo "Old containers removed ✓"
+          
+          # Remove ALL echolife-api and echolife-web images by any tag/ID
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E 'echolife-(api|web)' | awk '{print $2}' | sort -u | xargs -r docker rmi -f 2>/dev/null || true
+          # Also remove by full image name (in case grep missed due to long registry path)
           docker rmi "$API_IMAGE" 2>/dev/null || true
           docker rmi "$WEB_IMAGE" 2>/dev/null || true
-          # Also remove images by tag without namespace (in case of stale tags)
-          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E 'echolife-(api|web)' | awk '{print $2}' | xargs -r docker rmi -f 2>/dev/null || true
+          docker rmi "$API_IMAGE_SHA" 2>/dev/null || true
+          docker rmi "$WEB_IMAGE_SHA" 2>/dev/null || true
           # Prune dangling images, stopped containers, and build cache
           docker image prune -af 2>&1 || true
           docker container prune -f 2>&1 || true
