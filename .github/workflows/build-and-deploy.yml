@@ -183,12 +183,34 @@ jobs:
           WEB_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-web:latest"
           
           # Check disk space first
-          echo "=== Disk space ==="
+          echo "=== Disk space BEFORE cleanup ==="
           df -h / /var 2>/dev/null || df -h /
           
           # Show docker info for debugging
           echo "=== Docker info ==="
           docker info 2>&1 | head -20
+
+          # CRITICAL: Clean up old Docker images and build cache to free disk space
+          # The server has limited disk and old images prevent pulling new ones
+          echo "=== Cleaning up old Docker resources ==="
+          # Stop API and web containers so their images can be pruned
+          docker compose -f docker-compose.deploy.yml --env-file .env.production stop api web 2>&1 || true
+          docker compose -f docker-compose.deploy.yml --env-file .env.production rm -f api web 2>&1 || true
+          # Remove old API and web images (keep postgres/redis)
+          docker rmi "$API_IMAGE" 2>/dev/null || true
+          docker rmi "$WEB_IMAGE" 2>/dev/null || true
+          # Also remove images by tag without namespace (in case of stale tags)
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E 'echolife-(api|web)' | awk '{print $2}' | xargs -r docker rmi -f 2>/dev/null || true
+          # Prune dangling images, stopped containers, and build cache
+          docker image prune -af 2>&1 || true
+          docker container prune -f 2>&1 || true
+          docker builder prune -af 2>&1 || true
+          # DO NOT prune volumes — postgres_data and redis_data must be preserved
+          
+          echo "=== Disk space AFTER cleanup ==="
+          df -h / /var 2>/dev/null || df -h /
+          echo "=== Docker disk usage ==="
+          docker system df 2>&1
           
           pull_with_retry() {
             local img="$1"
@@ -235,12 +257,7 @@ jobs:
           docker inspect --format='API image: {{.Id}} Created: {{.Created}}' "$API_IMAGE" 2>&1
           docker inspect --format='WEB image: {{.Id}} Created: {{.Created}}' "$WEB_IMAGE" 2>&1
 
-          # Stop and remove old API container to ensure clean recreate
-          echo "=== Removing old API container ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production stop api 2>&1 || true
-          docker compose -f docker-compose.deploy.yml --env-file .env.production rm -f api 2>&1 || true
-
-          # Start DB/Redis
+          # Start DB/Redis (if not already running)
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
           echo "DB/Redis started"
           sleep 5
