@@ -110,29 +110,38 @@ jobs:
             infra/nginx/nginx.conf \
             "${SSH_USER}@${SSH_HOST}:/tmp/"
 
+          echo "=== SCP exit code: $? ==="
+
           echo "=== Files uploaded, executing deploy ==="
           # Execute deploy — all output goes to stdout (visible in GitHub Actions logs)
+          # Using set -x to trace every command for debugging
           sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             "${SSH_USER}@${SSH_HOST}" 'bash -s' << 'DEPLOY'
-          # All output to stdout for GitHub Actions visibility
+          set -x
           echo "[$(date)] Deploy started"
-          cd /www/wwwroot/echolife || { echo "FATAL: /www/wwwroot/echolife not found"; exit 1; }
+
+          cd /www/wwwroot/echolife || { echo "::error::FATAL: /www/wwwroot/echolife not found"; exit 1; }
           echo "Working dir: $(pwd)"
 
-          # Decode ACR credentials
-          . /tmp/deploy-secrets.env
+          # Verify uploaded files exist
+          ls -la /tmp/deploy-secrets.env /tmp/docker-compose.deploy.yml /tmp/nginx.conf 2>&1 || {
+            echo "::error::FATAL: Uploaded files missing in /tmp/"; exit 1
+          }
+
+          # Source and decode ACR credentials
+          . /tmp/deploy-secrets.env || { echo "::error::FATAL: Cannot source deploy-secrets.env"; exit 1; }
           rm -f /tmp/deploy-secrets.env
           ACR_REGISTRY_VALUE=$(echo "$ACR_REGISTRY_B64" | base64 -d)
           ACR_NAMESPACE_VALUE=$(echo "$ACR_NAMESPACE_B64" | base64 -d)
           ACR_USERNAME_VALUE=$(echo "$ACR_USERNAME_B64" | base64 -d)
           ACR_PASSWORD_VALUE=$(echo "$ACR_PASSWORD_B64" | base64 -d)
 
-          [ -z "$ACR_REGISTRY_VALUE" ] && { echo "FATAL: ACR_REGISTRY empty"; exit 1; }
-          [ -z "$ACR_NAMESPACE_VALUE" ] && { echo "FATAL: ACR_NAMESPACE empty"; exit 1; }
-          [ -z "$ACR_USERNAME_VALUE" ] && { echo "FATAL: ACR_USERNAME empty"; exit 1; }
-          [ -z "$ACR_PASSWORD_VALUE" ] && { echo "FATAL: ACR_PASSWORD empty"; exit 1; }
-          echo "ACR credentials OK: registry=$ACR_REGISTRY_VALUE namespace=$ACR_NAMESPACE_VALUE"
+          [ -z "$ACR_REGISTRY_VALUE" ] && { echo "::error::FATAL: ACR_REGISTRY empty after decode"; exit 1; }
+          [ -z "$ACR_NAMESPACE_VALUE" ] && { echo "::error::FATAL: ACR_NAMESPACE empty after decode"; exit 1; }
+          [ -z "$ACR_USERNAME_VALUE" ] && { echo "::error::FATAL: ACR_USERNAME empty after decode"; exit 1; }
+          [ -z "$ACR_PASSWORD_VALUE" ] && { echo "::error::FATAL: ACR_PASSWORD empty after decode"; exit 1; }
+          echo "ACR credentials decoded OK: registry=$ACR_REGISTRY_VALUE namespace=$ACR_NAMESPACE_VALUE"
 
           # Install config files
           cp /tmp/docker-compose.deploy.yml docker-compose.deploy.yml
@@ -141,7 +150,7 @@ jobs:
           echo "Config files installed"
 
           # Update .env.production
-          [ ! -f .env.production ] && { echo "FATAL: .env.production not found"; exit 1; }
+          [ ! -f .env.production ] && { echo "::error::FATAL: .env.production not found"; exit 1; }
           sed -i "s|^ACR_REGISTRY=.*|ACR_REGISTRY=$ACR_REGISTRY_VALUE|" .env.production
           grep -q '^ACR_REGISTRY=' .env.production || echo "ACR_REGISTRY=$ACR_REGISTRY_VALUE" >> .env.production
           sed -i "s|^ACR_NAMESPACE=.*|ACR_NAMESPACE=$ACR_NAMESPACE_VALUE|" .env.production
@@ -149,20 +158,22 @@ jobs:
           grep -q '^NEXT_PUBLIC_API_URL=' .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
           echo ".env.production updated"
 
-          # Check docker compose version
-          echo "Docker version: $(docker --version)"
-          echo "Docker compose version: $(docker compose version 2>&1 || docker-compose version 2>&1)"
+          # Docker info
+          docker --version
+          docker compose version 2>&1 || docker-compose version 2>&1 || {
+            echo "::error::FATAL: docker compose not available"; exit 1
+          }
 
           # ACR login
           echo "$ACR_PASSWORD_VALUE" | docker login "$ACR_REGISTRY_VALUE" \
             -u "$ACR_USERNAME_VALUE" --password-stdin
-          [ $? -ne 0 ] && { echo "FATAL: docker login failed"; exit 1; }
+          [ $? -ne 0 ] && { echo "::error::FATAL: docker login to ACR failed"; exit 1; }
           echo "Docker login OK"
 
           # Pull images
           echo "Pulling images..."
           docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api
-          [ $? -ne 0 ] && { echo "FATAL: docker pull failed"; exit 1; }
+          [ $? -ne 0 ] && { echo "::error::FATAL: docker compose pull failed"; exit 1; }
           echo "Image pull OK"
 
           # Start DB/Redis
@@ -181,7 +192,7 @@ jobs:
               echo "API healthy after $((i*5))s"
               break
             fi
-            [ "$i" -eq 30 ] && { echo "FATAL: API not healthy after 150s"; docker logs echolife-api --tail 50; exit 1; }
+            [ "$i" -eq 30 ] && { echo "::error::FATAL: API not healthy after 150s"; docker logs echolife-api --tail 50; exit 1; }
             sleep 5
           done
 
