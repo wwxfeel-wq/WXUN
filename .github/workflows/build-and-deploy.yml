@@ -56,7 +56,19 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
+      - name: Debug — verify source files in checkout
+        run: |
+          echo "=== Tracking module source files ==="
+          ls -la apps/api/src/modules/tracking/ || echo "FATAL: tracking source dir missing!"
+          echo "=== TrackingModule in app.module.ts ==="
+          grep -n "TrackingModule" apps/api/src/app.module.ts || echo "FATAL: TrackingModule not in app.module.ts!"
+          echo "=== Dockerfile.api runner stage ==="
+          grep -A2 "CACHE_BUSTER" infra/docker/Dockerfile.api
+          echo "=== Dockerfile.api verification steps ==="
+          grep -n "tracking\|BUILD_MARKER" infra/docker/Dockerfile.api
+
       - name: Build & push echolife-api (no-cache to ensure tracking module is built)
+        id: build_api
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -71,6 +83,19 @@ jobs:
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}
           build-args: |
             CACHE_BUSTER=${{ github.sha }}
+
+      - name: Debug — verify tracking module in built image
+        run: |
+          IMAGE="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}"
+          echo "=== Checking built image: $IMAGE ==="
+          # Pull the image we just pushed
+          docker pull "$IMAGE" || { echo "FATAL: cannot pull image we just pushed!"; exit 1; }
+          # Check tracking module exists
+          docker run --rm "$IMAGE" ls -la /app/apps/api/dist/modules/tracking/ || echo "FATAL: tracking module missing in built image!"
+          # Check BUILD_MARKER
+          docker run --rm "$IMAGE" cat /app/apps/api/dist/BUILD_MARKER.txt || echo "FATAL: BUILD_MARKER missing in built image!"
+          # Check TrackingModule in app.module.js
+          docker run --rm "$IMAGE" grep -c "TrackingModule" /app/apps/api/dist/app.module.js || echo "FATAL: TrackingModule not in app.module.js!"
 
   deploy:
     name: Deploy to Aliyun ECS
