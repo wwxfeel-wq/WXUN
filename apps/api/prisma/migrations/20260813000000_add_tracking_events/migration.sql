@@ -1,4 +1,10 @@
-﻿-- CreateTable
+-- CreateExtension
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- DropTable (idempotent: clean up any partial table from failed migration attempts)
+DROP TABLE IF EXISTS "tracking_events" CASCADE;
+
+-- CreateTable
 CREATE TABLE "tracking_events" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "session_id" VARCHAR(100) NOT NULL,
