@@ -333,13 +333,36 @@ jobs:
 
           if [ "$TRACKING_CODE" = "404" ] || [ "$OVERVIEW_CODE" = "404" ]; then
             echo "::error::FATAL: Tracking endpoint returned 404 — TrackingModule not loaded!"
-            echo "=== Full API logs ==="
-            docker logs echolife-api 2>&1 | tail -200
-            echo "=== Checking compiled modules ==="
-            docker exec echolife-api find /app/apps/api/dist/modules/tracking -type f 2>&1 || echo "No tracking dist found"
-            docker exec echolife-api grep -r "Tracking" /app/apps/api/dist/ 2>&1 | head -20 || echo "No Tracking references found in dist"
-            echo "=== Prisma client check ==="
-            docker exec echolife-api node -e "const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient(); console.log('trackingEvent' in p ? 'trackingEvent EXISTS' : 'trackingEvent MISSING'); p.\$disconnect().catch(()=>{})" 2>&1 || echo "Prisma client check failed"
+            # Emit ALL diagnostics as error annotations for visibility
+            DIST_FILES=$(docker exec echolife-api find /app/apps/api/dist/modules/tracking -type f 2>&1 || echo "NO TRACKING DIST FOUND")
+            echo "::error::Tracking dist files: $(echo "$DIST_FILES" | tr '\n' ' ')"
+            
+            APP_MODULE_TRACKING=$(docker exec echolife-api grep -c "TrackingModule" /app/apps/api/dist/app.module.js 2>&1 || echo "0")
+            echo "::error::TrackingModule count in app.module.js: $APP_MODULE_TRACKING"
+            
+            APP_MODULE_CONTENT=$(docker exec echolife-api cat /app/apps/api/dist/app.module.js 2>&1 | tail -30)
+            echo "::error::app.module.js (last 30 lines): $(echo "$APP_MODULE_CONTENT" | tr '\n' '|')"
+            
+            TRACKING_MODULE_JS=$(docker exec echolife-api cat /app/apps/api/dist/modules/tracking/tracking.module.js 2>&1 || echo "FILE NOT FOUND")
+            echo "::error::tracking.module.js: $(echo "$TRACKING_MODULE_JS" | tr '\n' '|')"
+            
+            TRACKING_CONTROLLER_JS=$(docker exec echolife-api cat /app/apps/api/dist/modules/tracking/tracking.controller.js 2>&1 | head -20 || echo "FILE NOT FOUND")
+            echo "::error::tracking.controller.js (first 20 lines): $(echo "$TRACKING_CONTROLLER_JS" | tr '\n' '|')"
+            
+            API_LOGS=$(docker logs echolife-api 2>&1 | tail -50)
+            echo "::error::API logs (last 50 lines): $(echo "$API_LOGS" | tr '\n' '|')"
+            
+            PRISMA_CHECK=$(docker exec echolife-api node -e "try{const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient(); console.log('trackingEvent ' + ('trackingEvent' in p ? 'EXISTS' : 'MISSING')); p.\$disconnect().catch(()=>{});}catch(e){console.log('PRISMA ERROR: '+e.message)}" 2>&1 || echo "CHECK FAILED")
+            echo "::error::Prisma client check: $PRISMA_CHECK"
+            
+            # Also check what routes ARE registered
+            ROUTES_CHECK=$(docker exec echolife-api node -e "try{const m=require('/app/apps/api/dist/app.module.js'); console.log(Object.keys(m).join(','))}catch(e){console.log('MODULE LOAD ERROR: '+e.message)}" 2>&1 || echo "CHECK FAILED")
+            echo "::error::app.module exports: $ROUTES_CHECK"
+            
+            # Check container image creation time
+            IMAGE_TIME=$(docker inspect --format='{{.Created}}' echolife-api 2>&1)
+            echo "::error::Container image created: $IMAGE_TIME"
+            
             exit 1
           elif [ "$TRACKING_CODE" = "200" ] || [ "$TRACKING_CODE" = "201" ]; then
             echo "Tracking endpoint OK!"
