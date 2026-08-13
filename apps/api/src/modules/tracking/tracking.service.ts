@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as geoip from 'geoip-lite';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TrackEventDto } from './dto/track-event.dto';
 import { QueryTrackingDto } from './dto/query-tracking.dto';
@@ -34,6 +35,7 @@ export class TrackingService {
     userId?: string,
   ): Promise<{ success: boolean; id?: string }> {
     const { browser, os, deviceType } = this.parseUserAgent(userAgent ?? '');
+    const { country, city } = this.lookupGeo(ipAddress);
 
     try {
       const event = await this.prisma.trackingEvent.create({
@@ -49,6 +51,8 @@ export class TrackingService {
           browser,
           os,
           deviceType,
+          country,
+          city,
           metadata: (dto.metadata ?? null) as Prisma.InputJsonValue,
         },
       });
@@ -260,6 +264,26 @@ export class TrackingService {
       }
     }
 
+    // 对 country/city 为空的历史 IP 做懒回填（解析后即时返回，并异步写回数据库）
+    for (const item of ipMap.values()) {
+      if (!item.country && !item.city) {
+        const geo = this.lookupGeo(item.ipAddress);
+        if (geo.country || geo.city) {
+          item.country = geo.country;
+          item.city = geo.city;
+          // fire-and-forget 回填数据库，不阻塞响应
+          this.prisma.trackingEvent
+            .updateMany({
+              where: { ipAddress: item.ipAddress, country: null, city: null },
+              data: { country: geo.country, city: geo.city },
+            })
+            .catch(() => {
+              /* 回填失败忽略 */
+            });
+        }
+      }
+    }
+
     return Array.from(ipMap.values()).sort(
       (a, b) => b.visitCount - a.visitCount,
     );
@@ -383,5 +407,48 @@ export class TrackingService {
     else if (/Linux/.test(ua)) os = 'Linux';
 
     return { browser, os, deviceType };
+  }
+
+  /**
+   * 根据 IP 地址解析地理位置（国家/城市）。
+   * 使用 geoip-lite 内置的 MaxMind GeoLite2 离线数据库，无需外部 API。
+   * 内网 IP 或无法解析的 IP 返回 null。
+   */
+  private lookupGeo(ip: string): {
+    country: string | null;
+    city: string | null;
+  } {
+    if (!ip || this.isPrivateIp(ip)) {
+      return { country: null, city: null };
+    }
+    try {
+      const geo = geoip.lookup(ip);
+      if (!geo) {
+        return { country: null, city: null };
+      }
+      return {
+        country: geo.country ?? null,
+        city: geo.city ?? null,
+      };
+    } catch {
+      // geoip 查询失败不应影响埋点写入
+      return { country: null, city: null };
+    }
+  }
+
+  /** 判断是否为内网/回环地址（这些 IP 无需也无法做地理定位）。 */
+  private isPrivateIp(ip: string): boolean {
+    return (
+      ip === '127.0.0.1' ||
+      ip === '::1' ||
+      ip === '::ffff:127.0.0.1' ||
+      ip.startsWith('10.') ||
+      ip.startsWith('192.168.') ||
+      ip.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip) ||
+      ip.startsWith('::ffff:10.') ||
+      ip.startsWith('::ffff:192.168.') ||
+      ip.startsWith('::ffff:172.')
+    );
   }
 }
