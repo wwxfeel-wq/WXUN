@@ -19,6 +19,7 @@ import {
   Lightbulb,
   AirVent,
   Wind,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { useSSEChat } from "@/hooks/use-sse-chat";
@@ -145,12 +146,22 @@ export default function InterviewPage() {
     }
   });
 
-  const { messages, isStreaming, isThinking, error, skillNotice, sendMessage, stopStream } =
+  const { messages, isStreaming, isThinking, error, skillNotice, sendMessage, stopStream, clearMessages } =
     useSSEChat({ initialMessages });
 
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // 清空当前对话（内存 + localStorage 持久化）
+  const handleClear = React.useCallback(() => {
+    clearMessages();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, [clearMessages]);
 
   // H-022: 防抖保存消息到 localStorage（最多保存 50 条）
   // R3-FE-021: Track previous message count to skip unnecessary serialization.
@@ -243,6 +254,20 @@ export default function InterviewPage() {
           intensity="strong"
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
+          {/* 顶部工具栏：清空对话 */}
+          {messages.length > 0 && (
+            <div className="flex items-center justify-end border-b border-border/40 px-4 py-2">
+              <button
+                onClick={handleClear}
+                type="button"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface/60 hover:text-text"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                清空对话
+              </button>
+            </div>
+          )}
+
           {/* Messages */}
           <div
             ref={scrollRef}

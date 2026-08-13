@@ -151,9 +151,11 @@ async function request<T>(
     signal?: AbortSignal;
     raw?: boolean;
     skipAuthRefresh?: boolean;
+    /** 请求超时（毫秒），默认 15000。长耗时接口（如 agent 调用）可传更大值。 */
+    timeout?: number;
   } = {},
 ): Promise<T> {
-  const { params, body, headers, signal, raw, skipAuthRefresh } = options;
+  const { params, body, headers, signal, raw, skipAuthRefresh, timeout } = options;
   const url = buildUrl(endpoint, params);
   const init: RequestInit = {
     method,
@@ -166,10 +168,10 @@ async function request<T>(
 
   let response: Response;
   try {
-    // R3-FE-030: Add a 15s connection timeout using a separate AbortController.
+    // R3-FE-030: Add a connection timeout using a separate AbortController.
     // If the caller provided a signal, we race both: caller abort or timeout.
     const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), 15_000);
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeout ?? 15_000);
 
     // Combine caller signal with timeout signal
     if (signal) {
@@ -265,9 +267,9 @@ export const apiClient = {
     return request<T>('GET', endpoint, { params, signal });
   },
 
-  /** Perform a POST request. */
-  post<T>(endpoint: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-    return request<T>('POST', endpoint, { body, signal });
+  /** Perform a POST request. 支持通过 options.timeout 覆盖默认超时。 */
+  post<T>(endpoint: string, body?: unknown, signal?: AbortSignal, options?: { timeout?: number }): Promise<T> {
+    return request<T>('POST', endpoint, { body, signal, ...options });
   },
 
   /** POST with skipAuthRefresh (for auth endpoints like login/register). */

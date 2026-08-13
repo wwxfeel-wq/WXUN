@@ -514,6 +514,8 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           const result = await apiClient.post<InvokeAgentResult>(
             `family-hub/agents/${agentCode}/invoke`,
             { message },
+            undefined,
+            { timeout: 120_000 },
           );
 
           // 合并为一次 set 调用，避免两次独立渲染
