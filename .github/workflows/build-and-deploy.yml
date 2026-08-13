@@ -56,7 +56,7 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
-      - name: Build & push echolife-api
+      - name: Build & push echolife-api (no-cache to ensure tracking module is built)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -65,13 +65,12 @@ jobs:
           push: true
           provenance: false
           sbom: false
+          no-cache: true
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}
           build-args: |
             CACHE_BUSTER=${{ github.sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
 
   deploy:
     name: Deploy to Aliyun ECS
@@ -207,6 +206,16 @@ jobs:
           pull_with_retry "$WEB_IMAGE" "WEB" || exit 1
           echo "All images pulled OK"
 
+          # Print image digests to verify we got the new images
+          echo "=== Image digests ==="
+          docker inspect --format='API image: {{.Id}} Created: {{.Created}}' "$API_IMAGE" 2>&1
+          docker inspect --format='WEB image: {{.Id}} Created: {{.Created}}' "$WEB_IMAGE" 2>&1
+
+          # Stop and remove old API container to ensure clean recreate
+          echo "=== Removing old API container ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production stop api 2>&1 || true
+          docker compose -f docker-compose.deploy.yml --env-file .env.production rm -f api 2>&1 || true
+
           # Start DB/Redis
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
           echo "DB/Redis started"
@@ -218,32 +227,44 @@ jobs:
           if [ "$DB_STATUS" != "healthy" ]; then
             echo "WARNING: Postgres not healthy, showing logs..."
             docker logs echolife-postgres --tail 20
+            # Give it more time
+            sleep 15
+            DB_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-postgres 2>/dev/null)
+            echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Restart API
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
-          echo "API recreating..."
+          # Start API (fresh container)
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d api
+          echo "API starting..."
 
           # Wait for API health
-          for i in $(seq 1 40); do
+          for i in $(seq 1 60); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
             if [ "$STATUS" = "healthy" ]; then
               echo "API healthy after $((i*5))s"
               break
             fi
-            [ "$i" -eq 40 ] && { echo "::error::FATAL: API not healthy after 200s"; docker logs echolife-api --tail 100; exit 1; }
+            [ "$i" -eq 60 ] && { echo "::error::FATAL: API not healthy after 300s"; docker logs echolife-api --tail 200; exit 1; }
             sleep 5
           done
 
+          # Verify the running container uses the freshly pulled image
+          echo "=== Container image verification ==="
+          docker inspect --format='Container image: {{.Image}}' echolife-api 2>&1
+          docker inspect --format='Image ID from pull: {{.Id}}' "$API_IMAGE" 2>&1
+
           # Show API startup logs (check for TrackingModule)
-          echo "=== API startup logs (last 80 lines) ==="
-          docker logs echolife-api --tail 80 2>&1
+          echo "=== API startup logs (last 120 lines) ==="
+          docker logs echolife-api --tail 120 2>&1
           echo "=== End API logs ==="
 
           # Check if tracking module compiled files exist in the container
           echo "=== Checking tracking module in container ==="
           docker exec echolife-api ls -la /app/apps/api/dist/modules/tracking/ 2>&1 || echo "WARNING: tracking module dist not found"
           docker exec echolife-api cat /app/apps/api/dist/modules/tracking/tracking.module.js 2>&1 | head -5 || echo "WARNING: tracking.module.js not found"
+          docker exec echolife-api cat /app/apps/api/dist/modules/tracking/tracking.controller.js 2>&1 | head -10 || echo "WARNING: tracking.controller.js not found"
+          echo "=== Checking TrackingModule in app.module.js ==="
+          docker exec echolife-api grep -c "TrackingModule" /app/apps/api/dist/app.module.js 2>&1 || echo "TrackingModule not found in app.module.js"
 
           # Restart Web + Nginx
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
@@ -254,21 +275,31 @@ jobs:
           echo "=== Health check ==="
           curl -fsS http://localhost/api/v1/health && echo "" || echo "WARNING: HTTP health check failed"
 
-          # Smoke test: tracking endpoint
-          echo "=== Tracking endpoint test ==="
+          # Smoke test: tracking endpoint — POST events (public)
+          echo "=== Tracking endpoint test (POST /events) ==="
           TRACKING_RESP=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST http://localhost/api/v1/tracking/events \
             -H 'Content-Type: application/json' \
             -d '{"sessionId":"deploy-smoke","eventType":"page_view","pagePath":"/deploy-smoke","pageTitle":"Deploy Smoke Test"}')
-          echo "Tracking response: $TRACKING_RESP"
+          echo "Tracking POST response: $TRACKING_RESP"
 
-          # Log tracking result but don't fail deploy
+          # Also test GET /overview — should return 401 (route exists, auth required), NOT 404
+          echo "=== Tracking endpoint test (GET /overview) ==="
+          OVERVIEW_RESP=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://localhost/api/v1/tracking/overview)
+          echo "Tracking GET /overview response: $OVERVIEW_RESP"
+
           TRACKING_CODE=$(echo "$TRACKING_RESP" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
-          if [ "$TRACKING_CODE" = "404" ]; then
-            echo "::warning:: Tracking endpoint returned 404 — checking module loading..."
-            echo "=== Grepping API logs for Tracking ==="
-            docker logs echolife-api 2>&1 | grep -i "track" || echo "No 'track' found in logs"
-            echo "=== Checking app.module for TrackingModule ==="
-            docker exec echolife-api grep -r "Tracking" /app/apps/api/dist/app.module.js 2>&1 || echo "TrackingModule not found in compiled app.module"
+          OVERVIEW_CODE=$(echo "$OVERVIEW_RESP" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
+
+          if [ "$TRACKING_CODE" = "404" ] || [ "$OVERVIEW_CODE" = "404" ]; then
+            echo "::error::FATAL: Tracking endpoint returned 404 — TrackingModule not loaded!"
+            echo "=== Full API logs ==="
+            docker logs echolife-api 2>&1 | tail -200
+            echo "=== Checking compiled modules ==="
+            docker exec echolife-api find /app/apps/api/dist/modules/tracking -type f 2>&1 || echo "No tracking dist found"
+            docker exec echolife-api grep -r "Tracking" /app/apps/api/dist/ 2>&1 | head -20 || echo "No Tracking references found in dist"
+            echo "=== Prisma client check ==="
+            docker exec echolife-api node -e "const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient(); console.log('trackingEvent' in p ? 'trackingEvent EXISTS' : 'trackingEvent MISSING'); p.\$disconnect().catch(()=>{})" 2>&1 || echo "Prisma client check failed"
+            exit 1
           elif [ "$TRACKING_CODE" = "200" ] || [ "$TRACKING_CODE" = "201" ]; then
             echo "Tracking endpoint OK!"
           fi

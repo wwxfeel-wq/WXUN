@@ -32,8 +32,13 @@ RUN pnpm --filter @echolife/api build
 # Verify tracking module is compiled
 RUN test -f /app/apps/api/dist/modules/tracking/tracking.module.js || \
     (echo "FATAL: tracking module not compiled!" && ls -la /app/apps/api/dist/modules/ && exit 1)
+RUN test -f /app/apps/api/dist/modules/tracking/tracking.controller.js || \
+    (echo "FATAL: tracking controller not compiled!" && exit 1)
 RUN grep -q "TrackingModule" /app/apps/api/dist/app.module.js || \
     (echo "FATAL: TrackingModule not in compiled app.module.js!" && exit 1)
+# Verify the controller has the events route
+RUN grep -q "events" /app/apps/api/dist/modules/tracking/tracking.controller.js || \
+    (echo "FATAL: tracking controller missing events route!" && exit 1)
 
 # ===== Production =====
 FROM base AS runner
