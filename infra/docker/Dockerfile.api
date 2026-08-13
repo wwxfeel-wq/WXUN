@@ -22,6 +22,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 RUN rm -f /app/apps/api/node_modules/@echolife/shared
+# CACHE_BUSTER forces cache invalidation for source code layers (ensures latest code is compiled)
+ARG CACHE_BUSTER=default
+RUN echo "Cache buster: $CACHE_BUSTER"
 COPY . .
 RUN pnpm --filter @echolife/shared build
 RUN pnpm --filter @echolife/api exec prisma generate
