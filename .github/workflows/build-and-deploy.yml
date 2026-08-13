@@ -346,11 +346,11 @@ jobs:
             echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Start API (force-recreate to ensure new image is used)
+          # Start API (force-recreate + pull never to use local tagged image)
           echo "=== Docker compose config (API image) ==="
           docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep -A5 'api:' | head -10
-          echo "=== Starting API with --force-recreate ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
+          echo "=== Starting API with --force-recreate --pull never ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never api
           echo "API starting..."
 
           # Verify container is using the correct image
@@ -399,7 +399,7 @@ jobs:
           docker exec echolife-api grep -c "TrackingModule" /app/apps/api/dist/app.module.js 2>&1 || echo "TrackingModule not found in app.module.js"
 
           # Restart Web + Nginx
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never web nginx
           echo "Web/Nginx started"
           sleep 5
 
