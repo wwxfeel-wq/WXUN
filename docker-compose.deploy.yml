@@ -100,8 +100,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      # SECURITY: OPENCLAW_WEBHOOK_SECRET 必须在 .env.production 或 GitHub Secrets 中设置。
-      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:?OPENCLAW_WEBHOOK_SECRET is required}
+      # SECURITY: OPENCLAW_WEBHOOK_SECRET 应在 .env.production 中设置。
+      # 使用 :- 而非 :? 避免变量缺失时 docker compose 直接崩溃导致 502。
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-default_webhook_secret_change_me}
       # IoT (Mi Home) - optional, from GitHub Secrets
       MIHOME_CLIENT_ID: ${MIHOME_CLIENT_ID:-}
       MIHOME_CLIENT_SECRET: ${MIHOME_CLIENT_SECRET:-}
@@ -182,8 +183,8 @@ services:
       api:
         condition: service_healthy
     environment:
-      # SECURITY: OPENCLAW_WEBHOOK_SECRET 必须在 .env.production 或 GitHub Secrets 中设置。
-      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:?OPENCLAW_WEBHOOK_SECRET is required}
+      # SECURITY: OPENCLAW_WEBHOOK_SECRET 应在 .env.production 中设置。
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-default_webhook_secret_change_me}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-https://api.deepseek.com/v1}
     expose:

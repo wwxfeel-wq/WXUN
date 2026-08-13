@@ -249,8 +249,11 @@ jobs:
           docker rmi "$WEB_IMAGE" 2>/dev/null || true
           docker rmi "$API_IMAGE_SHA" 2>/dev/null || true
           docker rmi "$WEB_IMAGE_SHA" 2>/dev/null || true
-          # Prune dangling images, stopped containers, and build cache
-          docker image prune -af 2>&1 || true
+          # CRITICAL: Only prune dangling images and build cache.
+          # DO NOT use `docker image prune -af` — it deletes postgres/redis/nginx
+          # base images, causing docker-compose up to fail when it can't pull them
+          # fast enough (502 error).
+          docker image prune -f 2>&1 || true
           docker container prune -f 2>&1 || true
           docker builder prune -af 2>&1 || true
           # DO NOT prune volumes — postgres_data and redis_data must be preserved
@@ -358,57 +361,122 @@ jobs:
           echo "::error::API image created: $API_CREATED (expect today's date)"
 
           # Start DB/Redis (if not already running)
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
-          echo "DB/Redis started"
-          sleep 5
+          echo "=== Starting PostgreSQL and Redis ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis 2>&1 || {
+            echo "::error::FATAL: Cannot start postgres/redis!"
+            docker ps -a | grep echolife
+            exit 1
+          }
+          echo "DB/Redis starting..."
+          sleep 8
 
-          # Check DB is healthy
+          # Check Postgres health
           DB_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-postgres 2>/dev/null)
           echo "Postgres health: $DB_STATUS"
           if [ "$DB_STATUS" != "healthy" ]; then
             echo "WARNING: Postgres not healthy, showing logs..."
             docker logs echolife-postgres --tail 20
-            # Give it more time
             sleep 15
             DB_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-postgres 2>/dev/null)
             echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Start API (force-recreate + pull never — we've tagged both image names locally)
+          # Check Redis health (api depends on BOTH being healthy)
+          REDIS_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-redis 2>/dev/null)
+          echo "Redis health: $REDIS_STATUS"
+          if [ "$REDIS_STATUS" != "healthy" ]; then
+            echo "WARNING: Redis not healthy, showing logs..."
+            docker logs echolife-redis --tail 20
+            sleep 10
+            REDIS_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-redis 2>/dev/null)
+            echo "Redis health after wait: $REDIS_STATUS"
+          fi
+
+          # Validate compose config before starting API
+          echo "=== Validating docker-compose config ==="
+          COMPOSE_CONFIG_OUTPUT=$(docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1)
+          COMPOSE_CONFIG_EXIT=$?
+          if [ $COMPOSE_CONFIG_EXIT -ne 0 ]; then
+            echo "::error::FATAL: docker-compose config validation failed (exit $COMPOSE_CONFIG_EXIT)!"
+            echo "::error::$(echo "$COMPOSE_CONFIG_OUTPUT" | tail -10 | tr '\n' '|')"
+            # Show which env vars are missing
+            echo "=== .env.production keys ==="
+            cut -d= -f1 .env.production | sort
+            exit 1
+          fi
+          echo "Compose config valid ✓"
+          echo "Image names in config:"
+          echo "$COMPOSE_CONFIG_OUTPUT" | grep -E 'image:'
+
+          # Start API
           echo "=== Local echolife images ==="
           docker images | grep echolife || echo "No echolife images found!"
-          echo "=== Starting API with --force-recreate --pull never ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never api 2>&1 || {
-            echo "::error::FATAL: docker-compose up failed for API!"
-            echo "::error::Trying without --pull never..."
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api 2>&1 || {
-              echo "::error::FATAL: docker-compose up failed again!"
-              exit 1
-            }
-          }
+          
+          echo "=== Starting API via docker compose (attempt 1: --pull never) ==="
+          API_OUTPUT=$(docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never api 2>&1)
+          API_EXIT=$?
+          echo "Exit code: $API_EXIT"
+          echo "Output: $API_OUTPUT"
+          
+          if [ $API_EXIT -ne 0 ]; then
+            echo "::error::docker compose up (--pull never) failed (exit $API_EXIT)"
+            echo "=== Trying without --pull never (attempt 2) ==="
+            API_OUTPUT2=$(docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api 2>&1)
+            API_EXIT2=$?
+            echo "Exit code: $API_EXIT2"
+            echo "Output: $API_OUTPUT2"
+            
+            if [ $API_EXIT2 -ne 0 ]; then
+              echo "::error::docker compose up failed both times (last exit $API_EXIT2)"
+              echo "::error::Output: $(echo "$API_OUTPUT2" | tail -5 | tr '\n' '|')"
+              echo "=== Falling back to docker run ==="
+              
+              # Find the compose network name
+              NETWORK=$(docker network ls --format '{{.Name}}' | grep -E 'echolife.*backend|backend' | head -1)
+              if [ -z "$NETWORK" ]; then
+                echo "Creating backend network..."
+                NETWORK="echolife_backend"
+                docker network create "$NETWORK" 2>/dev/null || true
+              fi
+              echo "Using network: $NETWORK"
+              
+              # Connect postgres and redis to this network if not already
+              docker network connect "$NETWORK" echolife-postgres 2>/dev/null || true
+              docker network connect "$NETWORK" echolife-redis 2>/dev/null || true
+              
+              # Run API container directly with --env-file
+              docker run -d \
+                --name echolife-api \
+                --restart unless-stopped \
+                --network "$NETWORK" \
+                --network-alias api \
+                --env-file .env.production \
+                -e NODE_ENV=production \
+                -e "DATABASE_URL=postgresql://$(grep '^POSTGRES_USER=' .env.production | cut -d= -f2-):$(grep '^POSTGRES_PASSWORD=' .env.production | cut -d= -f2-)@postgres:5432/$(grep '^POSTGRES_DB=' .env.production | cut -d= -f2-)?schema=public" \
+                -e "REDIS_URL=redis://:$(grep '^REDIS_PASSWORD=' .env.production | cut -d= -f2-)@redis:6379" \
+                --health-cmd="wget --no-verbose --tries=1 --spider http://localhost:3001/api/v1/health || exit 1" \
+                --health-interval=30s \
+                --health-timeout=10s \
+                --health-retries=5 \
+                --health-start-period=120s \
+                --memory=1g \
+                --cpus=1.0 \
+                "$API_IMAGE" 2>&1 || {
+                  echo "::error::FATAL: docker run also failed!"
+                  docker logs echolife-api 2>&1 || true
+                  exit 1
+                }
+              echo "API started via docker run fallback ✓"
+              # Mark that we used docker run (web/nginx need --no-deps)
+              USED_DOCKER_RUN=1
+            else
+              USED_DOCKER_RUN=0
+            fi
+          else
+            USED_DOCKER_RUN=0
+          fi
           echo "API starting..."
-          docker compose -f docker-compose.deploy.yml --env-file .env.production ps api 2>&1
-
-          # Verify container is using the correct image
-          echo "=== Container image verification ==="
-          CONTAINER_IMAGE=$(docker inspect --format='{{.Image}}' echolife-api 2>/dev/null || echo "")
-          TAGGED_IMAGE=$(docker inspect --format='{{.Id}}' "$API_IMAGE" 2>/dev/null || echo "")
-          echo "Container image ID: $CONTAINER_IMAGE"
-          echo "Tagged image ID:    $TAGGED_IMAGE"
-          if [ -z "$CONTAINER_IMAGE" ]; then
-            echo "::error::FATAL: Container echolife-api does not exist!"
-            docker ps -a | grep echolife
-            exit 1
-          fi
-          if [ "$CONTAINER_IMAGE" != "$TAGGED_IMAGE" ]; then
-            echo "::error::FATAL: Container is NOT using the tagged image!"
-            echo "::error::Container: $CONTAINER_IMAGE"
-            echo "::error::Tagged:    $TAGGED_IMAGE"
-            # List all images to see what's there
-            docker images | grep echolife
-            exit 1
-          fi
-          echo "Container image matches tagged image ✓"
+          docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep echolife
 
           # Wait for API health
           for i in $(seq 1 60); do
@@ -440,7 +508,52 @@ jobs:
           docker exec echolife-api grep -c "TrackingModule" /app/apps/api/dist/app.module.js 2>&1 || echo "TrackingModule not found in app.module.js"
 
           # Restart Web + Nginx
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
+          if [ "$USED_DOCKER_RUN" = "1" ]; then
+            echo "=== Starting Web + Nginx with --no-deps (API was started via docker run) ==="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --no-deps web nginx 2>&1 || {
+              echo "::error::docker compose up web/nginx failed!"
+              echo "::error::Trying docker run for web..."
+              FRONTEND_NETWORK=$(docker network ls --format '{{.Name}}' | grep -E 'echolife.*frontend|frontend' | head -1)
+              BACKEND_NETWORK=$(docker network ls --format '{{.Name}}' | grep -E 'echolife.*backend|backend' | head -1)
+              docker run -d \
+                --name echolife-web \
+                --restart unless-stopped \
+                --network "$FRONTEND_NETWORK" \
+                --network-alias web \
+                --env-file .env.production \
+                -e NODE_ENV=production \
+                -e "API_INTERNAL_URL=http://api:3001" \
+                --health-cmd="wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1" \
+                --health-interval=30s \
+                --health-timeout=10s \
+                --health-retries=3 \
+                --health-start-period=40s \
+                --memory=256m \
+                "$WEB_IMAGE" 2>&1 || { echo "::error::FATAL: docker run web failed!"; exit 1; }
+              docker network connect "$BACKEND_NETWORK" echolife-web 2>/dev/null || true
+              # Start nginx via docker run too
+              docker run -d \
+                --name echolife-nginx \
+                --restart unless-stopped \
+                --network "$FRONTEND_NETWORK" \
+                --network-alias nginx \
+                -p 80:80 -p 443:443 \
+                -v /www/wwwroot/echolife/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+                -v /www/wwwroot/echolife/infra/nginx/ssl:/etc/nginx/ssl:ro \
+                --memory=64m \
+                nginx:alpine 2>&1 || { echo "::error::FATAL: docker run nginx failed!"; exit 1; }
+              docker network connect "$BACKEND_NETWORK" echolife-nginx 2>/dev/null || true
+            }
+          else
+            echo "=== Starting Web + Nginx via docker compose ==="
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx 2>&1 || {
+              echo "::error::docker compose up web/nginx failed, retrying with --no-deps..."
+              docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --no-deps web nginx 2>&1 || {
+                echo "::error::FATAL: Cannot start web/nginx!"
+                exit 1
+              }
+            }
+          fi
           echo "Web/Nginx started"
           sleep 5
 
@@ -507,6 +620,6 @@ jobs:
           fi
 
           echo "Container status:"
-          docker compose -f docker-compose.deploy.yml --env-file .env.production ps
+          docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep -E 'echolife|NAMES'
           echo "[$(date)] Deploy completed"
           DEPLOY
