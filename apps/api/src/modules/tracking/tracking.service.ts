@@ -6,6 +6,130 @@ import { TrackEventDto } from './dto/track-event.dto';
 import { QueryTrackingDto } from './dto/query-tracking.dto';
 
 /**
+ * ISO 3166-1 alpha-2 国家代码 → 中文名称映射。
+ * 用于将 geoip-lite 返回的国家代码转换为中文显示。
+ */
+const COUNTRY_ZH: Record<string, string> = {
+  CN: '中国',
+  HK: '中国香港',
+  MO: '中国澳门',
+  TW: '中国台湾',
+  US: '美国',
+  CA: '加拿大',
+  JP: '日本',
+  KR: '韩国',
+  GB: '英国',
+  DE: '德国',
+  FR: '法国',
+  RU: '俄罗斯',
+  IN: '印度',
+  SG: '新加坡',
+  AU: '澳大利亚',
+  NZ: '新西兰',
+  BR: '巴西',
+  IT: '意大利',
+  ES: '西班牙',
+  NL: '荷兰',
+  SE: '瑞典',
+  CH: '瑞士',
+  MY: '马来西亚',
+  TH: '泰国',
+  VN: '越南',
+  PH: '菲律宾',
+  ID: '印度尼西亚',
+  IE: '爱尔兰',
+  AT: '奥地利',
+  BE: '比利时',
+  PT: '葡萄牙',
+  PL: '波兰',
+  UA: '乌克兰',
+  TR: '土耳其',
+  SA: '沙特阿拉伯',
+  AE: '阿联酋',
+  IL: '以色列',
+  MX: '墨西哥',
+  AR: '阿根廷',
+  CL: '智利',
+  ZA: '南非',
+  EG: '埃及',
+  NG: '尼日利亚',
+  FI: '芬兰',
+  NO: '挪威',
+  DK: '丹麦',
+  CZ: '捷克',
+  GR: '希腊',
+  HU: '匈牙利',
+  RO: '罗马尼亚',
+  BG: '保加利亚',
+  KZ: '哈萨克斯坦',
+  PK: '巴基斯坦',
+  BD: '孟加拉国',
+  LK: '斯里兰卡',
+  NP: '尼泊尔',
+  MM: '缅甸',
+  KH: '柬埔寨',
+  LA: '老挝',
+  MN: '蒙古',
+  KP: '朝鲜',
+  IR: '伊朗',
+  IQ: '伊拉克',
+  CO: '哥伦比亚',
+  PE: '秘鲁',
+  VE: '委内瑞拉',
+  CU: '古巴',
+  MA: '摩洛哥',
+  DZ: '阿尔及利亚',
+  ET: '埃塞俄比亚',
+  KE: '肯尼亚',
+  GH: '加纳',
+};
+
+/** 常见中国城市英文名 → 中文名映射（geoip-lite 对中国城市返回英文）。 */
+const CITY_ZH: Record<string, string> = {
+  Beijing: '北京',
+  Shanghai: '上海',
+  Guangzhou: '广州',
+  Shenzhen: '深圳',
+  Hangzhou: '杭州',
+  Chengdu: '成都',
+  Chongqing: '重庆',
+  Wuhan: '武汉',
+  Xian: '西安',
+  Nanjing: '南京',
+  Suzhou: '苏州',
+  Tianjin: '天津',
+  Changsha: '长沙',
+  Zhengzhou: '郑州',
+  Qingdao: '青岛',
+  Xiamen: '厦门',
+  Fuzhou: '福州',
+  Quanzhou: '泉州',
+  Jinan: '济南',
+  Shenyang: '沈阳',
+  Harbin: '哈尔滨',
+  Kunming: '昆明',
+  Guiyang: '贵阳',
+  Nanning: '南宁',
+  Hefei: '合肥',
+  Nanchang: '南昌',
+  Changchun: '长春',
+  Shijiazhuang: '石家庄',
+  Taiyuan: '太原',
+  Dalian: '大连',
+  Ningbo: '宁波',
+  Wuxi: '无锡',
+  Foshan: '佛山',
+  Dongguan: '东莞',
+  Zhuhai: '珠海',
+  Wenzhou: '温州',
+  Shaoxing: '绍兴',
+  Jiaxing: '嘉兴',
+  Jinhua: '金华',
+  Taizhou: '台州',
+  Yiwu: '义乌',
+};
+
+/**
  * TrackingService — 埋点追踪服务
  *
  * 负责接收前端上报的页面访问与交互事件，并提供管理员数据看板所需的
@@ -264,9 +388,13 @@ export class TrackingService {
       }
     }
 
-    // 对 country/city 为空的历史 IP 做懒回填（解析后即时返回，并异步写回数据库）
+    // 对 country/city 为空或仍为英文 ISO 代码的历史 IP 做懒回填
+    // （解析后即时返回，并异步写回数据库，保证中英文显示一致性）
     for (const item of ipMap.values()) {
-      if (!item.country && !item.city) {
+      const isMissing = !item.country && !item.city;
+      const isEnglishCode =
+        item.country != null && /^[A-Z]{2}$/.test(item.country);
+      if (isMissing || isEnglishCode) {
         const geo = this.lookupGeo(item.ipAddress);
         if (geo.country || geo.city) {
           item.country = geo.country;
@@ -274,7 +402,13 @@ export class TrackingService {
           // fire-and-forget 回填数据库，不阻塞响应
           this.prisma.trackingEvent
             .updateMany({
-              where: { ipAddress: item.ipAddress, country: null, city: null },
+              where: {
+                ipAddress: item.ipAddress,
+                OR: [
+                  { country: null, city: null },
+                  { country: { in: Object.keys(COUNTRY_ZH) } },
+                ],
+              },
               data: { country: geo.country, city: geo.city },
             })
             .catch(() => {
@@ -427,8 +561,10 @@ export class TrackingService {
         return { country: null, city: null };
       }
       return {
-        country: geo.country ?? null,
-        city: geo.city ?? null,
+        country: geo.country
+          ? (COUNTRY_ZH[geo.country] ?? geo.country)
+          : null,
+        city: geo.city ? (CITY_ZH[geo.city] ?? geo.city) : null,
       };
     } catch {
       // geoip 查询失败不应影响埋点写入
