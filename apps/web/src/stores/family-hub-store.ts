@@ -428,7 +428,7 @@ export const useFamilyHubStore = create<FamilyHubState>()(
             status: string;
             progress: number;
             message: string;
-          }>(`family-hub/skills/${skillId}/learn`);
+          }>(`family-hub/skills/${skillId}/learn`, undefined, undefined, { timeout: 120_000 });
 
           if (result) {
             set((s) => ({
@@ -463,6 +463,8 @@ export const useFamilyHubStore = create<FamilyHubState>()(
           const result = await apiClient.post<SkillAbilityResult>(
             `family-hub/skills/${skillId}/invoke`,
             payload,
+            undefined,
+            { timeout: 120_000 },
           );
 
           // Sync skill progress/level returned by backend
