@@ -62,9 +62,11 @@ RUN chown -R appuser:appgroup /app
 
 EXPOSE 3001
 
-# Run migrations then start (migration failure stops startup)
+# Run migrations then start — migration failure logs warning but does NOT stop startup.
+# This ensures the API registers all routes (e.g. tracking) even if DB is temporarily
+# unavailable. Database queries will fail at runtime, but the API stays responsive.
 # R3-DOCKERFILE-008: Use local prisma binary instead of npx to avoid network
 # dependency and reduce startup time.
 WORKDIR /app/apps/api
 USER appuser
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && echo 'Migrations OK' && node dist/main.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && echo 'Migrations OK' || echo 'WARNING: Migration failed, starting API anyway...' ; node dist/main.js"]
