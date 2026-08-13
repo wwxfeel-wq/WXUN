@@ -20,7 +20,7 @@ import { Observable } from 'rxjs';
 @ApiTags('WeChat Bot')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('super_admin')
+@Roles('super_admin', 'user')
 @Controller('wechat')
 export class WechatController {
   constructor(private readonly wechatService: WechatService) {}
