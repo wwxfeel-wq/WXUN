@@ -9,8 +9,9 @@ const LOCAL_EMBEDDING_MODEL = 'Xenova/bge-small-zh-v1.5';
 
 // 使用国内镜像下载模型（HuggingFace 在国内访问不稳定），
 // 并缓存到 /app/.cache（可挂 volume 持久化，避免每次部署重复下载）。
+// 注意：remotePathTemplate 只含 {model} 和 {revision} 占位符，
+// 具体文件名由 transformers.js 自动拼接，不要添加 {file}。
 env.remoteHost = process.env.HF_ENDPOINT ?? 'https://hf-mirror.com';
-env.remotePathTemplate = '{model}/resolve/{revision}/{file}';
 env.cacheDir = process.env.TRANSFORMERS_CACHE ?? '/app/.cache/transformers';
 
 /**
