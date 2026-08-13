@@ -130,60 +130,21 @@ const STARTERS: { text: string; icon: LucideIcon }[] = [
   { text: "我想回忆一段童年的夏天", icon: Heart },
 ];
 
-const STORAGE_KEY = "echolife_interview_messages";
-
 export default function InterviewPage() {
   const user = useAuthStore((s) => s.user);
 
-  // H-022: 从 localStorage 恢复历史消息
-  const [initialMessages] = React.useState<ChatMessage[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? (JSON.parse(stored) as ChatMessage[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
+  // 对话仅保留在当前会话（刷新后自动清空），不持久化到 localStorage。
   const { messages, isStreaming, isThinking, error, skillNotice, sendMessage, stopStream, clearMessages } =
-    useSSEChat({ initialMessages });
+    useSSEChat();
 
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // 清空当前对话（内存 + localStorage 持久化）
+  // 清空当前对话
   const handleClear = React.useCallback(() => {
     clearMessages();
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
   }, [clearMessages]);
-
-  // H-022: 防抖保存消息到 localStorage（最多保存 50 条）
-  // R3-FE-021: Track previous message count to skip unnecessary serialization.
-  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const prevMsgCountRef = React.useRef(0);
-  React.useEffect(() => {
-    // Only save if message count actually changed
-    if (prevMsgCountRef.current === messages.length) return;
-    prevMsgCountRef.current = messages.length;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      try {
-        const toSave = messages.slice(-50).map(m => ({ ...m, streaming: false }));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-      } catch {
-        // localStorage 满或不可用时静默失败
-      }
-    }, 500);
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [messages]);
 
   // H-037: 跟踪用户是否在底部附近，决定是否自动滚动
   const isNearBottomRef = React.useRef(true);
