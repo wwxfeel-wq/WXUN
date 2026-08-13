@@ -97,34 +97,17 @@ jobs:
           MIHOME_CLIENT_SECRET: ${{ secrets.MIHOME_CLIENT_SECRET }}
           OPENCLAW_SECRET: ${{ secrets.OPENCLAW_WEBHOOK_SECRET }}
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-          # R3-CICD-003: Pass ACR credentials through envs instead of inline ${{ }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           command_timeout: 20m
-          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH,ACR_PASSWORD,ACR_USERNAME,ACR_REGISTRY,ACR_NAMESPACE
+          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH
           script: |
-            set -ex
-            trap 'echo "ERROR: Command failed at line $LINENO (exit code: $?)"' ERR
-            cd /www/wwwroot/echolife
-
-            # Verify ACR envs are passed correctly
-            echo "== 验证 ACR 环境变量 =="
-            if [ -z "$ACR_REGISTRY" ] || [ -z "$ACR_USERNAME" ] || [ -z "$ACR_PASSWORD" ] || [ -z "$ACR_NAMESPACE" ]; then
-              echo "ERROR: ACR envs not passed correctly!"
-              echo "ACR_REGISTRY=${ACR_REGISTRY:-EMPTY}"
-              echo "ACR_USERNAME=${ACR_USERNAME:-EMPTY}"
-              echo "ACR_NAMESPACE=${ACR_NAMESPACE:-EMPTY}"
-              echo "ACR_PASSWORD is ${ACR_PASSWORD:+set}${ACR_PASSWORD:-EMPTY}"
-              exit 1
-            fi
-            echo "ACR envs OK: registry=$ACR_REGISTRY namespace=$ACR_NAMESPACE"
+            set -x
+            cd /www/wwwroot/echolife || { echo "ERROR: /www/wwwroot/echolife not found"; exit 1; }
+            echo "SSH connection OK, working directory: $(pwd)"
 
             echo "== 同步 docker-compose.deploy.yml =="
             # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
@@ -212,28 +195,23 @@ jobs:
               fi
             fi
             echo "== 登录 ACR =="
-            # R3-CICD-003: Use $ACR_PASSWORD from envs instead of inline ${{ secrets.ACR_PASSWORD }}
-            echo "$ACR_PASSWORD" | docker login \
-              "$ACR_REGISTRY" \
-              -u "$ACR_USERNAME" --password-stdin
-            echo "ACR login result: $?"
-            docker info 2>/dev/null | grep -i "registry" || true
+            # Use inline secrets for ACR login (more reliable than envs passing)
+            echo "${{ secrets.ACR_PASSWORD }}" | docker login \
+              "${{ env.ACR_REGISTRY }}" \
+              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+            echo "ACR login exit code: $?"
             echo "== 检查 .env.production =="
             if [ ! -f .env.production ]; then
               echo "ERROR: .env.production not found! Deployment aborted."
               echo "Please create .env.production on the server with required secrets before deploying."
               exit 1
             fi
-            # R3-CICD-008: Do NOT write ACR credentials to .env.production.
-            # ACR_REGISTRY and ACR_NAMESPACE are passed as shell environment
-            # variables (via envs) and docker compose picks them up automatically.
+            # Ensure ACR vars are in .env.production for docker compose interpolation
+            grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
+            grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
             grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
             echo ".env.production check OK"
-            # Export ACR vars so docker compose can interpolate them
-            export ACR_REGISTRY="$ACR_REGISTRY"
-            export ACR_NAMESPACE="$ACR_NAMESPACE"
             echo "== 拉取新镜像 =="
-            # R3-CICD-004: Fail deployment if image pull fails (was: || echo "WARNING: pull failed")
             docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || { echo "ERROR: pull failed"; exit 1; }
             # R3-CICD-005: Save current image tags for potential rollback.
             # Full automatic rollback is a future improvement. For now, record
