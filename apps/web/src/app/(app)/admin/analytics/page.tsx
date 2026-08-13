@@ -127,7 +127,7 @@ function formatRelativeTime(date: string | Date): string {
 }
 
 function getDeviceIcon(deviceType: string) {
-  const t = deviceType.toLowerCase();
+  const t = (deviceType ?? "").toLowerCase();
   if (t.includes("mobile") || t.includes("phone")) return Smartphone;
   if (t.includes("tablet")) return Tablet;
   return Monitor;

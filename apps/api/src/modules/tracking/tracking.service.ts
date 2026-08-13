@@ -132,12 +132,12 @@ export class TrackingService {
       totalPageViews,
       uniqueVisitors: uniqueVisitorGroups.length,
       uniqueIps: uniqueIpGroups.length,
-      last24hCount,
+      last24hEvents: last24hCount,
       topPages: topPages.map((p) => ({
         pagePath: p.pagePath,
         count: p._count,
       })),
-      eventTypes: eventTypes.map((e) => ({
+      eventTypeDistribution: eventTypes.map((e) => ({
         eventType: e.eventType,
         count: e._count,
       })),
@@ -204,6 +204,9 @@ export class TrackingService {
         lastSeen: Date;
         country: string | null;
         city: string | null;
+        browser: string | null;
+        os: string | null;
+        deviceType: string | null;
       }
     >();
 
@@ -224,7 +227,36 @@ export class TrackingService {
           lastSeen: g._max.createdAt ?? new Date(0),
           country: g.country,
           city: g.city,
+          browser: null,
+          os: null,
+          deviceType: null,
         });
+      }
+    }
+
+    // 为每个 IP 补齐最近一次事件的 browser/os/deviceType（单次查询，避免 N+1）
+    const ips = Array.from(ipMap.keys());
+    if (ips.length > 0) {
+      const latestEvents = await this.prisma.trackingEvent.findMany({
+        where: { ipAddress: { in: ips } },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          ipAddress: true,
+          browser: true,
+          os: true,
+          deviceType: true,
+        },
+      });
+      const seen = new Set<string>();
+      for (const e of latestEvents) {
+        if (seen.has(e.ipAddress)) continue;
+        seen.add(e.ipAddress);
+        const item = ipMap.get(e.ipAddress);
+        if (item) {
+          item.browser = e.browser;
+          item.os = e.os;
+          item.deviceType = e.deviceType;
+        }
       }
     }
 
