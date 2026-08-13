@@ -320,8 +320,24 @@ jobs:
 
           # Tag SHA images as :latest so docker-compose can use them
           echo "=== Tagging SHA images as :latest ==="
+          # Tag with the name from secrets (what we've been using)
           docker tag "$API_IMAGE_SHA" "$API_IMAGE" || { echo "::error::FATAL: cannot tag API image"; exit 1; }
           docker tag "$WEB_IMAGE_SHA" "$WEB_IMAGE" || { echo "::error::FATAL: cannot tag WEB image"; exit 1; }
+          
+          # ALSO tag with the name from .env.production (what docker-compose actually uses)
+          # This handles cases where .env.production values differ from secrets
+          ENV_ACR_REGISTRY=$(grep '^ACR_REGISTRY=' .env.production | head -1 | cut -d= -f2-)
+          ENV_ACR_NAMESPACE=$(grep '^ACR_NAMESPACE=' .env.production | head -1 | cut -d= -f2-)
+          ENV_API_IMAGE="${ENV_ACR_REGISTRY}/${ENV_ACR_NAMESPACE}/echolife-api:latest"
+          ENV_WEB_IMAGE="${ENV_ACR_REGISTRY}/${ENV_ACR_NAMESPACE}/echolife-web:latest"
+          echo "Secrets API image:  $API_IMAGE"
+          echo "EnvFile API image:  $ENV_API_IMAGE"
+          if [ "$ENV_API_IMAGE" != "$API_IMAGE" ]; then
+            echo "WARNING: .env.production image name differs from secrets! Tagging both."
+            echo "::error::WARNING: EnvFile image: $ENV_API_IMAGE"
+            docker tag "$API_IMAGE_SHA" "$ENV_API_IMAGE" || { echo "::error::FATAL: cannot tag API image (env)"; exit 1; }
+            docker tag "$WEB_IMAGE_SHA" "$ENV_WEB_IMAGE" || { echo "::error::FATAL: cannot tag WEB image (env)"; exit 1; }
+          fi
           echo "Images tagged OK"
 
           # Print image digests to verify we got the new images
@@ -358,30 +374,32 @@ jobs:
             echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Start API (force-recreate; pull_policy: never is in docker-compose.deploy.yml)
-          echo "=== Docker compose config (API image) ==="
-          COMPOSE_API_IMAGE=$(docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep 'image:' | head -1 | awk '{print $2}')
-          echo "Compose API image: $COMPOSE_API_IMAGE"
-          echo "Tagged API image:  $API_IMAGE"
-          echo "Local images:"
-          docker images | grep echolife
-          if [ "$COMPOSE_API_IMAGE" != "$API_IMAGE" ]; then
-            echo "::error::WARNING: Compose image name != Tagged image name!"
-            echo "::error::Compose: $COMPOSE_API_IMAGE"
-            echo "::error::Tagged:  $API_IMAGE"
-          fi
-          echo "=== Starting API with --force-recreate ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
+          # Start API (force-recreate + pull never — we've tagged both image names locally)
+          echo "=== Local echolife images ==="
+          docker images | grep echolife || echo "No echolife images found!"
+          echo "=== Starting API with --force-recreate --pull never ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never api 2>&1 || {
+            echo "::error::FATAL: docker-compose up failed for API!"
+            echo "::error::Trying without --pull never..."
+            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api 2>&1 || {
+              echo "::error::FATAL: docker-compose up failed again!"
+              exit 1
+            }
+          }
           echo "API starting..."
-          # Show docker-compose output for debugging
           docker compose -f docker-compose.deploy.yml --env-file .env.production ps api 2>&1
 
           # Verify container is using the correct image
           echo "=== Container image verification ==="
-          CONTAINER_IMAGE=$(docker inspect --format='{{.Image}}' echolife-api 2>&1)
-          TAGGED_IMAGE=$(docker inspect --format='{{.Id}}' "$API_IMAGE" 2>&1)
+          CONTAINER_IMAGE=$(docker inspect --format='{{.Image}}' echolife-api 2>/dev/null || echo "")
+          TAGGED_IMAGE=$(docker inspect --format='{{.Id}}' "$API_IMAGE" 2>/dev/null || echo "")
           echo "Container image ID: $CONTAINER_IMAGE"
           echo "Tagged image ID:    $TAGGED_IMAGE"
+          if [ -z "$CONTAINER_IMAGE" ]; then
+            echo "::error::FATAL: Container echolife-api does not exist!"
+            docker ps -a | grep echolife
+            exit 1
+          fi
           if [ "$CONTAINER_IMAGE" != "$TAGGED_IMAGE" ]; then
             echo "::error::FATAL: Container is NOT using the tagged image!"
             echo "::error::Container: $CONTAINER_IMAGE"
