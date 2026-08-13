@@ -358,12 +358,23 @@ jobs:
             echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Start API (force-recreate + pull never to use local tagged image)
+          # Start API (force-recreate; pull_policy: never is in docker-compose.deploy.yml)
           echo "=== Docker compose config (API image) ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep -A5 'api:' | head -10
-          echo "=== Starting API with --force-recreate --pull never ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never api
+          COMPOSE_API_IMAGE=$(docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep 'image:' | head -1 | awk '{print $2}')
+          echo "Compose API image: $COMPOSE_API_IMAGE"
+          echo "Tagged API image:  $API_IMAGE"
+          echo "Local images:"
+          docker images | grep echolife
+          if [ "$COMPOSE_API_IMAGE" != "$API_IMAGE" ]; then
+            echo "::error::WARNING: Compose image name != Tagged image name!"
+            echo "::error::Compose: $COMPOSE_API_IMAGE"
+            echo "::error::Tagged:  $API_IMAGE"
+          fi
+          echo "=== Starting API with --force-recreate ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
           echo "API starting..."
+          # Show docker-compose output for debugging
+          docker compose -f docker-compose.deploy.yml --env-file .env.production ps api 2>&1
 
           # Verify container is using the correct image
           echo "=== Container image verification ==="
@@ -411,7 +422,7 @@ jobs:
           docker exec echolife-api grep -c "TrackingModule" /app/apps/api/dist/app.module.js 2>&1 || echo "TrackingModule not found in app.module.js"
 
           # Restart Web + Nginx
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate --pull never web nginx
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
           echo "Web/Nginx started"
           sleep 5
 
