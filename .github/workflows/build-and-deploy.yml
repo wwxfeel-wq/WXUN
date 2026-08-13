@@ -488,6 +488,11 @@ jobs:
           echo "API starting..."
           docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep echolife
 
+          # 修复 transformers 模型缓存 volume 权限（named volume 默认 root 所有，
+          # 容器内 appuser 无法写入导致模型缓存 EACCES）。用 root 执行 chown。
+          docker exec -u root echolife-api sh -c 'mkdir -p /app/.cache/transformers && chown -R appuser:appgroup /app/.cache' 2>/dev/null \
+            || echo "WARNING: cache chown failed (non-fatal)"
+
           # Wait for API health — reduced from 300s to 120s for faster feedback
           for i in $(seq 1 24); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
