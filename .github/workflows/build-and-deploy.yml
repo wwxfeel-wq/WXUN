@@ -262,7 +262,7 @@ jobs:
 
       - name: Download diagnostic
         continue-on-error: true
-        uses: appleboy/scp-action@v0.1.8
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
