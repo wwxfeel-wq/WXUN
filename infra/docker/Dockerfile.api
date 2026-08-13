@@ -45,6 +45,12 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# CRITICAL: CACHE_BUSTER must be declared in EVERY stage that needs cache invalidation.
+# Previously it was only in builder stage, so BuildKit cached the runner stage from
+# old builds (before tracking module was added), bypassing all verification steps.
+ARG CACHE_BUSTER=default
+RUN echo "Runner cache buster: $CACHE_BUSTER"
+
 # Install Chromium for Puppeteer screenshot support
 # R3-DOCKERFILE-003: chromium is not version-pinned. For reproducible builds,
 # consider pinning to a specific version (e.g. chromium=131.*). Left unpinned
