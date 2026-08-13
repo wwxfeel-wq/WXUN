@@ -196,15 +196,24 @@ jobs:
             for attempt in 1 2 3 4 5; do
               echo "=== Pull $name attempt $attempt/5: $img ==="
               local pull_output
-              pull_output=$(docker pull "$img" 2>&1) && {
+              # Add 120s timeout per pull attempt
+              pull_output=$(timeout 120 docker pull "$img" 2>&1) && {
                 echo "$name pull OK"
                 docker inspect --format='Created: {{.Created}}' "$img" 2>/dev/null || true
                 return 0
               }
-              echo "Pull $name attempt $attempt FAILED. Full error:"
+              local pull_exit=$?
+              echo "Pull $name attempt $attempt FAILED (exit code: $pull_exit). Full output:"
               echo "$pull_output"
-              # Also emit as GitHub Actions error for visibility
-              echo "::error::Pull $name attempt $attempt failed: $(echo "$pull_output" | tail -5)"
+              # Emit full error as GitHub Actions annotation (truncated to ~200 chars for annotation)
+              local err_summary
+              err_summary=$(echo "$pull_output" | grep -iE 'error|fail|denied|not found|timeout|expired' | tail -3)
+              if [ -n "$err_summary" ]; then
+                echo "::error::Pull $name attempt $attempt (exit $pull_exit): $err_summary"
+              else
+                echo "::error::Pull $name attempt $attempt (exit $pull_exit). Last 10 lines of output:"
+                echo "::error::$(echo "$pull_output" | tail -10 | tr '\n' ' ')"
+              fi
               if [ "$attempt" -lt 5 ]; then
                 echo "Retrying in 15s..."
                 sleep 15
