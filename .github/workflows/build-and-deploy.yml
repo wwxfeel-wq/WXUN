@@ -478,14 +478,60 @@ jobs:
           echo "API starting..."
           docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep echolife
 
-          # Wait for API health
-          for i in $(seq 1 60); do
+          # Wait for API health — reduced from 300s to 120s for faster feedback
+          for i in $(seq 1 24); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
+            CONTAINER_STATE=$(docker inspect --format='{{.State.Status}}' echolife-api 2>/dev/null)
+            RESTART_COUNT=$(docker inspect --format='{{.RestartCount}}' echolife-api 2>/dev/null)
+            
             if [ "$STATUS" = "healthy" ]; then
               echo "API healthy after $((i*5))s"
               break
             fi
-            [ "$i" -eq 60 ] && { echo "::error::FATAL: API not healthy after 300s"; docker logs echolife-api --tail 200; exit 1; }
+            
+            # Early exit: if container has exited or is in a restart loop, show logs immediately
+            if [ "$CONTAINER_STATE" = "exited" ] || [ "$CONTAINER_STATE" = "dead" ]; then
+              echo "::error::FATAL: API container has exited! State: $CONTAINER_STATE"
+              echo "::error::Container exit code: $(docker inspect --format='{{.State.ExitCode}}' echolife-api 2>/dev/null)"
+              echo "::error::OOM killed: $(docker inspect --format='{{.State.OOMKilled}}' echolife-api 2>/dev/null)"
+              echo "::error::Error: $(docker inspect --format='{{.State.Error}}' echolife-api 2>/dev/null)"
+              API_LOGS=$(docker logs echolife-api 2>&1 | tail -50)
+              echo "::error::API logs (last 50 lines): $(echo "$API_LOGS" | tr '\n' '|')"
+              exit 1
+            fi
+            
+            # If restart count is high, the container is crash-looping
+            if [ "$RESTART_COUNT" -gt 3 ] 2>/dev/null; then
+              echo "::error::FATAL: API container is crash-looping (restart count: $RESTART_COUNT)!"
+              API_LOGS=$(docker logs echolife-api 2>&1 | tail -50)
+              echo "::error::API logs (last 50 lines): $(echo "$API_LOGS" | tr '\n' '|')"
+              exit 1
+            fi
+            
+            # At 30s, show a quick log snapshot for debugging
+            if [ "$i" -eq 6 ]; then
+              echo "=== API logs snapshot at 30s ==="
+              docker logs echolife-api --tail 30 2>&1
+              echo "=== Container state: $CONTAINER_STATE, Health: $STATUS, Restarts: $RESTART_COUNT ==="
+            fi
+            
+            [ "$i" -eq 24 ] && { 
+              echo "::error::FATAL: API not healthy after 120s"
+              echo "::error::Container state: $CONTAINER_STATE, Health: $STATUS, Restarts: $RESTART_COUNT"
+              echo "=== Full API logs (last 200 lines) ==="
+              docker logs echolife-api --tail 200 2>&1
+              echo "=== Container inspect ==="
+              docker inspect echolife-api 2>&1 | grep -A5 '"State"' | head -20
+              # Emit key log lines as annotations for visibility
+              API_LOG_LINES=$(docker logs echolife-api 2>&1 | grep -iE 'error|fatal|fail|exception|crash|EADDR|ECONN|MODULE_NOT_FOUND|cannot find' | tail -10)
+              if [ -n "$API_LOG_LINES" ]; then
+                echo "::error::Key error lines from API logs:"
+                echo "$API_LOG_LINES" | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+              fi
+              exit 1
+            }
             sleep 5
           done
 
