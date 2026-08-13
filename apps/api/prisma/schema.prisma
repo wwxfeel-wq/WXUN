@@ -903,13 +903,13 @@ model UserHabitProfile {
   id                String   @id @default(uuid()) @db.Uuid
   userId            String   @unique @map("user_id") @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  preferredTopics   Json     @default("[]")
-  avgMessageLength  String   @default("medium") @db.VarChar(20)
-  emotionalPattern  String   @default("stable") @db.VarChar(20)
-  activeTimeSlots   Json     @default("[]")
-  toolUsageRate     String   @default("balanced") @db.VarChar(20)
-  formalityLevel    String   @default("casual") @db.VarChar(20)
-  conversationCount Int      @default(0)
+  preferredTopics   Json     @default("[]") @map("preferred_topics")
+  avgMessageLength  String   @default("medium") @db.VarChar(20) @map("avg_message_length")
+  emotionalPattern  String   @default("stable") @db.VarChar(20) @map("emotional_pattern")
+  activeTimeSlots   Json     @default("[]") @map("active_time_slots")
+  toolUsageRate     String   @default("balanced") @db.VarChar(20) @map("tool_usage_rate")
+  formalityLevel    String   @default("casual") @db.VarChar(20) @map("formality_level")
+  conversationCount Int      @default(0) @map("conversation_count")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("user_habit_profiles")
