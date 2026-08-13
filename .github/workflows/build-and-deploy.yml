@@ -80,144 +80,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Write deploy script
-        run: |
-          cat > /tmp/remote-deploy.sh << 'SCRIPT_EOF'
-          #!/bin/bash
-          # No set -e: we report errors manually
-          LOG=/tmp/deploy_diag.txt
-          echo "=== Deploy started at $(date) ===" > "$LOG"
-
-          cd /www/wwwroot/echolife
-          if [ $? -ne 0 ]; then
-            echo "FATAL: /www/wwwroot/echolife not found" >> "$LOG"
-            exit 1
-          fi
-          echo "PWD: $(pwd)" >> "$LOG"
-
-          # Load ACR credentials from uploaded file
-          if [ ! -s /tmp/deploy-secrets.env ]; then
-            echo "FATAL: /tmp/deploy-secrets.env missing" >> "$LOG"
-            exit 1
-          fi
-          echo "Secrets file found" >> "$LOG"
-
-          ACR_REGISTRY_VALUE=$(sed -n 's/^ACR_REGISTRY_B64=//p' /tmp/deploy-secrets.env | base64 -d)
-          ACR_NAMESPACE_VALUE=$(sed -n 's/^ACR_NAMESPACE_B64=//p' /tmp/deploy-secrets.env | base64 -d)
-          ACR_USERNAME_VALUE=$(sed -n 's/^ACR_USERNAME_B64=//p' /tmp/deploy-secrets.env | base64 -d)
-          ACR_PASSWORD_VALUE=$(sed -n 's/^ACR_PASSWORD_B64=//p' /tmp/deploy-secrets.env | base64 -d)
-          rm -f /tmp/deploy-secrets.env
-
-          if [ -z "$ACR_REGISTRY_VALUE" ] || [ -z "$ACR_NAMESPACE_VALUE" ] || [ -z "$ACR_USERNAME_VALUE" ] || [ -z "$ACR_PASSWORD_VALUE" ]; then
-            echo "FATAL: Failed to decode ACR credentials" >> "$LOG"
-            echo "  REGISTRY=[${ACR_REGISTRY_VALUE:+set}]" >> "$LOG"
-            echo "  NAMESPACE=[${ACR_NAMESPACE_VALUE:+set}]" >> "$LOG"
-            echo "  USERNAME=[${ACR_USERNAME_VALUE:+set}]" >> "$LOG"
-            echo "  PASSWORD=[${ACR_PASSWORD_VALUE:+set}]" >> "$LOG"
-            exit 1
-          fi
-          echo "ACR credentials decoded OK" >> "$LOG"
-
-          # Install compose/nginx files
-          cp /tmp/docker-compose.deploy.yml docker-compose.deploy.yml 2>>"$LOG"
-          mkdir -p infra/nginx
-          cp /tmp/nginx.conf infra/nginx/nginx.conf 2>>"$LOG"
-          echo "Config files installed" >> "$LOG"
-
-          # Ensure .env.production has required keys
-          if [ ! -f .env.production ]; then
-            echo "FATAL: .env.production not found" >> "$LOG"
-            exit 1
-          fi
-          grep -q '^ACR_REGISTRY=' .env.production || echo "ACR_REGISTRY=$ACR_REGISTRY_VALUE" >> .env.production
-          sed -i "s|^ACR_REGISTRY=.*|ACR_REGISTRY=$ACR_REGISTRY_VALUE|" .env.production
-          grep -q '^ACR_NAMESPACE=' .env.production || echo "ACR_NAMESPACE=$ACR_NAMESPACE_VALUE" >> .env.production
-          sed -i "s|^ACR_NAMESPACE=.*|ACR_NAMESPACE=$ACR_NAMESPACE_VALUE|" .env.production
-          grep -q '^NEXT_PUBLIC_API_URL=' .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
-          echo ".env.production updated" >> "$LOG"
-
-          # ACR login
-          echo "$ACR_PASSWORD_VALUE" | docker login "$ACR_REGISTRY_VALUE" -u "$ACR_USERNAME_VALUE" --password-stdin >>"$LOG" 2>&1
-          if [ $? -ne 0 ]; then
-            echo "FATAL: docker login failed" >> "$LOG"
-            exit 1
-          fi
-          echo "Docker login OK" >> "$LOG"
-
-          # Pull images
-          echo "Pulling images..." >> "$LOG"
-          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api >>"$LOG" 2>&1
-          if [ $? -ne 0 ]; then
-            echo "FATAL: docker pull failed" >> "$LOG"
-            exit 1
-          fi
-          echo "Image pull OK" >> "$LOG"
-
-          # Start DB/Redis
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis >>"$LOG" 2>&1
-          echo "DB/Redis started" >> "$LOG"
-          sleep 5
-
-          # Restart API
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api >>"$LOG" 2>&1
-          echo "API container recreating..." >> "$LOG"
-
-          # Wait for API health
-          API_HEALTHY=false
-          for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
-            if [ "$STATUS" = "healthy" ]; then
-              API_HEALTHY=true
-              echo "API healthy after ${i} checks" >> "$LOG"
-              break
-            fi
-            sleep 5
-          done
-          if [ "$API_HEALTHY" = "false" ]; then
-            echo "FATAL: API not healthy after 150s" >> "$LOG"
-            docker logs echolife-api --tail 50 >>"$LOG" 2>&1
-            exit 1
-          fi
-
-          # Restart Web + Nginx
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx >>"$LOG" 2>&1
-          echo "Web/Nginx started" >> "$LOG"
-          sleep 5
-
-          # HTTP health check
-          HTTP_OK=false
-          for i in $(seq 1 12); do
-            if curl -fsS http://localhost/api/v1/health >>"$LOG" 2>&1; then
-              HTTP_OK=true
-              echo "HTTP health OK after ${i} checks" >> "$LOG"
-              break
-            fi
-            sleep 5
-          done
-          if [ "$HTTP_OK" = "false" ]; then
-            echo "WARNING: HTTP health check failed, continuing anyway" >> "$LOG"
-          fi
-
-          # Smoke test: tracking endpoint
-          echo "Testing tracking endpoint..." >> "$LOG"
-          TRACK_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost/api/v1/tracking/events \
-            -H 'Content-Type: application/json' \
-            -d '{"sessionId":"deploy-smoke","eventType":"page_view","pagePath":"/deploy-smoke","pageTitle":"Deploy Smoke Test"}' 2>>"$LOG")
-          echo "Tracking endpoint returned HTTP $TRACK_RESP" >> "$LOG"
-
-          # Final status
-          echo "=== Container status ===" >> "$LOG"
-          docker compose -f docker-compose.deploy.yml --env-file .env.production ps >>"$LOG" 2>&1
-          echo "=== API logs (last 20) ===" >> "$LOG"
-          docker logs echolife-api --tail 20 >>"$LOG" 2>&1
-          echo "=== Deploy completed at $(date) ===" >> "$LOG"
-
-          exit 0
-          SCRIPT_EOF
-          chmod +x /tmp/remote-deploy.sh
-          echo "Script written, $(wc -l < /tmp/remote-deploy.sh) lines"
-
-      - name: Upload and execute deploy
+      - name: Deploy
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -229,58 +92,114 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
 
-          # Verify secrets
-          if [ -z "$SSHPASS" ] || [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then
-            echo "::error::SSH secrets missing"
-            exit 1
-          fi
+          # Base64-encode ACR credentials for safe transport
+          ACR_REGISTRY_B64=$(printf '%s' "$ACR_REGISTRY" | base64 -w0)
+          ACR_NAMESPACE_B64=$(printf '%s' "$ACR_NAMESPACE_VALUE" | base64 -w0)
+          ACR_USERNAME_B64=$(printf '%s' "$ACR_USERNAME" | base64 -w0)
+          ACR_PASSWORD_B64=$(printf '%s' "$ACR_PASSWORD" | base64 -w0)
 
-          # Prepare secrets file (base64 encoded)
-          printf 'ACR_REGISTRY_B64=%s\n' "$(printf '%s' "$ACR_REGISTRY" | base64 -w0)" > /tmp/deploy-secrets.env
-          printf 'ACR_NAMESPACE_B64=%s\n' "$(printf '%s' "$ACR_NAMESPACE_VALUE" | base64 -w0)" >> /tmp/deploy-secrets.env
-          printf 'ACR_USERNAME_B64=%s\n' "$(printf '%s' "$ACR_USERNAME" | base64 -w0)" >> /tmp/deploy-secrets.env
-          printf 'ACR_PASSWORD_B64=%s\n' "$(printf '%s' "$ACR_PASSWORD" | base64 -w0)" >> /tmp/deploy-secrets.env
+          echo "=== Uploading files to server ==="
+          # Upload compose file, nginx config, and credentials
+          printf 'ACR_REGISTRY_B64=%s\nACR_NAMESPACE_B64=%s\nACR_USERNAME_B64=%s\nACR_PASSWORD_B64=%s\n' \
+            "$ACR_REGISTRY_B64" "$ACR_NAMESPACE_B64" "$ACR_USERNAME_B64" "$ACR_PASSWORD_B64" \
+            > /tmp/deploy-secrets.env
 
-          # SSH test
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            "${SSH_USER}@${SSH_HOST}" 'echo SSH_OK'
-          if [ $? -ne 0 ]; then
-            echo "::error::SSH connection failed"
-            exit 1
-          fi
-
-          # Upload files
           sshpass -e scp -o StrictHostKeyChecking=no \
             /tmp/deploy-secrets.env \
             docker-compose.deploy.yml \
             infra/nginx/nginx.conf \
-            /tmp/remote-deploy.sh \
             "${SSH_USER}@${SSH_HOST}:/tmp/"
-          if [ $? -ne 0 ]; then
-            echo "::error::SCP upload failed"
-            exit 1
-          fi
-          echo "Files uploaded OK"
 
-          # Execute deploy script remotely
-          echo "=== Starting remote deployment ==="
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            "${SSH_USER}@${SSH_HOST}" 'bash /tmp/remote-deploy.sh'
-          DEPLOY_EXIT=$?
-          echo "=== Deploy exit code: $DEPLOY_EXIT ==="
+          echo "=== Files uploaded, executing deploy ==="
+          # Execute deploy — all output goes to stdout (visible in GitHub Actions logs)
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            "${SSH_USER}@${SSH_HOST}" 'bash -s' << 'DEPLOY'
+          # All output to stdout for GitHub Actions visibility
+          echo "[$(date)] Deploy started"
+          cd /www/wwwroot/echolife || { echo "FATAL: /www/wwwroot/echolife not found"; exit 1; }
+          echo "Working dir: $(pwd)"
 
-          # Download diagnostic log regardless
-          sshpass -e scp -o StrictHostKeyChecking=no \
-            "${SSH_USER}@${SSH_HOST}:/tmp/deploy_diag.txt" deploy_diag.txt || true
+          # Decode ACR credentials
+          . /tmp/deploy-secrets.env
+          rm -f /tmp/deploy-secrets.env
+          ACR_REGISTRY_VALUE=$(echo "$ACR_REGISTRY_B64" | base64 -d)
+          ACR_NAMESPACE_VALUE=$(echo "$ACR_NAMESPACE_B64" | base64 -d)
+          ACR_USERNAME_VALUE=$(echo "$ACR_USERNAME_B64" | base64 -d)
+          ACR_PASSWORD_VALUE=$(echo "$ACR_PASSWORD_B64" | base64 -d)
 
-          exit $DEPLOY_EXIT
+          [ -z "$ACR_REGISTRY_VALUE" ] && { echo "FATAL: ACR_REGISTRY empty"; exit 1; }
+          [ -z "$ACR_NAMESPACE_VALUE" ] && { echo "FATAL: ACR_NAMESPACE empty"; exit 1; }
+          [ -z "$ACR_USERNAME_VALUE" ] && { echo "FATAL: ACR_USERNAME empty"; exit 1; }
+          [ -z "$ACR_PASSWORD_VALUE" ] && { echo "FATAL: ACR_PASSWORD empty"; exit 1; }
+          echo "ACR credentials OK: registry=$ACR_REGISTRY_VALUE namespace=$ACR_NAMESPACE_VALUE"
 
-      - name: Upload diagnostic artifact
-        if: always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-diagnostic
-          path: deploy_diag.txt
-          retention-days: 7
-          if-no-files-found: ignore
+          # Install config files
+          cp /tmp/docker-compose.deploy.yml docker-compose.deploy.yml
+          mkdir -p infra/nginx
+          cp /tmp/nginx.conf infra/nginx/nginx.conf
+          echo "Config files installed"
+
+          # Update .env.production
+          [ ! -f .env.production ] && { echo "FATAL: .env.production not found"; exit 1; }
+          sed -i "s|^ACR_REGISTRY=.*|ACR_REGISTRY=$ACR_REGISTRY_VALUE|" .env.production
+          grep -q '^ACR_REGISTRY=' .env.production || echo "ACR_REGISTRY=$ACR_REGISTRY_VALUE" >> .env.production
+          sed -i "s|^ACR_NAMESPACE=.*|ACR_NAMESPACE=$ACR_NAMESPACE_VALUE|" .env.production
+          grep -q '^ACR_NAMESPACE=' .env.production || echo "ACR_NAMESPACE=$ACR_NAMESPACE_VALUE" >> .env.production
+          grep -q '^NEXT_PUBLIC_API_URL=' .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
+          echo ".env.production updated"
+
+          # Check docker compose version
+          echo "Docker version: $(docker --version)"
+          echo "Docker compose version: $(docker compose version 2>&1 || docker-compose version 2>&1)"
+
+          # ACR login
+          echo "$ACR_PASSWORD_VALUE" | docker login "$ACR_REGISTRY_VALUE" \
+            -u "$ACR_USERNAME_VALUE" --password-stdin
+          [ $? -ne 0 ] && { echo "FATAL: docker login failed"; exit 1; }
+          echo "Docker login OK"
+
+          # Pull images
+          echo "Pulling images..."
+          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api
+          [ $? -ne 0 ] && { echo "FATAL: docker pull failed"; exit 1; }
+          echo "Image pull OK"
+
+          # Start DB/Redis
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
+          echo "DB/Redis started"
+          sleep 5
+
+          # Restart API
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
+          echo "API recreating..."
+
+          # Wait for API health
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "API healthy after $((i*5))s"
+              break
+            fi
+            [ "$i" -eq 30 ] && { echo "FATAL: API not healthy after 150s"; docker logs echolife-api --tail 50; exit 1; }
+            sleep 5
+          done
+
+          # Restart Web + Nginx
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
+          echo "Web/Nginx started"
+          sleep 5
+
+          # HTTP health check
+          curl -fsS http://localhost/api/v1/health && echo "" || echo "WARNING: HTTP health check failed"
+
+          # Smoke test: tracking endpoint
+          echo "Testing tracking endpoint..."
+          curl -s -o /dev/null -w "Tracking: HTTP %{http_code}\n" -X POST http://localhost/api/v1/tracking/events \
+            -H 'Content-Type: application/json' \
+            -d '{"sessionId":"deploy-smoke","eventType":"page_view","pagePath":"/deploy-smoke","pageTitle":"Deploy Smoke Test"}'
+
+          echo "Container status:"
+          docker compose -f docker-compose.deploy.yml --env-file .env.production ps
+          echo "[$(date)] Deploy completed"
+          DEPLOY
