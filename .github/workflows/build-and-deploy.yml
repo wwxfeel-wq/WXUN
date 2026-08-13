@@ -64,11 +64,10 @@ jobs:
           push: true
           provenance: false
           sbom: false
+          no-cache: true
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
 
   deploy:
     name: Deploy to Aliyun ECS
@@ -182,9 +181,15 @@ jobs:
           echo "Pulling API image: $API_IMAGE"
           docker pull "$API_IMAGE"
           [ $? -ne 0 ] && { echo "::error::FATAL: cannot pull $API_IMAGE"; docker pull "$API_IMAGE" 2>&1; exit 1; }
+          echo "API image digest:"
+          docker inspect --format='{{index .RepoDigests 0}}' "$API_IMAGE" 2>/dev/null || true
+          docker inspect --format='Created: {{.Created}}' "$API_IMAGE" 2>/dev/null || true
+
           echo "Pulling WEB image: $WEB_IMAGE"
           docker pull "$WEB_IMAGE"
           [ $? -ne 0 ] && { echo "::error::FATAL: cannot pull $WEB_IMAGE"; exit 1; }
+          echo "WEB image digest:"
+          docker inspect --format='{{index .RepoDigests 0}}' "$WEB_IMAGE" 2>/dev/null || true
           echo "Image pull OK"
 
           # Start DB/Redis
@@ -192,20 +197,33 @@ jobs:
           echo "DB/Redis started"
           sleep 5
 
+          # Check DB is healthy
+          DB_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-postgres 2>/dev/null)
+          echo "Postgres health: $DB_STATUS"
+          if [ "$DB_STATUS" != "healthy" ]; then
+            echo "WARNING: Postgres not healthy, showing logs..."
+            docker logs echolife-postgres --tail 20
+          fi
+
           # Restart API
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
           echo "API recreating..."
 
           # Wait for API health
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-api 2>/dev/null)
             if [ "$STATUS" = "healthy" ]; then
               echo "API healthy after $((i*5))s"
               break
             fi
-            [ "$i" -eq 30 ] && { echo "::error::FATAL: API not healthy after 150s"; docker logs echolife-api --tail 50; exit 1; }
+            [ "$i" -eq 40 ] && { echo "::error::FATAL: API not healthy after 200s"; docker logs echolife-api --tail 100; exit 1; }
             sleep 5
           done
+
+          # Show API startup logs (check for TrackingModule)
+          echo "=== API startup logs (last 60 lines) ==="
+          docker logs echolife-api --tail 60 2>&1
+          echo "=== End API logs ==="
 
           # Restart Web + Nginx
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web nginx
@@ -213,13 +231,24 @@ jobs:
           sleep 5
 
           # HTTP health check
+          echo "=== Health check ==="
           curl -fsS http://localhost/api/v1/health && echo "" || echo "WARNING: HTTP health check failed"
 
           # Smoke test: tracking endpoint
-          echo "Testing tracking endpoint..."
-          curl -s -o /dev/null -w "Tracking: HTTP %{http_code}\n" -X POST http://localhost/api/v1/tracking/events \
+          echo "=== Tracking endpoint test ==="
+          TRACKING_RESP=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST http://localhost/api/v1/tracking/events \
             -H 'Content-Type: application/json' \
-            -d '{"sessionId":"deploy-smoke","eventType":"page_view","pagePath":"/deploy-smoke","pageTitle":"Deploy Smoke Test"}'
+            -d '{"sessionId":"deploy-smoke","eventType":"page_view","pagePath":"/deploy-smoke","pageTitle":"Deploy Smoke Test"}')
+          echo "Tracking response: $TRACKING_RESP"
+
+          # If tracking returned 404, show all registered routes
+          TRACKING_CODE=$(echo "$TRACKING_RESP" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
+          if [ "$TRACKING_CODE" = "404" ]; then
+            echo "::error::FATAL: Tracking endpoint returned 404 — module not loaded"
+            echo "=== Full API logs ==="
+            docker logs echolife-api 2>&1 | tail -100
+            exit 1
+          fi
 
           echo "Container status:"
           docker compose -f docker-compose.deploy.yml --env-file .env.production ps
