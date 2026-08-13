@@ -70,8 +70,6 @@ jobs:
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}
           build-args: |
             CACHE_BUSTER=${{ github.sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
 
   deploy:
     name: Deploy to Aliyun ECS
