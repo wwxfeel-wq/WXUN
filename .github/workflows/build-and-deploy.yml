@@ -85,192 +85,174 @@ jobs:
     permissions:
       contents: read
     steps:
-      # R3-CICD-002: SSH password auth is used for simplicity. For production
-      # security, migrate to SSH key-based auth by replacing `password` with
-      # `key: ${{ secrets.SSH_PRIVATE_KEY }}` and removing SSH_PASSWORD secret.
-      - name: SSH deploy
-        uses: appleboy/ssh-action@v1.2.5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SSH deploy via sshpass
         env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
           DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           WECHAT_TOKEN: ${{ secrets.WECHAT_BOT_TOKEN }}
           MIHOME_CLIENT_ID: ${{ secrets.MIHOME_CLIENT_ID }}
           MIHOME_CLIENT_SECRET: ${{ secrets.MIHOME_CLIENT_SECRET }}
           OPENCLAW_SECRET: ${{ secrets.OPENCLAW_WEBHOOK_SECRET }}
-          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 22
-          command_timeout: 20m
-          debug: true
-          envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH
-          script: |
-            set -x
-            cd /www/wwwroot/echolife || { echo "ERROR: /www/wwwroot/echolife not found"; exit 1; }
-            echo "SSH connection OK, working directory: $(pwd)"
+          ACR_REGISTRY_VAL: ${{ env.ACR_REGISTRY }}
+          ACR_NAMESPACE_VAL: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME_VAL: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD_VAL: ${{ secrets.ACR_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          sudo apt-get install -y sshpass
 
-            echo "== 同步 docker-compose.deploy.yml =="
-            # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
-            curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
-              -o docker-compose.deploy.yml.new || \
-              curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
-              -o docker-compose.deploy.yml.new
-            if [ -s docker-compose.deploy.yml.new ]; then
-              mv docker-compose.deploy.yml.new docker-compose.deploy.yml
-              echo "docker-compose.deploy.yml synced OK"
+          # Write the remote deploy script to a temp file
+          cat > /tmp/remote-deploy.sh << 'REMOTE_EOF'
+          set -x
+          cd /www/wwwroot/echolife || { echo "ERROR: /www/wwwroot/echolife not found"; exit 1; }
+          echo "SSH connection OK, working directory: $(pwd)"
+
+          echo "== 同步 docker-compose.deploy.yml =="
+          curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
+            -o docker-compose.deploy.yml.new || \
+            curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
+            -o docker-compose.deploy.yml.new
+          if [ -s docker-compose.deploy.yml.new ]; then
+            mv docker-compose.deploy.yml.new docker-compose.deploy.yml
+            echo "docker-compose.deploy.yml synced OK"
+          else
+            rm -f docker-compose.deploy.yml.new
+            echo "WARNING: download failed, using existing docker-compose.deploy.yml"
+          fi
+
+          echo "== 同步 nginx 配置 =="
+          curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
+            -o infra/nginx/nginx.conf || \
+            curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
+            -o infra/nginx/nginx.conf
+
+          echo "== 确保 DeepSeek API 配置 =="
+          if [ -n "${DEEPSEEK_KEY}" ]; then
+            if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
+              sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=${DEEPSEEK_KEY}|" .env.production
             else
-              rm -f docker-compose.deploy.yml.new
-              echo "WARNING: download failed, using existing docker-compose.deploy.yml"
+              echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> .env.production
             fi
-            # 保持 service_healthy 条件不变，确保依赖容器健康后才启动（R5-BUG-002 修复）
-            # sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.deploy.yml
-            # echo "Patched service_healthy -> service_started"
-            echo "== 同步 nginx 配置 =="
-            # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
-            curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
-              -o infra/nginx/nginx.conf || \
-              curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
-              -o infra/nginx/nginx.conf
-            if grep -q "Strict-Transport-Security" infra/nginx/nginx.conf; then
-              echo "NOTE: HSTS header detected in nginx.conf (expected if HTTPS is enabled)"
-            fi
-            echo "== 确保 DeepSeek API 配置 =="
-            if [ -n "$DEEPSEEK_KEY" ]; then
-              if grep -q "^DEEPSEEK_API_KEY=" .env.production; then
-                sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=$DEEPSEEK_KEY|" .env.production
-              else
-                echo "DEEPSEEK_API_KEY=$DEEPSEEK_KEY" >> .env.production
-              fi
-            fi
-            if grep -q "^AI_ACTIVE_PROVIDER=" .env.production; then
-              sed -i "s|^AI_ACTIVE_PROVIDER=.*|AI_ACTIVE_PROVIDER=deepseek|" .env.production
+          fi
+          grep -q "^AI_ACTIVE_PROVIDER=" .env.production || echo "AI_ACTIVE_PROVIDER=deepseek" >> .env.production
+          grep -q "^DEEPSEEK_API_URL=" .env.production || echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
+
+          echo "== 确保微信 ClawBot Token =="
+          if [ -n "${WECHAT_TOKEN}" ]; then
+            if grep -q "^WECHAT_BOT_TOKEN=" .env.production; then
+              sed -i "s|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=${WECHAT_TOKEN}|" .env.production
             else
-              echo "AI_ACTIVE_PROVIDER=deepseek" >> .env.production
+              echo "WECHAT_BOT_TOKEN=${WECHAT_TOKEN}" >> .env.production
             fi
-            if grep -q "^DEEPSEEK_API_URL=" .env.production; then
-              sed -i "s|^DEEPSEEK_API_URL=.*|DEEPSEEK_API_URL=https://api.deepseek.com/v1|" .env.production
+          fi
+
+          echo "== 确保 IoT (米家) 配置 =="
+          if [ -n "${MIHOME_CLIENT_ID}" ]; then
+            grep -q "^MIHOME_CLIENT_ID=" .env.production || echo "MIHOME_CLIENT_ID=${MIHOME_CLIENT_ID}" >> .env.production
+          fi
+          if [ -n "${MIHOME_CLIENT_SECRET}" ]; then
+            grep -q "^MIHOME_CLIENT_SECRET=" .env.production || echo "MIHOME_CLIENT_SECRET=${MIHOME_CLIENT_SECRET}" >> .env.production
+          fi
+
+          echo "== 确保 Puppeteer 截图配置 =="
+          grep -q "^PUPPETEER_EXECUTABLE_PATH=" .env.production || echo "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium" >> .env.production
+          grep -q "^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=" .env.production || echo "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true" >> .env.production
+
+          echo "== 确保 OpenClaw Webhook Secret =="
+          if [ -n "${OPENCLAW_SECRET}" ]; then
+            if grep -q "^OPENCLAW_WEBHOOK_SECRET=" .env.production; then
+              sed -i "s|^OPENCLAW_WEBHOOK_SECRET=.*|OPENCLAW_WEBHOOK_SECRET=${OPENCLAW_SECRET}|" .env.production
             else
-              echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
+              echo "OPENCLAW_WEBHOOK_SECRET=${OPENCLAW_SECRET}" >> .env.production
             fi
-            echo "== 确保微信 ClawBot Token =="
-            if [ -n "$WECHAT_TOKEN" ]; then
-              if grep -q "^WECHAT_BOT_TOKEN=" .env.production; then
-                sed -i "s|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=$WECHAT_TOKEN|" .env.production
-              else
-                echo "WECHAT_BOT_TOKEN=$WECHAT_TOKEN" >> .env.production
-              fi
+          fi
+
+          echo "== 检查 .env.production =="
+          if [ ! -f .env.production ]; then
+            echo "ERROR: .env.production not found! Deployment aborted."
+            exit 1
+          fi
+          grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${ACR_REGISTRY_VAL}" >> .env.production
+          grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${ACR_NAMESPACE_VAL}" >> .env.production
+          grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
+          echo ".env.production check OK"
+
+          echo "== 登录 ACR =="
+          echo "${ACR_PASSWORD_VAL}" | docker login \
+            "${ACR_REGISTRY_VAL}" \
+            -u "${ACR_USERNAME_VAL}" --password-stdin
+          echo "ACR login exit code: $?"
+
+          echo "== 拉取新镜像 =="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || { echo "ERROR: pull failed"; exit 1; }
+
+          docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-api > /tmp/echolife-api-prev-image.txt 2>/dev/null || true
+          docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-web > /tmp/echolife-web-prev-image.txt 2>/dev/null || true
+
+          echo "== 启动/重启服务 =="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
+          sleep 5
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
+          sleep 10
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx
+          sleep 3
+
+          echo "== 健康检查 =="
+          HEALTH_OK=false
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost/api/v1/health; then
+              echo "Health check passed (attempt $i)"
+              HEALTH_OK=true
+              break
             fi
-            echo "== 确保 IoT (米家) 配置 =="
-            if [ -n "$MIHOME_CLIENT_ID" ]; then
-              if grep -q "^MIHOME_CLIENT_ID=" .env.production; then
-                sed -i "s|^MIHOME_CLIENT_ID=.*|MIHOME_CLIENT_ID=$MIHOME_CLIENT_ID|" .env.production
-              else
-                echo "MIHOME_CLIENT_ID=$MIHOME_CLIENT_ID" >> .env.production
-              fi
-            fi
-            if [ -n "$MIHOME_CLIENT_SECRET" ]; then
-              if grep -q "^MIHOME_CLIENT_SECRET=" .env.production; then
-                sed -i "s|^MIHOME_CLIENT_SECRET=.*|MIHOME_CLIENT_SECRET=$MIHOME_CLIENT_SECRET|" .env.production
-              else
-                echo "MIHOME_CLIENT_SECRET=$MIHOME_CLIENT_SECRET" >> .env.production
-              fi
-            fi
-            echo "== 确保 Puppeteer 截图配置 =="
-            if grep -q "^PUPPETEER_EXECUTABLE_PATH=" .env.production; then
-              sed -i "s|^PUPPETEER_EXECUTABLE_PATH=.*|PUPPETEER_EXECUTABLE_PATH=$PUPPETEER_EXECUTABLE_PATH|" .env.production
-            else
-              echo "PUPPETEER_EXECUTABLE_PATH=$PUPPETEER_EXECUTABLE_PATH" >> .env.production
-            fi
-            grep -q "^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=" .env.production || echo "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true" >> .env.production
-            echo "== 确保 OpenClaw Webhook Secret =="
-            if [ -n "$OPENCLAW_SECRET" ]; then
-              if grep -q "^OPENCLAW_WEBHOOK_SECRET=" .env.production; then
-                sed -i "s|^OPENCLAW_WEBHOOK_SECRET=.*|OPENCLAW_WEBHOOK_SECRET=$OPENCLAW_SECRET|" .env.production
-              else
-                echo "OPENCLAW_WEBHOOK_SECRET=$OPENCLAW_SECRET" >> .env.production
-              fi
-            fi
-            echo "== 登录 ACR =="
-            # Use inline secrets for ACR login (more reliable than envs passing)
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login \
-              "${{ env.ACR_REGISTRY }}" \
-              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
-            echo "ACR login exit code: $?"
-            echo "== 检查 .env.production =="
-            if [ ! -f .env.production ]; then
-              echo "ERROR: .env.production not found! Deployment aborted."
-              echo "Please create .env.production on the server with required secrets before deploying."
-              exit 1
-            fi
-            # Ensure ACR vars are in .env.production for docker compose interpolation
-            grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" >> .env.production
-            grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}" >> .env.production
-            grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
-            echo ".env.production check OK"
-            echo "== 拉取新镜像 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api || { echo "ERROR: pull failed"; exit 1; }
-            # R3-CICD-005: Save current image tags for potential rollback.
-            # Full automatic rollback is a future improvement. For now, record
-            # the previous image digests so they can be manually restored if needed.
-            docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-api > /tmp/echolife-api-prev-image.txt 2>/dev/null || true
-            docker inspect --format='{{.Config.Image}} {{.Image}}' echolife-web > /tmp/echolife-web-prev-image.txt 2>/dev/null || true
-            echo "== 启动/重启服务（不停止现有容器）=="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
-            echo "postgres/redis started: $?"
+            echo "Health check attempt $i failed, retrying in 5s..."
             sleep 5
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
-            echo "api started: $?"
-            sleep 10
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web
-            echo "web started: $?"
-            docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx
-            echo "nginx started: $?"
-            sleep 3
-            # R3-CICD-006: Health check loop after deployment
-            echo "== 健康检查 =="
-            HEALTH_OK=false
-            for i in $(seq 1 12); do
-              if curl -sf http://localhost/api/v1/health; then
-                echo "Health check passed (attempt $i)"
-                HEALTH_OK=true
-                break
-              fi
-              echo "Health check attempt $i failed, retrying in 5s..."
-              sleep 5 || true
-            done
-            if [ "$HEALTH_OK" = "false" ]; then
-              echo "WARNING: Health check did not pass, but continuing with diagnostics"
-            fi
-            echo "== 容器状态 =="
-            docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
-            echo "== API 日志（最后30行）==" | tee -a /tmp/deploy_diag.txt
-            docker logs echolife-api --tail 30 2>&1 | tee -a /tmp/deploy_diag.txt
-            echo "== Nginx 日志（最后20行）==" | tee -a /tmp/deploy_diag.txt
-            docker logs echolife-nginx --tail 20 2>&1 | tee -a /tmp/deploy_diag.txt
-            echo "== Docker 磁盘使用 ==" | tee -a /tmp/deploy_diag.txt
-            docker system df 2>&1 | tee -a /tmp/deploy_diag.txt
-            echo "== docker ps -a ==" | tee -a /tmp/deploy_diag.txt
-            docker ps -a 2>&1 | tee -a /tmp/deploy_diag.txt
-            echo "== 端口检查 ==" | tee -a /tmp/deploy_diag.txt
-            ss -tlnp 2>&1 | tee -a /tmp/deploy_diag.txt
-            echo "== 部署完成 ==" | tee -a /tmp/deploy_diag.txt
+          done
+          if [ "$HEALTH_OK" = "false" ]; then
+            echo "WARNING: Health check did not pass, but continuing with diagnostics"
+          fi
+
+          echo "== 容器状态 =="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
+          echo "== API 日志 ==" | tee -a /tmp/deploy_diag.txt
+          docker logs echolife-api --tail 30 2>&1 | tee -a /tmp/deploy_diag.txt
+          echo "== Docker 磁盘使用 ==" | tee -a /tmp/deploy_diag.txt
+          docker system df 2>&1 | tee -a /tmp/deploy_diag.txt
+          echo "== docker ps -a ==" | tee -a /tmp/deploy_diag.txt
+          docker ps -a 2>&1 | tee -a /tmp/deploy_diag.txt
+          echo "== 部署完成 ==" | tee -a /tmp/deploy_diag.txt
+          REMOTE_EOF
+
+          # Execute the script on the remote server via sshpass
+          # Environment variables are passed via SSH SendEnv
+          export DEEPSEEK_KEY WECHAT_TOKEN MIHOME_CLIENT_ID MIHOME_CLIENT_SECRET OPENCLAW_SECRET
+          export ACR_REGISTRY_VAL ACR_NAMESPACE_VAL ACR_USERNAME_VAL ACR_PASSWORD_VAL GH_TOKEN
+
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            "${SSH_USER}@${SSH_HOST}" \
+            "DEEPSEEK_KEY='${DEEPSEEK_KEY}' WECHAT_TOKEN='${WECHAT_TOKEN}' MIHOME_CLIENT_ID='${MIHOME_CLIENT_ID}' MIHOME_CLIENT_SECRET='${MIHOME_CLIENT_SECRET}' OPENCLAW_SECRET='${OPENCLAW_SECRET}' ACR_REGISTRY_VAL='${ACR_REGISTRY_VAL}' ACR_NAMESPACE_VAL='${ACR_NAMESPACE_VAL}' ACR_USERNAME_VAL='${ACR_USERNAME_VAL}' ACR_PASSWORD_VAL='${ACR_PASSWORD_VAL}' GH_TOKEN='${GH_TOKEN}' bash -s" < /tmp/remote-deploy.sh
 
       - name: Download diagnostic
+        if: always()
         continue-on-error: true
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 22
-          source: "/tmp/deploy_diag.txt"
-          target: "deploy_diag.txt"
-          overwrite: true
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          sudo apt-get install -y sshpass
+          sshpass -e scp -o StrictHostKeyChecking=no \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/deploy_diag.txt" \
+            deploy_diag.txt || echo "No diagnostic file to download"
 
       - name: Upload diagnostic artifact
         if: always()
