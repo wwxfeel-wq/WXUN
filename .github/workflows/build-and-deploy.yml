@@ -346,9 +346,28 @@ jobs:
             echo "Postgres health after wait: $DB_STATUS"
           fi
 
-          # Start API (fresh container)
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d api
+          # Start API (force-recreate to ensure new image is used)
+          echo "=== Docker compose config (API image) ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep -A5 'api:' | head -10
+          echo "=== Starting API with --force-recreate ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
           echo "API starting..."
+
+          # Verify container is using the correct image
+          echo "=== Container image verification ==="
+          CONTAINER_IMAGE=$(docker inspect --format='{{.Image}}' echolife-api 2>&1)
+          TAGGED_IMAGE=$(docker inspect --format='{{.Id}}' "$API_IMAGE" 2>&1)
+          echo "Container image ID: $CONTAINER_IMAGE"
+          echo "Tagged image ID:    $TAGGED_IMAGE"
+          if [ "$CONTAINER_IMAGE" != "$TAGGED_IMAGE" ]; then
+            echo "::error::FATAL: Container is NOT using the tagged image!"
+            echo "::error::Container: $CONTAINER_IMAGE"
+            echo "::error::Tagged:    $TAGGED_IMAGE"
+            # List all images to see what's there
+            docker images | grep echolife
+            exit 1
+          fi
+          echo "Container image matches tagged image ✓"
 
           # Wait for API health
           for i in $(seq 1 60); do
