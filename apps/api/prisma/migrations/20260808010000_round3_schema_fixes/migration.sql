@@ -42,10 +42,12 @@ ALTER TABLE "prompt_versions" ADD CONSTRAINT "prompt_versions_created_by_fkey"
 -- ============================================================
 -- Remove duplicate wechat_id values before adding unique constraint.
 -- Keep only the first (oldest) record for each wechat_id, set others to NULL.
+-- NOTE: id is UUID, and PostgreSQL's MIN() does not accept uuid on some
+-- versions. Cast to text for the MIN() aggregate, then back to uuid.
 UPDATE "family_members" SET "wechat_id" = NULL
 WHERE "wechat_id" IS NOT NULL
   AND "id" NOT IN (
-    SELECT MIN(fm.id) FROM "family_members" fm
+    SELECT MIN(fm.id::text)::uuid FROM "family_members" fm
     WHERE fm.wechat_id IS NOT NULL
     GROUP BY fm.wechat_id
   );

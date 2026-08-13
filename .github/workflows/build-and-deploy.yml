@@ -367,6 +367,18 @@ jobs:
           echo "DB/Redis starting..."
           sleep 8
 
+          # Clear any failed migration records so the fixed migration can apply cleanly.
+          # The previous deploy left `20260808010000_round3_schema_fixes` in a failed
+          # state (P3009 error: `function min(uuid) does not exist`). The migration SQL
+          # has been fixed, so delete the stale failed record to let Prisma re-apply it.
+          echo "=== Clearing failed migration records ==="
+          PG_USER=$(grep '^POSTGRES_USER=' .env.production | head -1 | cut -d= -f2-)
+          PG_DB=$(grep '^POSTGRES_DB=' .env.production | head -1 | cut -d= -f2-)
+          docker exec echolife-postgres psql -U "$PG_USER" -d "$PG_DB" \
+            -c "DELETE FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;" 2>&1 \
+            || echo "WARNING: could not clear failed migrations (table may not exist yet)"
+          echo "Failed migration cleanup done"
+
           # Check Postgres health
           DB_STATUS=$(docker inspect --format='{{.State.Health.Status}}' echolife-postgres 2>/dev/null)
           echo "Postgres health: $DB_STATUS"
