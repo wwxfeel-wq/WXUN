@@ -90,9 +90,13 @@ jobs:
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           ACR_NAMESPACE_VALUE: ${{ secrets.ACR_NAMESPACE }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
+
+          SHORT_SHA=${DEPLOY_SHA:0:7}
+          echo "Deploying commit $SHORT_SHA"
 
           # Base64-encode ACR credentials for safe transport
           ACR_REGISTRY_B64=$(printf '%s' "$ACR_REGISTRY" | base64 -w0)
@@ -101,9 +105,9 @@ jobs:
           ACR_PASSWORD_B64=$(printf '%s' "$ACR_PASSWORD" | base64 -w0)
 
           echo "=== Uploading files to server ==="
-          # Upload compose file, nginx config, and credentials
-          printf 'ACR_REGISTRY_B64=%s\nACR_NAMESPACE_B64=%s\nACR_USERNAME_B64=%s\nACR_PASSWORD_B64=%s\n' \
-            "$ACR_REGISTRY_B64" "$ACR_NAMESPACE_B64" "$ACR_USERNAME_B64" "$ACR_PASSWORD_B64" \
+          # Upload compose file, nginx config, and credentials (including SHORT_SHA for image pull)
+          printf 'ACR_REGISTRY_B64=%s\nACR_NAMESPACE_B64=%s\nACR_USERNAME_B64=%s\nACR_PASSWORD_B64=%s\nSHORT_SHA=%s\n' \
+            "$ACR_REGISTRY_B64" "$ACR_NAMESPACE_B64" "$ACR_USERNAME_B64" "$ACR_PASSWORD_B64" "$SHORT_SHA" \
             > /tmp/deploy-secrets.env
 
           sshpass -e scp -o StrictHostKeyChecking=no \
@@ -179,8 +183,15 @@ jobs:
           docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep -E 'image:' || true
 
           # Try pulling each image individually with retry
+          # Use SHORT_SHA tag to ensure we pull the EXACT image just built, not a stale :latest
+          API_IMAGE_SHA="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-api:${SHORT_SHA}"
+          WEB_IMAGE_SHA="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-web:${SHORT_SHA}"
           API_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-api:latest"
           WEB_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-web:latest"
+          
+          echo "=== Pulling images by SHA tag: $SHORT_SHA ==="
+          echo "API SHA image: $API_IMAGE_SHA"
+          echo "WEB SHA image: $WEB_IMAGE_SHA"
           
           # Check disk space first
           echo "=== Disk space BEFORE cleanup ==="
@@ -248,14 +259,23 @@ jobs:
             return 1
           }
           
-          pull_with_retry "$API_IMAGE" "API" || exit 1
-          pull_with_retry "$WEB_IMAGE" "WEB" || exit 1
-          echo "All images pulled OK"
+          pull_with_retry "$API_IMAGE_SHA" "API" || exit 1
+          pull_with_retry "$WEB_IMAGE_SHA" "WEB" || exit 1
+          echo "All images pulled OK (by SHA tag)"
+
+          # Tag SHA images as :latest so docker-compose can use them
+          echo "=== Tagging SHA images as :latest ==="
+          docker tag "$API_IMAGE_SHA" "$API_IMAGE" || { echo "::error::FATAL: cannot tag API image"; exit 1; }
+          docker tag "$WEB_IMAGE_SHA" "$WEB_IMAGE" || { echo "::error::FATAL: cannot tag WEB image"; exit 1; }
+          echo "Images tagged OK"
 
           # Print image digests to verify we got the new images
           echo "=== Image digests ==="
           docker inspect --format='API image: {{.Id}} Created: {{.Created}}' "$API_IMAGE" 2>&1
           docker inspect --format='WEB image: {{.Id}} Created: {{.Created}}' "$WEB_IMAGE" 2>&1
+          # Emit image creation time as annotation for verification
+          API_CREATED=$(docker inspect --format='{{.Created}}' "$API_IMAGE" 2>&1)
+          echo "::error::API image created: $API_CREATED (expect today's date)"
 
           # Start DB/Redis (if not already running)
           docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
