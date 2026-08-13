@@ -288,6 +288,24 @@ jobs:
           pull_with_retry "$WEB_IMAGE_SHA" "WEB" || exit 1
           echo "All images pulled OK (by SHA tag)"
 
+          # CRITICAL: Verify the pulled SHA image has tracking module BEFORE tagging
+          echo "=== Verifying pulled API image has tracking module ==="
+          SHA_IMAGE_ID=$(docker inspect --format='{{.Id}}' "$API_IMAGE_SHA" 2>&1)
+          echo "SHA image ID: $SHA_IMAGE_ID"
+          docker run --rm "$API_IMAGE_SHA" ls /app/apps/api/dist/modules/tracking/ 2>&1 || {
+            echo "::error::FATAL: Pulled SHA image does NOT have tracking module!"
+            echo "::error::SHA image: $API_IMAGE_SHA"
+            echo "::error::SHA image ID: $SHA_IMAGE_ID"
+            # Check what modules ARE in the image
+            MODULE_LIST=$(docker run --rm "$API_IMAGE_SHA" ls /app/apps/api/dist/modules/ 2>&1)
+            echo "::error::Modules in SHA image: $(echo "$MODULE_LIST" | tr '\n' ' ')"
+            # Check BUILD_MARKER
+            docker run --rm "$API_IMAGE_SHA" cat /app/apps/api/dist/BUILD_MARKER.txt 2>&1 || echo "::error::No BUILD_MARKER in SHA image"
+            exit 1
+          }
+          echo "Tracking module verified in pulled SHA image ✓"
+          docker run --rm "$API_IMAGE_SHA" cat /app/apps/api/dist/BUILD_MARKER.txt 2>&1 || true
+
           # Tag SHA images as :latest so docker-compose can use them
           echo "=== Tagging SHA images as :latest ==="
           docker tag "$API_IMAGE_SHA" "$API_IMAGE" || { echo "::error::FATAL: cannot tag API image"; exit 1; }
@@ -296,9 +314,18 @@ jobs:
 
           # Print image digests to verify we got the new images
           echo "=== Image digests ==="
+          LATEST_IMAGE_ID=$(docker inspect --format='{{.Id}}' "$API_IMAGE" 2>&1)
+          echo "API latest image ID: $LATEST_IMAGE_ID"
+          echo "API SHA image ID:    $SHA_IMAGE_ID"
+          if [ "$SHA_IMAGE_ID" != "$LATEST_IMAGE_ID" ]; then
+            echo "::error::FATAL: SHA image ID != latest image ID after tag!"
+            echo "::error::SHA: $SHA_IMAGE_ID"
+            echo "::error::Latest: $LATEST_IMAGE_ID"
+            exit 1
+          fi
+          echo "Image IDs match ✓"
           docker inspect --format='API image: {{.Id}} Created: {{.Created}}' "$API_IMAGE" 2>&1
           docker inspect --format='WEB image: {{.Id}} Created: {{.Created}}' "$WEB_IMAGE" 2>&1
-          # Emit image creation time as annotation for verification
           API_CREATED=$(docker inspect --format='{{.Created}}' "$API_IMAGE" 2>&1)
           echo "::error::API image created: $API_CREATED (expect today's date)"
 
