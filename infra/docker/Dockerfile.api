@@ -64,6 +64,18 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/shared/node_modules ./packages/shared/node_modules
 
+# CRITICAL: Verify tracking module exists in the RUNNER stage (not just builder)
+# This catches cases where COPY --from=builder doesn't transfer all files
+RUN test -f /app/apps/api/dist/modules/tracking/tracking.module.js || \
+    (echo "FATAL: tracking.module.js missing in runner stage!" && \
+     find /app/apps/api/dist/modules/ -type d && exit 1)
+RUN test -f /app/apps/api/dist/modules/tracking/tracking.controller.js || \
+    (echo "FATAL: tracking.controller.js missing in runner stage!" && exit 1)
+RUN grep -q "TrackingModule" /app/apps/api/dist/app.module.js || \
+    (echo "FATAL: TrackingModule not in runner app.module.js!" && exit 1)
+# Write build marker for runtime verification
+RUN echo "BUILD_SHA=$CACHE_BUSTER BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /app/apps/api/dist/BUILD_MARKER.txt
+
 # R3-DOCKERFILE-002: Recreate workspace symlink for @echolife/shared.
 # This manual symlink workaround is needed because pnpm workspace symlinks
 # are not preserved when copying node_modules between build stages. Without

@@ -353,6 +353,12 @@ jobs:
 
           if [ "$TRACKING_CODE" = "404" ] || [ "$OVERVIEW_CODE" = "404" ]; then
             echo "::error::FATAL: Tracking endpoint returned 404 — TrackingModule not loaded!"
+            # Check BUILD_MARKER to verify image identity
+            BUILD_MARKER=$(docker exec echolife-api cat /app/apps/api/dist/BUILD_MARKER.txt 2>&1 || echo "NO BUILD MARKER")
+            echo "::error::Build marker: $BUILD_MARKER (expected SHA: $SHORT_SHA)"
+            # Check dist modules directory listing
+            DIST_DIRS=$(docker exec echolife-api ls /app/apps/api/dist/modules/ 2>&1 || echo "NO MODULES DIR")
+            echo "::error::dist/modules/ dirs: $(echo "$DIST_DIRS" | tr '\n' ' ')"
             # Emit ALL diagnostics as error annotations for visibility
             DIST_FILES=$(docker exec echolife-api find /app/apps/api/dist/modules/tracking -type f 2>&1 || echo "NO TRACKING DIST FOUND")
             echo "::error::Tracking dist files: $(echo "$DIST_FILES" | tr '\n' ' ')"
