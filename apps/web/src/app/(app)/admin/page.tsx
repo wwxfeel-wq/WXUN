@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Lock,
+  Activity,
 } from "lucide-react";
 import useSWR from "swr";
 import { PageTransition } from "@/components/page-transition";
@@ -80,6 +81,30 @@ export default function AdminPage() {
 
         {/* API Key Management */}
         <ApiKeyManagement />
+
+        {/* Analytics Link */}
+        <Link href="/admin/analytics">
+          <GlassLayer asChild intensity="default">
+            <motion.div
+              whileHover={{ y: -1, scale: 1.002 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="mt-6 flex items-center justify-between p-4 transition-colors hover:bg-surface/40"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10">
+                  <Activity className="h-4 w-4 text-accent" />
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-text">埋点分析</p>
+                  <p className="text-xs text-text-muted">
+                    查看用户访问、IP 来源、页面浏览统计
+                  </p>
+                </div>
+              </div>
+              <span className="text-text-muted">→</span>
+            </motion.div>
+          </GlassLayer>
+        </Link>
 
         {/* Security notice */}
         <GlassLayer asChild intensity="default">

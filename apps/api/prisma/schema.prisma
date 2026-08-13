@@ -935,3 +935,34 @@ model IoTCredential {
   @@index([userId])
   @@map("iot_credentials")
 }
+
+// ============================================================
+// Domain: Analytics & Tracking (网站埋点)
+// ============================================================
+
+/// 网站埋点事件 — 记录用户访问行为，包括页面浏览、点击等
+model TrackingEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  sessionId   String   @map("session_id") @db.VarChar(100)
+  userId      String?  @map("user_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(50)  // page_view | click | custom
+  pagePath    String   @map("page_path") @db.VarChar(500)
+  pageTitle   String?  @map("page_title") @db.VarChar(500)
+  referrer    String?  @db.VarChar(500)
+  ipAddress   String   @map("ip_address") @db.VarChar(45)
+  userAgent   String?  @map("user_agent") @db.Text
+  browser     String?  @db.VarChar(50)
+  os          String?  @db.VarChar(50)
+  deviceType  String?  @map("device_type") @db.VarChar(20)  // desktop | mobile | tablet
+  country     String?  @db.VarChar(50)
+  city        String?  @db.VarChar(100)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([ipAddress])
+  @@index([eventType])
+  @@index([pagePath])
+  @@map("tracking_events")
+}

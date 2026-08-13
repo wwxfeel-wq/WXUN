@@ -1,7 +1,9 @@
 'use client';
 
 import * as React from 'react';
+import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { trackPageView } from '@/lib/tracker';
 
 /**
  * Auth layout - Immersive full-screen Liquid Glass environment.
@@ -12,6 +14,12 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  React.useEffect(() => {
+    if (pathname) trackPageView(pathname, document.title);
+  }, [pathname]);
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background">
       {/* Deep ambient orbs */}

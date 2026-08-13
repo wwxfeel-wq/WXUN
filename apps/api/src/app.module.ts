@@ -27,6 +27,7 @@ import { FamilyHubModule } from './modules/familyhub/familyhub.module';
 import { WechatModule } from './modules/wechat/wechat.module';
 import { KindnessModule } from './modules/kindness/kindness.module';
 import { IoTModule } from './modules/iot/iot.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { IoTModule } from './modules/iot/iot.module';
     WechatModule,
     KindnessModule,
     IoTModule,
+    TrackingModule,
   ],
   providers: [
     // Global rate limiting

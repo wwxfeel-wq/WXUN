@@ -6,6 +6,7 @@ import FloatingDock from './floating-dock';
 import InkDrop from '../ink/ink-drop';
 import BackgroundAmbient from '../effects/background-ambient';
 import { useAuthStore, initAuth } from '@/stores/auth-store';
+import { trackPageView } from '@/lib/tracker';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,6 +20,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initAuth();
   }, []);
+
+  // Auto-track page views on route change
+  useEffect(() => {
+    if (pathname) {
+      trackPageView(pathname, document.title);
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (hydrated && !isAuthenticated) {
