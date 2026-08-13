@@ -81,7 +81,6 @@ services:
     image: ${ACR_REGISTRY}/${ACR_NAMESPACE}/echolife-api:latest
     container_name: echolife-api
     restart: unless-stopped
-    pull_policy: never
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +135,6 @@ services:
     image: ${ACR_REGISTRY}/${ACR_NAMESPACE}/echolife-web:latest
     container_name: echolife-web
     restart: unless-stopped
-    pull_policy: never
     depends_on:
       api:
         condition: service_healthy
