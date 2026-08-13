@@ -5,6 +5,7 @@ import {
 } from '@echolife/shared';
 import { retryWithBackoff } from '@echolife/shared';
 import { ApiKeyService } from './api-key.service';
+import { LocalEmbeddingService } from './local-embedding.service';
 
 /** Chat message in OpenAI-compatible format */
 export interface ChatMessage {
@@ -70,6 +71,7 @@ export class LlmAdapterService {
   constructor(
     private readonly configService: ConfigService,
     private readonly apiKeyService: ApiKeyService,
+    private readonly localEmbedding: LocalEmbeddingService,
   ) {}
 
   /** Resolve the active provider's config (API URL, models) */
@@ -299,46 +301,54 @@ export class LlmAdapterService {
    * @returns An array of floats representing the embedding
    */
   async embed(text: string): Promise<number[]> {
-    const { cfg, apiKey } = await this.resolveEmbeddingProvider();
-    const url = `${cfg.apiUrl}/embeddings`;
-    const body = {
-      model: cfg.embeddingModel,
-      input: text,
-    };
+    try {
+      const { cfg, apiKey } = await this.resolveEmbeddingProvider();
+      const url = `${cfg.apiUrl}/embeddings`;
+      const body = {
+        model: cfg.embeddingModel,
+        input: text,
+      };
 
-    const response = await retryWithBackoff(
-      async () => {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: this.createTimeoutSignal(30000),
-        });
+      const response = await retryWithBackoff(
+        async () => {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(body),
+            signal: this.createTimeoutSignal(30000),
+          });
 
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`${cfg.label} embedding API error (${res.status}): ${errorText}`);
-        }
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`${cfg.label} embedding API error (${res.status}): ${errorText}`);
+          }
 
-        return res;
-      },
-      AI_CONFIG.MAX_RETRIES,
-      AI_CONFIG.RETRY_DELAY_MS,
-    );
+          return res;
+        },
+        AI_CONFIG.MAX_RETRIES,
+        AI_CONFIG.RETRY_DELAY_MS,
+      );
 
-    const data = (await response.json()) as {
-      data?: Array<{ embedding: number[] }>;
-    };
-    const embedding = data.data?.[0]?.embedding;
+      const data = (await response.json()) as {
+        data?: Array<{ embedding: number[] }>;
+      };
+      const embedding = data.data?.[0]?.embedding;
 
-    if (!embedding || !Array.isArray(embedding)) {
-      throw new Error(`${cfg.label} embedding API returned invalid embedding data`);
+      if (!embedding || !Array.isArray(embedding)) {
+        throw new Error(`${cfg.label} embedding API returned invalid embedding data`);
+      }
+
+      return embedding as number[];
+    } catch (error) {
+      // 云端 embedding 不可用（无 provider / 调用失败）时，回退到本地模型
+      this.logger.warn(
+        `Cloud embedding failed (${(error as Error).message}), falling back to local model`,
+      );
+      return this.localEmbedding.embed(text);
     }
-
-    return embedding as number[];
   }
 
   /**
@@ -352,57 +362,65 @@ export class LlmAdapterService {
   async embedBatch(texts: string[], batchSize: number = 16): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    const { cfg, apiKey } = await this.resolveEmbeddingProvider();
+    try {
+      const { cfg, apiKey } = await this.resolveEmbeddingProvider();
 
-    const results: number[][] = [];
+      const results: number[][] = [];
 
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
-      const url = `${cfg.apiUrl}/embeddings`;
-      const body = {
-        model: cfg.embeddingModel,
-        input: batch,
-      };
+      for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        const url = `${cfg.apiUrl}/embeddings`;
+        const body = {
+          model: cfg.embeddingModel,
+          input: batch,
+        };
 
-      const response = await retryWithBackoff(
-        async () => {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify(body),
-            signal: this.createTimeoutSignal(60000),
-          });
+        const response = await retryWithBackoff(
+          async () => {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify(body),
+              signal: this.createTimeoutSignal(60000),
+            });
 
-          if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`${cfg.label} embedding batch API error (${res.status}): ${errorText}`);
+            if (!res.ok) {
+              const errorText = await res.text();
+              throw new Error(`${cfg.label} embedding batch API error (${res.status}): ${errorText}`);
+            }
+
+            return res;
+          },
+          AI_CONFIG.MAX_RETRIES,
+          AI_CONFIG.RETRY_DELAY_MS,
+        );
+
+        const data = (await response.json()) as {
+          data?: Array<{ embedding: number[]; index?: number }>;
+        };
+        const embeddings = (data.data ?? []) as Array<{ embedding: number[]; index?: number }>;
+
+        // Sort by index to maintain order
+        const sorted = embeddings.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+        for (const item of sorted) {
+          if (item.embedding && Array.isArray(item.embedding)) {
+            results.push(item.embedding);
           }
-
-          return res;
-        },
-        AI_CONFIG.MAX_RETRIES,
-        AI_CONFIG.RETRY_DELAY_MS,
-      );
-
-      const data = (await response.json()) as {
-        data?: Array<{ embedding: number[]; index?: number }>;
-      };
-      const embeddings = (data.data ?? []) as Array<{ embedding: number[]; index?: number }>;
-
-      // Sort by index to maintain order
-      const sorted = embeddings.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-
-      for (const item of sorted) {
-        if (item.embedding && Array.isArray(item.embedding)) {
-          results.push(item.embedding);
         }
       }
-    }
 
-    return results;
+      return results;
+    } catch (error) {
+      // 云端 embedding 不可用时，回退到本地模型
+      this.logger.warn(
+        `Cloud embedding batch failed (${(error as Error).message}), falling back to local model`,
+      );
+      return this.localEmbedding.embedBatch(texts);
+    }
   }
 
   // ============================================================

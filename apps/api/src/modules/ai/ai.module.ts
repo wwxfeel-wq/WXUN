@@ -9,6 +9,7 @@ import { DemoService } from './services/demo.service';
 import { PromptService } from './services/prompt.service';
 import { EmbeddingService } from './services/embedding.service';
 import { RagService } from './services/rag.service';
+import { LocalEmbeddingService } from './services/local-embedding.service';
 import { QuotaService } from './services/quota.service';
 import { AgentOrchestratorService } from './services/agent-orchestrator.service';
 import { WebSearchService } from './services/web-search.service';
@@ -28,6 +29,7 @@ import { SkillsEvolutionService } from '../familyhub/skills-evolution.service';
     PromptService,
     EmbeddingService,
     RagService,
+    LocalEmbeddingService,
     QuotaService,
     AgentOrchestratorService,
     WebSearchService,

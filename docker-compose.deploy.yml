@@ -125,11 +125,13 @@ services:
     deploy:
       resources:
         limits:
-          # R3-DOCKER-008: 1g for NestJS + Chromium (Puppeteer screenshot support)
-          memory: 1g
+          # NestJS + Chromium (Puppeteer) + 本地 embedding 模型 (bge-small-zh ~300MB)
+          memory: 1.5g
           cpus: '1.0'
     networks:
       - backend
+    volumes:
+      - transformers_cache:/app/.cache
 
   # ===== Frontend Web (image from ACR) =====
   web:
@@ -247,3 +249,4 @@ volumes:
   redis_data:
   nginx_cache:
   openclaw_data:
+  transformers_cache:

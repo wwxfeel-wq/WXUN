@@ -468,8 +468,9 @@ jobs:
                 --health-timeout=10s \
                 --health-retries=5 \
                 --health-start-period=120s \
-                --memory=1g \
+                --memory=1.5g \
                 --cpus=1.0 \
+                -v transformers_cache:/app/.cache \
                 "$API_IMAGE" 2>&1 || {
                   echo "::error::FATAL: docker run also failed!"
                   docker logs echolife-api 2>&1 || true

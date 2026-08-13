@@ -203,20 +203,14 @@ model Memory {
 }
 
 model MemoryEmbedding {
-  // R3-DB-009: TODO — pgvector extension is installed (pgvector/pgvector:pg16
-  // image) but not used. The embedding field is stored as String instead of
-  // Unsupported("vector"). To enable vector similarity search, a future
-  // migration should:
-  // 1. ALTER the column type to vector(1536) or appropriate dimension
-  // 2. Convert existing string embeddings to vector format
-  // 3. Update Prisma schema to use Unsupported("vector")
-  // 4. Update search queries to use pgvector operators (<->, <=>)
-  // This is deferred for now as it requires a data migration.
-  memoryId  String                          @id @map("memory_id") @db.Uuid
-  memory    Memory                          @relation(fields: [memoryId], references: [id], onDelete: Cascade)
-  embedding String
-  model     String                          @default("text-embedding") @db.VarChar(50)
-  createdAt DateTime                        @default(now()) @map("created_at")
+  // embedding 列已由 migration 20260813010000_memory_embeddings_vector
+  // 改为 pgvector 的 vector 类型，支持向量相似度检索（<=> / <->）。
+  // Prisma 通过 Unsupported("vector") 声明，读写走 raw SQL。
+  memoryId  String   @id @map("memory_id") @db.Uuid
+  memory    Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  embedding Unsupported("vector")
+  model     String   @default("text-embedding") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("memory_embeddings")
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LlmAdapterService } from './llm-adapter.service';
+import { LocalEmbeddingService } from './local-embedding.service';
 import {
   AI_CONFIG,
   retryWithBackoff,
@@ -13,6 +14,7 @@ export class EmbeddingService {
   constructor(
     private readonly llmAdapter: LlmAdapterService,
     private readonly prisma: PrismaService,
+    private readonly localEmbedding: LocalEmbeddingService,
   ) {}
 
   /**
@@ -37,8 +39,9 @@ export class EmbeddingService {
   async storeEmbedding(
     memoryId: string,
     embedding: number[],
-    model: string = AI_CONFIG.EMBEDDING_MODEL,
+    model?: string,
   ): Promise<void> {
+    const effectiveModel = model ?? this.localEmbedding.modelName;
     const vectorStr = `[${embedding.join(',')}]`;
 
     await retryWithBackoff(
@@ -50,7 +53,7 @@ export class EmbeddingService {
            DO UPDATE SET "embedding" = $2::vector, "model" = $3`,
           memoryId,
           vectorStr,
-          model,
+          effectiveModel,
         );
       },
       AI_CONFIG.MAX_RETRIES,
