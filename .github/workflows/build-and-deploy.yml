@@ -89,7 +89,7 @@ jobs:
       # security, migrate to SSH key-based auth by replacing `password` with
       # `key: ${{ secrets.SSH_PRIVATE_KEY }}` and removing SSH_PASSWORD secret.
       - name: SSH deploy
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           WECHAT_TOKEN: ${{ secrets.WECHAT_BOT_TOKEN }}
@@ -103,6 +103,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           command_timeout: 20m
+          debug: true
           envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH
           script: |
             set -x
@@ -261,7 +262,7 @@ jobs:
 
       - name: Download diagnostic
         continue-on-error: true
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v0.1.8
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
