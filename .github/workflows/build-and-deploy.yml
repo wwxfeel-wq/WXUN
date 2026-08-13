@@ -182,23 +182,38 @@ jobs:
           API_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-api:latest"
           WEB_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-web:latest"
           
+          # Check disk space first
+          echo "=== Disk space ==="
+          df -h / /var 2>/dev/null || df -h /
+          
+          # Show docker info for debugging
+          echo "=== Docker info ==="
+          docker info 2>&1 | head -20
+          
           pull_with_retry() {
             local img="$1"
             local name="$2"
-            for attempt in 1 2 3; do
-              echo "Pull $name attempt $attempt: $img"
+            for attempt in 1 2 3 4 5; do
+              echo "=== Pull $name attempt $attempt/5: $img ==="
               local pull_output
               pull_output=$(docker pull "$img" 2>&1) && {
                 echo "$name pull OK"
                 docker inspect --format='Created: {{.Created}}' "$img" 2>/dev/null || true
                 return 0
               }
-              echo "Pull $name attempt $attempt FAILED. Error:"
+              echo "Pull $name attempt $attempt FAILED. Full error:"
               echo "$pull_output"
-              echo "Retrying in 10s..."
-              sleep 10
+              # Also emit as GitHub Actions error for visibility
+              echo "::error::Pull $name attempt $attempt failed: $(echo "$pull_output" | tail -5)"
+              if [ "$attempt" -lt 5 ]; then
+                echo "Retrying in 15s..."
+                sleep 15
+              fi
             done
-            echo "::error::FATAL: cannot pull $img after 3 attempts"
+            echo "::error::FATAL: cannot pull $img after 5 attempts"
+            # Show docker daemon logs for debugging
+            echo "=== Docker daemon logs (last 20 lines) ==="
+            journalctl -u docker --no-pager -n 20 2>/dev/null || true
             return 1
           }
           
