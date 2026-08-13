@@ -148,11 +148,62 @@ jobs:
           # NOTE: Do NOT use set -e here. We want to see ALL errors, not stop at the first one.
           sudo apt-get install -y -qq sshpass
 
-          # Write deploy script — uses single-quoted heredoc to prevent local expansion.
-          # Variables are passed to remote bash via the SSH command line.
+          # Base64-encode all secrets for safe transmission via SSH.
+          # This avoids shell expansion issues with special characters in passwords/keys.
+          DEEPSEEK_KEY_B64=$(printf '%s' "$DEEPSEEK_KEY" | base64 -w0)
+          WECHAT_TOKEN_B64=$(printf '%s' "$WECHAT_TOKEN" | base64 -w0)
+          MIHOME_CLIENT_ID_B64=$(printf '%s' "$MIHOME_CLIENT_ID" | base64 -w0)
+          MIHOME_CLIENT_SECRET_B64=$(printf '%s' "$MIHOME_CLIENT_SECRET" | base64 -w0)
+          OPENCLAW_SECRET_B64=$(printf '%s' "$OPENCLAW_SECRET" | base64 -w0)
+          ACR_REGISTRY_VAL_B64=$(printf '%s' "$ACR_REGISTRY_VAL" | base64 -w0)
+          ACR_NAMESPACE_VAL_B64=$(printf '%s' "$ACR_NAMESPACE_VAL" | base64 -w0)
+          ACR_USERNAME_VAL_B64=$(printf '%s' "$ACR_USERNAME_VAL" | base64 -w0)
+          ACR_PASSWORD_VAL_B64=$(printf '%s' "$ACR_PASSWORD_VAL" | base64 -w0)
+          GH_TOKEN_B64=$(printf '%s' "$GH_TOKEN" | base64 -w0)
+
+          echo "=== Encoded secret lengths ==="
+          echo "DEEPSEEK_KEY_B64 len: ${#DEEPSEEK_KEY_B64}"
+          echo "ACR_PASSWORD_VAL_B64 len: ${#ACR_PASSWORD_VAL_B64}"
+          echo "ACR_USERNAME_VAL_B64 len: ${#ACR_USERNAME_VAL_B64}"
+
+          # Step 1: Write env file to remote server (base64 is safe for shell)
+          echo "=== Writing env file to remote ==="
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            "${SSH_USER}@${SSH_HOST}" \
+            "cat > /tmp/.deploy_env.sh" << ENV_EOF
+          #!/bin/bash
+          export DEEPSEEK_KEY=\$(echo '${DEEPSEEK_KEY_B64}' | base64 -d)
+          export WECHAT_TOKEN=\$(echo '${WECHAT_TOKEN_B64}' | base64 -d)
+          export MIHOME_CLIENT_ID=\$(echo '${MIHOME_CLIENT_ID_B64}' | base64 -d)
+          export MIHOME_CLIENT_SECRET=\$(echo '${MIHOME_CLIENT_SECRET_B64}' | base64 -d)
+          export OPENCLAW_SECRET=\$(echo '${OPENCLAW_SECRET_B64}' | base64 -d)
+          export ACR_REGISTRY_VAL=\$(echo '${ACR_REGISTRY_VAL_B64}' | base64 -d)
+          export ACR_NAMESPACE_VAL=\$(echo '${ACR_NAMESPACE_VAL_B64}' | base64 -d)
+          export ACR_USERNAME_VAL=\$(echo '${ACR_USERNAME_VAL_B64}' | base64 -d)
+          export ACR_PASSWORD_VAL=\$(echo '${ACR_PASSWORD_VAL_B64}' | base64 -d)
+          export GH_TOKEN=\$(echo '${GH_TOKEN_B64}' | base64 -d)
+          ENV_EOF
+
+          ENV_WRITE_EXIT=$?
+          echo "Env file write exit: $ENV_WRITE_EXIT"
+          if [ $ENV_WRITE_EXIT -ne 0 ]; then
+            echo "::error::Failed to write env file to remote server!"
+            exit 1
+          fi
+
+          # Step 2: Write deploy script (no local expansion needed)
           cat > /tmp/remote-deploy.sh << 'REMOTE_EOF'
-          # No set -e: continue on errors, report at the end
-          DEPLOY_ERRORS=""
+          # Source the env file with secrets
+          source /tmp/.deploy_env.sh
+          rm -f /tmp/.deploy_env.sh
+
+          # Verify secrets were loaded
+          echo "=== Verify secrets loaded ==="
+          echo "DEEPSEEK_KEY set: $([ -n \"$DEEPSEEK_KEY\" ] && echo yes || echo no)"
+          echo "ACR_PASSWORD_VAL set: $([ -n \"$ACR_PASSWORD_VAL\" ] && echo yes || echo no)"
+          echo "ACR_USERNAME_VAL set: $([ -n \"$ACR_USERNAME_VAL\" ] && echo yes || echo no)"
+          echo "ACR_REGISTRY_VAL: $ACR_REGISTRY_VAL"
+          echo "GH_TOKEN set: $([ -n \"$GH_TOKEN\" ] && echo yes || echo no)"
 
           cd /www/wwwroot/echolife || { echo "::error::Directory /www/wwwroot/echolife not found!"; exit 1; }
           echo "=== Working directory: $(pwd) ==="
@@ -266,7 +317,7 @@ jobs:
           echo "=== Executing remote deploy script ==="
           sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             "${SSH_USER}@${SSH_HOST}" \
-            "DEEPSEEK_KEY='${DEEPSEEK_KEY}' WECHAT_TOKEN='${WECHAT_TOKEN}' MIHOME_CLIENT_ID='${MIHOME_CLIENT_ID}' MIHOME_CLIENT_SECRET='${MIHOME_CLIENT_SECRET}' OPENCLAW_SECRET='${OPENCLAW_SECRET}' ACR_REGISTRY_VAL='${ACR_REGISTRY_VAL}' ACR_NAMESPACE_VAL='${ACR_NAMESPACE_VAL}' ACR_USERNAME_VAL='${ACR_USERNAME_VAL}' ACR_PASSWORD_VAL='${ACR_PASSWORD_VAL}' GH_TOKEN='${GH_TOKEN}' bash -s" < /tmp/remote-deploy.sh
+            'bash -s' < /tmp/remote-deploy.sh
 
           DEPLOY_EXIT=$?
           echo "=== Deploy exit code: $DEPLOY_EXIT ==="
