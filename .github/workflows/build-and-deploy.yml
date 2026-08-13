@@ -41,11 +41,6 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # R3-CICD-007: Web and API images are built serially. Splitting into
-      # parallel jobs could speed up the build ~2x, but the current server
-      # (2vCPU/4GiB) and GitHub Actions free tier make this a low priority.
-      # R3-CICD-009: Only linux/amd64 is built because the deployment server
-      # is an amd64 ECS instance. Add arm64 if multi-arch is needed.
       - name: Build & push echolife-web
         uses: docker/build-push-action@v6
         with:
@@ -88,240 +83,106 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Test SSH connectivity
-        id: ssh-test
+      - name: Test SSH & Deploy
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          echo "=== Installing sshpass ==="
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
 
-          echo "=== Verifying secrets ==="
-          if [ -z "$SSHPASS" ]; then
-            echo "::error::SSH_PASSWORD secret is empty or not set!"
+          # Verify SSH secrets
+          if [ -z "$SSHPASS" ] || [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then
+            echo "::error::SSH secrets not set properly"
             exit 1
           fi
-          if [ -z "$SSH_HOST" ]; then
-            echo "::error::SSH_HOST secret is empty or not set!"
-            exit 1
-          fi
-          if [ -z "$SSH_USER" ]; then
-            echo "::error::SSH_USER secret is empty or not set!"
-            exit 1
-          fi
-          echo "SSHPASS length: ${#SSHPASS}"
-          echo "SSH_HOST: $SSH_HOST"
-          echo "SSH_USER: $SSH_USER"
+          echo "SSH_HOST: $SSH_HOST, SSH_USER: $SSH_USER, SSHPASS len: ${#SSHPASS}"
 
-          echo "=== Testing SSH connection ==="
+          # Quick SSH test
+          echo "=== SSH connectivity test ==="
           sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
-            "${SSH_USER}@${SSH_HOST}" \
-            'echo "SSH_OK"; hostname; whoami; ls /www/wwwroot/echolife/ 2>&1 | head -10; echo "SSH_TEST_DONE"'
-
-          SSH_EXIT=$?
-          echo "SSH test exit code: $SSH_EXIT"
-          if [ $SSH_EXIT -ne 0 ]; then
-            echo "::error::SSH connection failed! Exit code: $SSH_EXIT"
-            echo "Possible causes: wrong password, server firewall blocking GitHub Actions IPs, SSH service down"
+            "${SSH_USER}@${SSH_HOST}" 'echo SSH_OK && hostname' || {
+            echo "::error::SSH connection failed!"
             exit 1
-          fi
-          echo "=== SSH connection OK ==="
+          }
 
-      - name: Deploy via SSH
-        env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          WECHAT_TOKEN: ${{ secrets.WECHAT_BOT_TOKEN }}
-          MIHOME_CLIENT_ID: ${{ secrets.MIHOME_CLIENT_ID }}
-          MIHOME_CLIENT_SECRET: ${{ secrets.MIHOME_CLIENT_SECRET }}
-          OPENCLAW_SECRET: ${{ secrets.OPENCLAW_WEBHOOK_SECRET }}
-          ACR_REGISTRY_VAL: ${{ env.ACR_REGISTRY }}
-          ACR_NAMESPACE_VAL: ${{ secrets.ACR_NAMESPACE }}
-          ACR_USERNAME_VAL: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD_VAL: ${{ secrets.ACR_PASSWORD }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # NOTE: Do NOT use set -e here. We want to see ALL errors, not stop at the first one.
-          sudo apt-get install -y -qq sshpass
+          # Deploy script — ${{ secrets.* }} expanded by GitHub Actions before shell runs
+          # Single-quoted heredoc prevents shell expansion; GHA expansion still happens
+          cat > /tmp/deploy.sh << 'DEPLOY_SCRIPT'
+          set -x
 
-          # Base64-encode all secrets for safe transmission via SSH.
-          # This avoids shell expansion issues with special characters in passwords/keys.
-          DEEPSEEK_KEY_B64=$(printf '%s' "$DEEPSEEK_KEY" | base64 -w0)
-          WECHAT_TOKEN_B64=$(printf '%s' "$WECHAT_TOKEN" | base64 -w0)
-          MIHOME_CLIENT_ID_B64=$(printf '%s' "$MIHOME_CLIENT_ID" | base64 -w0)
-          MIHOME_CLIENT_SECRET_B64=$(printf '%s' "$MIHOME_CLIENT_SECRET" | base64 -w0)
-          OPENCLAW_SECRET_B64=$(printf '%s' "$OPENCLAW_SECRET" | base64 -w0)
-          ACR_REGISTRY_VAL_B64=$(printf '%s' "$ACR_REGISTRY_VAL" | base64 -w0)
-          ACR_NAMESPACE_VAL_B64=$(printf '%s' "$ACR_NAMESPACE_VAL" | base64 -w0)
-          ACR_USERNAME_VAL_B64=$(printf '%s' "$ACR_USERNAME_VAL" | base64 -w0)
-          ACR_PASSWORD_VAL_B64=$(printf '%s' "$ACR_PASSWORD_VAL" | base64 -w0)
-          GH_TOKEN_B64=$(printf '%s' "$GH_TOKEN" | base64 -w0)
+          cd /www/wwwroot/echolife || { echo "FATAL: dir not found"; exit 1; }
 
-          echo "=== Encoded secret lengths ==="
-          echo "DEEPSEEK_KEY_B64 len: ${#DEEPSEEK_KEY_B64}"
-          echo "ACR_PASSWORD_VAL_B64 len: ${#ACR_PASSWORD_VAL_B64}"
-          echo "ACR_USERNAME_VAL_B64 len: ${#ACR_USERNAME_VAL_B64}"
-
-          # Step 1: Write env file to remote server (base64 is safe for shell)
-          echo "=== Writing env file to remote ==="
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            "${SSH_USER}@${SSH_HOST}" \
-            "cat > /tmp/.deploy_env.sh" << ENV_EOF
-          #!/bin/bash
-          export DEEPSEEK_KEY=\$(echo '${DEEPSEEK_KEY_B64}' | base64 -d)
-          export WECHAT_TOKEN=\$(echo '${WECHAT_TOKEN_B64}' | base64 -d)
-          export MIHOME_CLIENT_ID=\$(echo '${MIHOME_CLIENT_ID_B64}' | base64 -d)
-          export MIHOME_CLIENT_SECRET=\$(echo '${MIHOME_CLIENT_SECRET_B64}' | base64 -d)
-          export OPENCLAW_SECRET=\$(echo '${OPENCLAW_SECRET_B64}' | base64 -d)
-          export ACR_REGISTRY_VAL=\$(echo '${ACR_REGISTRY_VAL_B64}' | base64 -d)
-          export ACR_NAMESPACE_VAL=\$(echo '${ACR_NAMESPACE_VAL_B64}' | base64 -d)
-          export ACR_USERNAME_VAL=\$(echo '${ACR_USERNAME_VAL_B64}' | base64 -d)
-          export ACR_PASSWORD_VAL=\$(echo '${ACR_PASSWORD_VAL_B64}' | base64 -d)
-          export GH_TOKEN=\$(echo '${GH_TOKEN_B64}' | base64 -d)
-          ENV_EOF
-
-          ENV_WRITE_EXIT=$?
-          echo "Env file write exit: $ENV_WRITE_EXIT"
-          if [ $ENV_WRITE_EXIT -ne 0 ]; then
-            echo "::error::Failed to write env file to remote server!"
-            exit 1
-          fi
-
-          # Step 2: Write deploy script (no local expansion needed)
-          cat > /tmp/remote-deploy.sh << 'REMOTE_EOF'
-          # Source the env file with secrets
-          source /tmp/.deploy_env.sh
-          rm -f /tmp/.deploy_env.sh
-
-          # Verify secrets were loaded
-          echo "=== Verify secrets loaded ==="
-          echo "DEEPSEEK_KEY set: $([ -n \"$DEEPSEEK_KEY\" ] && echo yes || echo no)"
-          echo "ACR_PASSWORD_VAL set: $([ -n \"$ACR_PASSWORD_VAL\" ] && echo yes || echo no)"
-          echo "ACR_USERNAME_VAL set: $([ -n \"$ACR_USERNAME_VAL\" ] && echo yes || echo no)"
-          echo "ACR_REGISTRY_VAL: $ACR_REGISTRY_VAL"
-          echo "GH_TOKEN set: $([ -n \"$GH_TOKEN\" ] && echo yes || echo no)"
-
-          cd /www/wwwroot/echolife || { echo "::error::Directory /www/wwwroot/echolife not found!"; exit 1; }
-          echo "=== Working directory: $(pwd) ==="
-
-          echo "=== Sync docker-compose.deploy.yml ==="
+          # Sync compose file
           curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
-            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/docker-compose.deploy.yml?ref=main" \
             -o docker-compose.deploy.yml.new || \
           curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/docker-compose.deploy.yml \
             -o docker-compose.deploy.yml.new || true
-          if [ -s docker-compose.deploy.yml.new ]; then
-            mv docker-compose.deploy.yml.new docker-compose.deploy.yml
-            echo "docker-compose.deploy.yml synced OK"
-          else
-            rm -f docker-compose.deploy.yml.new
-            echo "WARNING: download failed, using existing docker-compose.deploy.yml"
-          fi
+          [ -s docker-compose.deploy.yml.new ] && mv docker-compose.deploy.yml.new docker-compose.deploy.yml || rm -f docker-compose.deploy.yml.new
 
-          echo "=== Sync nginx config ==="
+          # Sync nginx config
           mkdir -p infra/nginx
           curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
-            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/wwxfeel-wq/WXUN/contents/infra/nginx/nginx.conf?ref=main" \
             -o infra/nginx/nginx.conf || \
           curl -sL --max-time 30 https://raw.githubusercontent.com/wwxfeel-wq/WXUN/main/infra/nginx/nginx.conf \
             -o infra/nginx/nginx.conf || true
 
-          echo "=== Update .env.production ==="
-          if [ ! -f .env.production ]; then
-            echo "::error::.env.production not found!"
-            exit 1
-          fi
-          if [ -n "${DEEPSEEK_KEY}" ]; then
-            sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=${DEEPSEEK_KEY}|" .env.production 2>/dev/null || \
-              echo "DEEPSEEK_API_KEY=${DEEPSEEK_KEY}" >> .env.production
-          fi
-          grep -q "^AI_ACTIVE_PROVIDER=" .env.production || echo "AI_ACTIVE_PROVIDER=deepseek" >> .env.production
-          grep -q "^DEEPSEEK_API_URL=" .env.production || echo "DEEPSEEK_API_URL=https://api.deepseek.com/v1" >> .env.production
-          if [ -n "${WECHAT_TOKEN}" ]; then
-            sed -i "s|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=${WECHAT_TOKEN}|" .env.production 2>/dev/null || \
-              echo "WECHAT_BOT_TOKEN=${WECHAT_TOKEN}" >> .env.production
-          fi
-          grep -q "^PUPPETEER_EXECUTABLE_PATH=" .env.production || echo "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium" >> .env.production
-          grep -q "^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=" .env.production || echo "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true" >> .env.production
-          if [ -n "${OPENCLAW_SECRET}" ]; then
-            sed -i "s|^OPENCLAW_WEBHOOK_SECRET=.*|OPENCLAW_WEBHOOK_SECRET=${OPENCLAW_SECRET}|" .env.production 2>/dev/null || \
-              echo "OPENCLAW_WEBHOOK_SECRET=${OPENCLAW_SECRET}" >> .env.production
-          fi
-          grep -q "^ACR_REGISTRY=" .env.production || echo "ACR_REGISTRY=${ACR_REGISTRY_VAL}" >> .env.production
-          grep -q "^ACR_NAMESPACE=" .env.production || echo "ACR_NAMESPACE=${ACR_NAMESPACE_VAL}" >> .env.production
-          grep -q "^NEXT_PUBLIC_API_URL=" .env.production || echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env.production
-          echo ".env.production OK"
+          # Check .env.production
+          [ ! -f .env.production ] && { echo "FATAL: .env.production not found"; exit 1; }
 
-          echo "=== Docker login to ACR ==="
-          echo "${ACR_PASSWORD_VAL}" | docker login "${ACR_REGISTRY_VAL}" \
-            -u "${ACR_USERNAME_VAL}" --password-stdin 2>&1
-          echo "Docker login exit: $?"
+          # Update secrets in .env.production
+          sed -i 's|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}|' .env.production 2>/dev/null || echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env.production
+          grep -q '^AI_ACTIVE_PROVIDER=' .env.production || echo 'AI_ACTIVE_PROVIDER=deepseek' >> .env.production
+          grep -q '^DEEPSEEK_API_URL=' .env.production || echo 'DEEPSEEK_API_URL=https://api.deepseek.com/v1' >> .env.production
+          sed -i 's|^WECHAT_BOT_TOKEN=.*|WECHAT_BOT_TOKEN=${{ secrets.WECHAT_BOT_TOKEN }}|' .env.production 2>/dev/null || echo "WECHAT_BOT_TOKEN=${{ secrets.WECHAT_BOT_TOKEN }}" >> .env.production
+          grep -q '^PUPPETEER_EXECUTABLE_PATH=' .env.production || echo 'PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium' >> .env.production
+          grep -q '^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=' .env.production || echo 'PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true' >> .env.production
+          sed -i 's|^OPENCLAW_WEBHOOK_SECRET=.*|OPENCLAW_WEBHOOK_SECRET=${{ secrets.OPENCLAW_WEBHOOK_SECRET }}|' .env.production 2>/dev/null || echo "OPENCLAW_WEBHOOK_SECRET=${{ secrets.OPENCLAW_WEBHOOK_SECRET }}" >> .env.production
+          grep -q '^ACR_REGISTRY=' .env.production || echo 'ACR_REGISTRY=${{ env.ACR_REGISTRY }}' >> .env.production
+          grep -q '^ACR_NAMESPACE=' .env.production || echo 'ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}' >> .env.production
+          grep -q '^NEXT_PUBLIC_API_URL=' .env.production || echo 'NEXT_PUBLIC_API_URL=/api/v1' >> .env.production
 
-          echo "=== Pull new images ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api 2>&1
-          PULL_EXIT=$?
-          if [ $PULL_EXIT -ne 0 ]; then
-            echo "WARNING: Image pull failed (exit $PULL_EXIT). Will try to restart with existing images."
-            DEPLOY_ERRORS="${DEPLOY_ERRORS} pull_failed"
-          else
-            echo "Image pull OK"
-          fi
+          # ACR login — use GHA-expanded secrets directly
+          echo '${{ secrets.ACR_PASSWORD }}' | docker login '${{ env.ACR_REGISTRY }}' \
+            -u '${{ secrets.ACR_USERNAME }}' --password-stdin
+          [ $? -ne 0 ] && { echo "FATAL: ACR login failed"; exit 1; }
+          echo "ACR login OK"
 
-          echo "=== Restart services ==="
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis 2>&1
-          echo "postgres/redis exit: $?"
+          # Pull new images
+          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api
+          [ $? -ne 0 ] && { echo "FATAL: image pull failed"; exit 1; }
+          echo "Image pull OK"
+
+          # Restart services
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d postgres redis
           sleep 5
-
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api 2>&1
-          echo "api exit: $?"
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate api
           sleep 10
-
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web 2>&1
-          echo "web exit: $?"
-
-          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx 2>&1
-          echo "nginx exit: $?"
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate web
+          docker compose -f docker-compose.deploy.yml --env-file .env.production up -d --force-recreate nginx
           sleep 3
 
-          echo "=== Health check ==="
+          # Health check
           for i in $(seq 1 6); do
-            HEALTH=$(curl -sf http://localhost/api/v1/health 2>/dev/null)
-            if [ -n "$HEALTH" ]; then
-              echo "Health check passed (attempt $i): $HEALTH"
-              break
-            fi
-            echo "Health check attempt $i failed, retrying in 5s..."
+            curl -sf http://localhost/api/v1/health && break
             sleep 5
           done
 
-          echo "=== Container status ==="
+          # Diagnostics
           docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
-          echo "=== API logs ===" | tee -a /tmp/deploy_diag.txt
-          docker logs echolife-api --tail 30 2>&1 | tee -a /tmp/deploy_diag.txt
-          echo "=== Docker disk ===" | tee -a /tmp/deploy_diag.txt
-          docker system df 2>&1 | tee -a /tmp/deploy_diag.txt
-          echo "=== docker ps -a ===" | tee -a /tmp/deploy_diag.txt
+          docker logs echolife-api --tail 20 2>&1 | tee -a /tmp/deploy_diag.txt
           docker ps -a 2>&1 | tee -a /tmp/deploy_diag.txt
-          echo "=== DEPLOY DONE ===" | tee -a /tmp/deploy_diag.txt
+          echo "DEPLOY DONE" | tee -a /tmp/deploy_diag.txt
+          DEPLOY_SCRIPT
 
-          # Exit 0 even if there were warnings — the services are running
-          exit 0
-          REMOTE_EOF
-
-          echo "=== Executing remote deploy script ==="
+          echo "=== Running deploy ==="
           sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            "${SSH_USER}@${SSH_HOST}" \
-            'bash -s' < /tmp/remote-deploy.sh
-
-          DEPLOY_EXIT=$?
-          echo "=== Deploy exit code: $DEPLOY_EXIT ==="
-          exit $DEPLOY_EXIT
+            "${SSH_USER}@${SSH_HOST}" 'bash -s' < /tmp/deploy.sh
+          exit $?
 
       - name: Download diagnostic
         if: always()
@@ -332,7 +193,7 @@ jobs:
           sudo apt-get install -y -qq sshpass
           sshpass -e scp -o StrictHostKeyChecking=no \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/deploy_diag.txt" \
-            deploy_diag.txt || echo "No diagnostic file to download"
+            deploy_diag.txt || echo "No diagnostic file"
 
       - name: Upload diagnostic artifact
         if: always()
