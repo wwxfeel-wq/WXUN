@@ -170,10 +170,21 @@ jobs:
           [ $? -ne 0 ] && { echo "::error::FATAL: docker login to ACR failed"; exit 1; }
           echo "Docker login OK"
 
-          # Pull images
-          echo "Pulling images..."
-          docker compose -f docker-compose.deploy.yml --env-file .env.production pull web api
-          [ $? -ne 0 ] && { echo "::error::FATAL: docker compose pull failed"; exit 1; }
+          # Debug: show what compose thinks the image names are
+          echo "=== .env.production ACR values ==="
+          grep -E '^ACR_(REGISTRY|NAMESPACE)=' .env.production
+          echo "=== Compose config (image names) ==="
+          docker compose -f docker-compose.deploy.yml --env-file .env.production config 2>&1 | grep -E 'image:' || true
+
+          # Try pulling each image individually for better error messages
+          API_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-api:latest"
+          WEB_IMAGE="${ACR_REGISTRY_VALUE}/${ACR_NAMESPACE_VALUE}/echolife-web:latest"
+          echo "Pulling API image: $API_IMAGE"
+          docker pull "$API_IMAGE"
+          [ $? -ne 0 ] && { echo "::error::FATAL: cannot pull $API_IMAGE"; docker pull "$API_IMAGE" 2>&1; exit 1; }
+          echo "Pulling WEB image: $WEB_IMAGE"
+          docker pull "$WEB_IMAGE"
+          [ $? -ne 0 ] && { echo "::error::FATAL: cannot pull $WEB_IMAGE"; exit 1; }
           echo "Image pull OK"
 
           # Start DB/Redis
