@@ -53,6 +53,8 @@ jobs:
           file: infra/docker/Dockerfile.web
           platforms: linux/amd64
           push: true
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_WEB }}:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_WEB }}:${{ steps.meta.outputs.short_sha }}
@@ -68,6 +70,8 @@ jobs:
           file: infra/docker/Dockerfile.api
           platforms: linux/amd64
           push: true
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_API }}:${{ steps.meta.outputs.short_sha }}
@@ -106,8 +110,22 @@ jobs:
           command_timeout: 20m
           envs: DEEPSEEK_KEY,WECHAT_TOKEN,MIHOME_CLIENT_ID,MIHOME_CLIENT_SECRET,OPENCLAW_SECRET,PUPPETEER_EXECUTABLE_PATH,ACR_PASSWORD,ACR_USERNAME,ACR_REGISTRY,ACR_NAMESPACE
           script: |
-            set -x
+            set -ex
+            trap 'echo "ERROR: Command failed at line $LINENO (exit code: $?)"' ERR
             cd /www/wwwroot/echolife
+
+            # Verify ACR envs are passed correctly
+            echo "== 验证 ACR 环境变量 =="
+            if [ -z "$ACR_REGISTRY" ] || [ -z "$ACR_USERNAME" ] || [ -z "$ACR_PASSWORD" ] || [ -z "$ACR_NAMESPACE" ]; then
+              echo "ERROR: ACR envs not passed correctly!"
+              echo "ACR_REGISTRY=${ACR_REGISTRY:-EMPTY}"
+              echo "ACR_USERNAME=${ACR_USERNAME:-EMPTY}"
+              echo "ACR_NAMESPACE=${ACR_NAMESPACE:-EMPTY}"
+              echo "ACR_PASSWORD is ${ACR_PASSWORD:+set}${ACR_PASSWORD:-EMPTY}"
+              exit 1
+            fi
+            echo "ACR envs OK: registry=$ACR_REGISTRY namespace=$ACR_NAMESPACE"
+
             echo "== 同步 docker-compose.deploy.yml =="
             # R3-CICD-001: Add Authorization header to avoid GitHub API rate limits
             curl -sL --max-time 30 -H "Accept: application/vnd.github.v3.raw" \
@@ -198,6 +216,8 @@ jobs:
             echo "$ACR_PASSWORD" | docker login \
               "$ACR_REGISTRY" \
               -u "$ACR_USERNAME" --password-stdin
+            echo "ACR login result: $?"
+            docker info 2>/dev/null | grep -i "registry" || true
             echo "== 检查 .env.production =="
             if [ ! -f .env.production ]; then
               echo "ERROR: .env.production not found! Deployment aborted."
@@ -234,14 +254,19 @@ jobs:
             sleep 3
             # R3-CICD-006: Health check loop after deployment
             echo "== 健康检查 =="
+            HEALTH_OK=false
             for i in $(seq 1 12); do
               if curl -sf http://localhost/api/v1/health; then
                 echo "Health check passed (attempt $i)"
+                HEALTH_OK=true
                 break
               fi
               echo "Health check attempt $i failed, retrying in 5s..."
-              sleep 5
+              sleep 5 || true
             done
+            if [ "$HEALTH_OK" = "false" ]; then
+              echo "WARNING: Health check did not pass, but continuing with diagnostics"
+            fi
             echo "== 容器状态 =="
             docker compose -f docker-compose.deploy.yml --env-file .env.production ps 2>&1 | tee /tmp/deploy_diag.txt
             echo "== API 日志（最后30行）==" | tee -a /tmp/deploy_diag.txt
