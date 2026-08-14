@@ -46,6 +46,10 @@ const config: Config = {
           soft: 'var(--color-primary-soft)',
           faint: 'var(--color-primary-faint)',
         },
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+          hover: 'var(--color-accent-hover)',
+        },
         secondary: {
           DEFAULT: 'var(--color-secondary)',
           hover: 'var(--color-secondary-hover)',

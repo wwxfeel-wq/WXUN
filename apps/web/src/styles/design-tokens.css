@@ -39,6 +39,13 @@
   --color-primary-soft: rgba(0, 210, 106, 0.14);
   --color-primary-faint: rgba(0, 210, 106, 0.08);
 
+  /* === Accent — 强调色 ===
+   * 与主色一致，用于图表柱、图标、进度条等强调元素。
+   * 此前 --color-accent 未定义，导致 bg-accent/text-accent 类失效（透明）。
+   */
+  --color-accent: var(--color-primary);
+  --color-accent-hover: var(--color-primary-hover);
+
   /* === Secondary — Soft Sky ===
    * 从冷蓝改为更柔和、略带暖意的天空蓝，降低科技感。
    */
