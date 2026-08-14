@@ -307,7 +307,7 @@ function HourlyChart() {
             暂无数据
           </div>
         ) : (
-          <div className="flex h-40 items-end gap-1">
+          <div className="flex h-40 items-stretch gap-1">
             {hourlyData.map((d, i) => {
               const heightPct = (d.count / maxCount) * 100;
               const date = new Date(d.hour);
