@@ -130,6 +130,28 @@ const CITY_ZH: Record<string, string> = {
 };
 
 /**
+ * 埋点看板需要排除的内部页面路径前缀。
+ * 这些是管理员自己的操作（登录/看板/部署冒烟测试），不属于真实用户行为，
+ * 若计入会污染统计与趋势图。
+ */
+const EXCLUDED_PATH_PREFIXES = [
+  '/admin',        // 管理后台（含 /admin/analytics 埋点看板）
+  '/login',        // 登录页
+  '/register',     // 注册页
+  '/deploy-smoke', // 部署冒烟测试
+  '/ssh-smoke',    // SSH 冒烟测试
+];
+
+/** 构建排除内部路径的 where 条件（供所有统计查询复用）。 */
+function excludeInternalPaths(): Prisma.TrackingEventWhereInput {
+  return {
+    AND: EXCLUDED_PATH_PREFIXES.map((prefix) => ({
+      NOT: { pagePath: { startsWith: prefix } },
+    })),
+  };
+}
+
+/**
  * TrackingService — 埋点追踪服务
  *
  * 负责接收前端上报的页面访问与交互事件，并提供管理员数据看板所需的
@@ -212,28 +234,33 @@ export class TrackingService {
       last24hCount,
     ] = await Promise.all([
       this.prisma.trackingEvent.count({
-        where: { eventType: 'page_view' },
+        where: { eventType: 'page_view', ...excludeInternalPaths() },
       }),
       this.prisma.trackingEvent.groupBy({
         by: ['sessionId'],
+        where: excludeInternalPaths(),
         _count: true,
       }),
       this.prisma.trackingEvent.groupBy({
         by: ['ipAddress'],
+        where: excludeInternalPaths(),
         _count: true,
       }),
       this.prisma.trackingEvent.groupBy({
         by: ['pagePath'],
+        where: excludeInternalPaths(),
         _count: true,
         orderBy: { _count: { pagePath: 'desc' } },
         take: 10,
       }),
       this.prisma.trackingEvent.groupBy({
         by: ['eventType'],
+        where: excludeInternalPaths(),
         _count: true,
         orderBy: { _count: { eventType: 'desc' } },
       }),
       this.prisma.trackingEvent.findMany({
+        where: excludeInternalPaths(),
         orderBy: { createdAt: 'desc' },
         take: 20,
         select: {
@@ -252,7 +279,7 @@ export class TrackingService {
         },
       }),
       this.prisma.trackingEvent.count({
-        where: { createdAt: { gte: last24h } },
+        where: { createdAt: { gte: last24h }, ...excludeInternalPaths() },
       }),
     ]);
 
@@ -317,6 +344,7 @@ export class TrackingService {
   async getIpList() {
     const ipGroups = await this.prisma.trackingEvent.groupBy({
       by: ['ipAddress', 'country', 'city'],
+      where: excludeInternalPaths(),
       _count: true,
       _max: { createdAt: true },
       orderBy: { _count: { ipAddress: 'desc' } },
@@ -366,7 +394,7 @@ export class TrackingService {
     const ips = Array.from(ipMap.keys());
     if (ips.length > 0) {
       const latestEvents = await this.prisma.trackingEvent.findMany({
-        where: { ipAddress: { in: ips } },
+        where: { ipAddress: { in: ips }, ...excludeInternalPaths() },
         orderBy: { createdAt: 'desc' },
         select: {
           ipAddress: true,
@@ -454,7 +482,7 @@ export class TrackingService {
 
     // 拉取时间范围内的事件
     const events = await this.prisma.trackingEvent.findMany({
-      where: { createdAt: { gte: since } },
+      where: { createdAt: { gte: since }, ...excludeInternalPaths() },
       select: { createdAt: true, sessionId: true },
     });
 
@@ -510,7 +538,10 @@ export class TrackingService {
       }
     }
 
-    return where;
+    // 始终排除内部路径（登录/管理后台/冒烟测试），与概览/图表保持一致
+    return {
+      AND: [where, excludeInternalPaths()],
+    };
   }
 
   /**
