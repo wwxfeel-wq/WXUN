@@ -309,7 +309,6 @@ function HourlyChart() {
         ) : (
           <div className="flex h-40 items-stretch gap-1">
             {hourlyData.map((d, i) => {
-              const heightPct = (d.count / maxCount) * 100;
               const date = new Date(d.hour);
               const hourLabel = `${date.getHours()}时`;
               const showLabel = i % 4 === 0 || i === hourlyData.length - 1;
@@ -322,13 +321,16 @@ function HourlyChart() {
                   <div className="pointer-events-none absolute -top-12 z-10 hidden whitespace-nowrap rounded-lg bg-surface-raised px-2 py-1 text-3xs text-text shadow-glass-soft group-hover:block">
                     {hourLabel} · {d.count} 次
                   </div>
-                  {/* Bar */}
-                  <div className="flex w-full flex-1 items-end">
+                  {/* Bar 区域：spacer + 柱子按 flex-grow 比例分配高度，
+                      避免百分比高度在 flex 布局中失效导致柱子塌陷 */}
+                  <div className="flex w-full flex-1 flex-col">
+                    <div style={{ flexGrow: maxCount - d.count, flexBasis: 0 }} />
                     <div
                       className="w-full rounded-t bg-accent/80 transition-all duration-300 hover:bg-accent"
                       style={{
-                        height: `${Math.max(heightPct, 2)}%`,
-                        minHeight: "3px",
+                        flexGrow: d.count,
+                        flexBasis: 0,
+                        minHeight: d.count > 0 ? "4px" : "2px",
                       }}
                     />
                   </div>
